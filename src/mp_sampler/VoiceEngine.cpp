@@ -214,6 +214,13 @@ void VoiceEngine::prepare(double sampleRate, int maxVoices, int numChannels,
     decodeScratch_.resize(kMaxDecodeThreads);
     makeDecodeScratch(1);
   }
+  // The voicing shelves: figures and state for every voice, and the audio
+  // thread's buffer; the workers' come with the workers.
+  shelfFigures_.assign(voices_.size(), ShelfFigures{});
+  shelfState_.assign(voices_.size() * static_cast<size_t>(numChannels_) * 2, 0.0f);
+  shelfScratch_.clear();
+  shelfScratch_.resize(kMaxDecodeThreads);
+  makeShelfScratch(1);
   startStreamer();
 }
 
@@ -222,6 +229,52 @@ void VoiceEngine::makeDecodeScratch(size_t threads) {
   threads = std::min(threads, decodeScratch_.size());
   for (size_t t = 0; t < threads; ++t)
     if (decodeScratch_[t] == nullptr) decodeScratch_[t] = std::make_unique<DecodeScratch>();
+}
+
+void VoiceEngine::makeShelfScratch(size_t threads) {
+  threads = std::min(threads, shelfScratch_.size());
+  const size_t floats = static_cast<size_t>(numChannels_) * kShelfChunk;
+  for (size_t t = 0; t < threads; ++t)
+    if (shelfScratch_[t] == nullptr) shelfScratch_[t] = std::make_unique<std::vector<float>>(floats, 0.0f);
+}
+
+namespace {
+// A high shelf (#815), as the audio EQ cookbook gives it: the boost above the
+// transition frequency, half of it at that frequency. The definition states the
+// transition's width as a percentage of the frequency; 100 % and wider take
+// the cookbook's slope in proportion, 1 at 100 %, the steepest without a bump.
+void shelfFigures(double sampleRate, double kHz, double widthPct, double db, float out[5]) {
+  constexpr double kPi = 3.141592653589793;
+  const double f0 = std::clamp(kHz * 1000.0, 20.0, 0.45 * sampleRate);
+  const double slope = std::clamp(widthPct > 0.0 ? 100.0 / widthPct : 1.0, 0.05, 1.0);
+  const double a = std::pow(10.0, db / 40.0);
+  const double w0 = 2.0 * kPi * f0 / sampleRate;
+  const double cw = std::cos(w0);
+  const double alpha = std::sin(w0) / 2.0 * std::sqrt((a + 1.0 / a) * (1.0 / slope - 1.0) + 2.0);
+  const double ra = 2.0 * std::sqrt(a) * alpha;
+  const double b0 = a * ((a + 1.0) + (a - 1.0) * cw + ra);
+  const double b1 = -2.0 * a * ((a - 1.0) + (a + 1.0) * cw);
+  const double b2 = a * ((a + 1.0) + (a - 1.0) * cw - ra);
+  const double a0 = (a + 1.0) - (a - 1.0) * cw + ra;
+  const double a1 = 2.0 * ((a - 1.0) - (a + 1.0) * cw);
+  const double a2 = (a + 1.0) - (a - 1.0) * cw - ra;
+  out[0] = static_cast<float>(b0 / a0);
+  out[1] = static_cast<float>(b1 / a0);
+  out[2] = static_cast<float>(b2 / a0);
+  out[3] = static_cast<float>(a1 / a0);
+  out[4] = static_cast<float>(a2 / a0);
+}
+} // namespace
+
+void VoiceEngine::armShelf(Voice& v, size_t index) {
+  v.shelf = v.layer != nullptr && v.layer->voicingShelfDb != 0.0 && index < shelfFigures_.size();
+  if (!v.shelf) return;
+  float f[5];
+  shelfFigures(sampleRate_, v.layer->voicingShelfKHz, v.layer->voicingShelfWidthPct,
+               v.layer->voicingShelfDb, f);
+  shelfFigures_[index] = ShelfFigures{f[0], f[1], f[2], f[3], f[4]};
+  float* z = shelfState_.data() + index * static_cast<size_t>(numChannels_) * 2;
+  std::fill(z, z + static_cast<size_t>(numChannels_) * 2, 0.0f);
 }
 
 uint64_t VoiceEngine::blocksDecoded() const {
@@ -638,6 +691,7 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   v.gain = start.gain;
   v.releaseGain = 1.0f;
   v.layer = start.layer;
+  armShelf(v, static_cast<size_t>(slot));
   v.busIndex = start.busIndex;
   v.mixBus = start.mixBus;
   v.windIndex = start.windIndex;
@@ -782,6 +836,7 @@ void VoiceEngine::startIndependentRelease(const Voice& started, const NoteReleas
   r.attackLeft = r.attackTotal = 0;
   r.percussive = false;
   r.quietFrames = 0;
+  armShelf(r, s);
   speaking_[s] = SpeakingPipe{};
   releaseVoice(r, release, true);
   // No release to sound, or not resident: nothing plays.
@@ -1243,6 +1298,59 @@ void VoiceEngine::renderVoice(Voice& v, float* const* out, int numChannels,
     renderVoice(v, shifted, channels, numFrames - skip, thread);
     return;
   }
+  if (!v.shelf) {
+    renderVoiceRaw(v, index, out, numChannels, numFrames, scratch);
+    return;
+  }
+  renderVoiceNow(v, index, out, numChannels, numFrames, thread, scratch);
+}
+
+// A shelved voice is rendered alone into this thread's buffer, a chunk at a
+// time, passed through its shelf channel by channel and added to the output.
+void VoiceEngine::renderVoiceNow(Voice& v, size_t index, float* const* out, int numChannels,
+                                 int numFrames, int thread, DecodeScratch* scratch) {
+  std::vector<float>* buf =
+      thread >= 0 && static_cast<size_t>(thread) < shelfScratch_.size()
+          ? shelfScratch_[static_cast<size_t>(thread)].get()
+          : nullptr;
+  if (buf == nullptr || numChannels > numChannels_) {
+    renderVoiceRaw(v, index, out, numChannels, numFrames, scratch);
+    return;
+  }
+  constexpr int kMaxChannels = 16;
+  const int channels = std::min(numChannels, kMaxChannels);
+  float* planes[kMaxChannels];
+  for (int c = 0; c < channels; ++c) planes[c] = buf->data() + static_cast<size_t>(c) * kShelfChunk;
+  const ShelfFigures& f = shelfFigures_[index];
+  float* const state = shelfState_.data() + index * static_cast<size_t>(numChannels_) * 2;
+  for (int done = 0; done < numFrames && v.active();) {
+    const int n = std::min(kShelfChunk, numFrames - done);
+    for (int c = 0; c < channels; ++c) std::fill(planes[c], planes[c] + n, 0.0f);
+    renderVoiceRaw(v, index, planes, channels, n, scratch);
+    for (int c = 0; c < channels; ++c) {
+      float z1 = state[c * 2], z2 = state[c * 2 + 1];
+      const float* x = planes[c];
+      float* y = out[c] + done;
+      for (int i = 0; i < n; ++i) {
+        const float in = x[i];
+        const float o = f.b0 * in + z1;
+        z1 = f.b1 * in - f.a1 * o + z2;
+        z2 = f.b2 * in - f.a2 * o;
+        y[i] += o;
+      }
+      // A dying tail leaves the state far below hearing: let it be silent
+      // there, short of the denormals.
+      if (std::fabs(z1) < 1.0e-20f) z1 = 0.0f;
+      if (std::fabs(z2) < 1.0e-20f) z2 = 0.0f;
+      state[c * 2] = z1;
+      state[c * 2 + 1] = z2;
+    }
+    done += n;
+  }
+}
+
+void VoiceEngine::renderVoiceRaw(Voice& v, size_t index, float* const* out, int numChannels,
+                                 int numFrames, DecodeScratch* scratch) {
   // A coded sample is read through the voice's windows, decoded with this
   // thread's scratch. Without them it cannot sound.
   if (v.buffer != nullptr && v.buffer->coded != nullptr) {
@@ -2421,6 +2529,7 @@ void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
   workers_.reserve(static_cast<size_t>(extra));
   // A decoding scratch for each worker, the audio thread's being the first.
   makeDecodeScratch(static_cast<size_t>(extra) + 1);
+  makeShelfScratch(static_cast<size_t>(extra) + 1);
   for (int n = 0; n < extra; ++n) {
     auto worker = std::make_unique<Worker>();
     worker->scratch.assign(planesPerWorker * static_cast<size_t>(maxFrames_), 0.0f);

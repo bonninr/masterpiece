@@ -167,6 +167,13 @@ struct PipeLayer {
   double tremAmpDepthAdjustDb = 0.0;    // AmpLvl_TremulantModDepthAdjustDecibels
   double tremAmpDepthAdjustPct = 100.0; // AmpLvl_TremulantModDepthAdjustPercent, from version 5
   double tremPitchDepthAdjustPct = 100.0; // PitchLvl_TremulantModDepthAdjustPercent
+  // The layer's voicing EQ (#815): a high shelf that lifts or cuts what lies
+  // above its transition frequency by the boost, over a transition the width
+  // gives as a percentage of that frequency. Barritt's St. John lifts nearly
+  // every layer 2.2 dB above 4 kHz. 0 dB is no shelf at all.
+  double voicingShelfKHz = 2.0;          // VoicingEQ01_TransitionFrequencyKHertz
+  double voicingShelfWidthPct = 100.0;   // VoicingEQ01_TransitionWidthAsPercentOfTransitionFrequency
+  double voicingShelfDb = 0.0;           // VoicingEQ01_HighFrequencyBoostDecibels
   // GrandOrgue's Percussive: the pipe is struck, and its attack plays its
   // recording to the end, any loop in the file unused. Let go, it rings on.
   bool percussive = false;
