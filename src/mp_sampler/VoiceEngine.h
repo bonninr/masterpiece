@@ -458,6 +458,9 @@ struct Voice {
   // frames, is kept until then.
   bool alignPending = false;
   double alignPeriod = 0.0;
+  // The layer's voicing shelf is on this voice (#815); its figures and state
+  // are kept beside the voices, read only while this is set.
+  bool shelf = false;
 
   bool active() const { return phase != VoicePhase::Idle; }
   bool loops() const {
@@ -959,6 +962,12 @@ private:
   template <typename T, bool Coded>
   void renderVoiceFrom(Voice& v, size_t voiceIndex, float* const* out,
                        int numChannels, int numFrames, DecodeScratch* scratch);
+  // The voice as it reaches the output, once its start in the block is
+  // placed: through its layer's shelf when it has one.
+  void renderVoiceNow(Voice& v, size_t index, float* const* out, int numChannels, int numFrames,
+                      int thread, DecodeScratch* scratch);
+  void renderVoiceRaw(Voice& v, size_t index, float* const* out, int numChannels, int numFrames,
+                      DecodeScratch* scratch);
   // A release to or from a coded sample, started in phase (Voice::alignPending).
   void alignPendingRelease(Voice& v, DecodeScratch& scratch);
   // A falling release level (the staccato fade) after a block: the voice ends
@@ -1102,6 +1111,20 @@ private:
   std::vector<DecodedWindow> windows_;
   std::vector<std::unique_ptr<DecodeScratch>> decodeScratch_;
   void makeDecodeScratch(size_t threads);
+  // The voicing shelves (#815): a biquad's figures per voice, its state per
+  // voice and output channel, and a buffer per render thread that a shelved
+  // voice renders into before it is filtered. A voice without a shelf never
+  // reads any of them.
+  static constexpr int kShelfChunk = 256;
+  struct ShelfFigures {
+    float b0 = 1.0f, b1 = 0.0f, b2 = 0.0f, a1 = 0.0f, a2 = 0.0f;
+  };
+  std::vector<ShelfFigures> shelfFigures_;
+  std::vector<float> shelfState_;  // voices x numChannels_ x 2
+  std::vector<std::unique_ptr<std::vector<float>>> shelfScratch_;
+  void makeShelfScratch(size_t threads);
+  // Sets the voice's shelf from its layer, its state silent.
+  void armShelf(Voice& v, size_t index);
   // Counted from the read path, which is const because reading a sample does
   // not change the engine — but an underrun is exactly the thing a player must
   // be told about, so it is recorded rather than swallowed.

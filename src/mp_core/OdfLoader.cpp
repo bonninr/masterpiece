@@ -826,6 +826,11 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
         row, "AmpLvl_TremulantModDepthAdjustPercent", formatFrom5 ? "p" : nullptr, 100.0);
     layer.tremPitchDepthAdjustPct = fieldDouble(
         row, "PitchLvl_TremulantModDepthAdjustPercent", "y", 100.0);
+    // The layer's voicing EQ, a high shelf (#815).
+    layer.voicingShelfKHz = fieldDouble(row, "VoicingEQ01_TransitionFrequencyKHertz", "i1", 2.0);
+    layer.voicingShelfWidthPct = fieldDouble(
+        row, "VoicingEQ01_TransitionWidthAsPercentOfTransitionFrequency", "j1", 100.0);
+    layer.voicingShelfDb = fieldDouble(row, "VoicingEQ01_HighFrequencyBoostDecibels", "k1", 0.0);
     // Masterpiece's own, written by the GrandOrgue import.
     layer.percussive = fieldBool(row, "MasterpiecePercussive", nullptr, false);
     layer.independentRelease =
