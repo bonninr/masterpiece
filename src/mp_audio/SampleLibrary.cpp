@@ -1059,6 +1059,90 @@ bool SampleLibrary::samplePresent(Id sampleId, const OrganModel& model,
   return false;
 }
 
+std::unordered_map<Id, SampleLibrary::WaveformFile> SampleLibrary::readWaveformFiles(
+    const std::vector<Id>& sampleIds, const OrganModel& model, const std::string& organRootDir) const {
+  std::unordered_map<Id, WaveformFile> out;
+  juce::AudioFormatManager formats;
+  registerSampleFormats(formats);
+  // One file's channels and loop, from a reader. A file with no loop has no
+  // cycle to repeat and is left out. The longest loop the file declares, read
+  // as it stands: a waveform is no sound, and the cue a sample's release
+  // starts at means nothing in it. Lemmer's files mark a cue inside their
+  // loop, which usableLoops() rightly drops for a sound.
+  const auto take = [&](Id id, std::unique_ptr<juce::AudioFormatReader> reader) {
+    if (reader == nullptr || reader->lengthInSamples <= 0 || reader->numChannels < 1) return;
+    if (reader->lengthInSamples > (int64_t(1) << 24)) return;
+    int64_t start = -1, end = -1;
+    const auto& md = reader->metadataValues;
+    const int declared = juce::jmin(64, md.getValue("NumSampleLoops", "0").getIntValue());
+    for (int i = 0; i < declared; ++i) {
+      const juce::String prefix = "Loop" + juce::String(i);
+      const int64_t s = md.getValue(prefix + "Start", "-1").getLargeIntValue();
+      const int64_t e = md.getValue(prefix + "End", "-1").getLargeIntValue() + 1; // dwEnd is inclusive
+      if (s < 0 || e <= s || e > reader->lengthInSamples) continue;
+      if (start < 0 || e - s > end - start) {
+        start = s;
+        end = e;
+      }
+    }
+    if (start < 0 || end <= start) return;
+    const int frames = static_cast<int>(reader->lengthInSamples);
+    const int channels = juce::jmin(2, static_cast<int>(reader->numChannels));
+    juce::AudioBuffer<float> buffer(channels, frames);
+    if (!reader->read(&buffer, 0, frames, 0, true, channels > 1)) return;
+    WaveformFile file;
+    file.ch0.assign(buffer.getReadPointer(0), buffer.getReadPointer(0) + frames);
+    if (channels > 1) file.ch1.assign(buffer.getReadPointer(1), buffer.getReadPointer(1) + frames);
+    file.loopStart = start;
+    file.loopEnd = end;
+    out.emplace(id, std::move(file));
+  };
+
+  std::unordered_map<std::string, std::vector<Id>> fromArchive;
+  for (const Id id : sampleIds) {
+    if (out.count(id) != 0) continue;
+    const auto it = model.samples.find(id);
+    if (it == model.samples.end()) continue;
+    const SampleRef& ref = it->second;
+    if (ref.fileName.empty() || ref.encrypted || isEncrypted(ref.fileName)) continue;
+    if (ref.licenceRequired && !licenceConfirmed_) continue;
+    const auto path = resolveIgnoringCase(
+        resolvePath(rootFor(organRootDir, ref.installationPackageId), ref.fileName, ref.installationPackageId));
+    std::error_code ec;
+    if (std::filesystem::exists(path, ec)) {
+      take(id, std::unique_ptr<juce::AudioFormatReader>(
+                   formats.createReaderFor(juce::File(juce::String::fromUTF8(mp::utf8Of(path).c_str())))));
+      continue;
+    }
+    if (archive_ != nullptr) {
+      const auto rel = archiveKey(ref.fileName, ref.installationPackageId);
+      if (archive_->find(rel) != nullptr) fromArchive[OrganArchive::key(rel)].push_back(id);
+    }
+  }
+  if (fromArchive.empty()) return out;
+
+  std::vector<std::unordered_set<std::string>> perArchive(archive_->archives().size());
+  for (const auto& [key, ids] : fromArchive)
+    if (const auto* e = archive_->find(key)) perArchive[e->archive].insert(key);
+  for (size_t a = 0; a < perArchive.size(); ++a) {
+    if (perArchive[a].empty()) continue;
+    std::string error;
+    try {
+      archive_->read(a, perArchive[a], [&](const std::string& key, std::vector<char>&& bytes) {
+        const auto ids = fromArchive.find(key);
+        if (ids == fromArchive.end()) return true;
+        const juce::MemoryBlock block(bytes.data(), bytes.size());
+        for (const Id id : ids->second)
+          take(id, std::unique_ptr<juce::AudioFormatReader>(formats.createReaderFor(
+                       std::make_unique<juce::MemoryInputStream>(block, false))));
+        return true;
+      }, error);
+    } catch (const std::bad_alloc&) {
+    }
+  }
+  return out;
+}
+
 SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
                                         const std::string& organRootDir,
                                         int64_t maxFramesPerSample,

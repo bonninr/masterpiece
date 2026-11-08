@@ -20,6 +20,7 @@
 #include <memory>
 #include <sstream>
 #include <thread>
+#include <unordered_set>
 #include <vector>
 
 #if defined(__linux__)
@@ -427,7 +428,12 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   std::sort(tremOrder_.begin(), tremOrder_.end());
   for (size_t i = 0; i < tremOrder_.size(); ++i)
     tremIndexOf_[tremOrder_[i]] = static_cast<int>(i);
-  tremMods_.assign(tremOrder_.size(), VoiceEngine::TremMod{});
+  for (TremWaveSlot& slot : tremWaveSlots_) {
+    const auto ti = tremIndexOf_.find(slot.tremulantId);
+    slot.tremIndex = ti != tremIndexOf_.end() ? ti->second : -1;
+  }
+  tremMods_.assign(tremOrder_.size() + tremWaveSlots_.size(), VoiceEngine::TremMod{});
+  tremEnds_.assign(tremOrder_.size(), TremEnds{});
 
   wind_.reset(model_);
   convolver_.prepare(spec);
@@ -748,6 +754,7 @@ void MasterpieceProcessor::advanceTremulants(int numFrames) {
     auto& lfo = tremulantLfos_[id];
     if (tIt == model_.tremulants.end()) {
       tremMods_[i] = VoiceEngine::TremMod{};
+      if (i < tremEnds_.size()) tremEnds_[i] = TremEnds{};
       continue;
     }
     const Tremulant& t = tIt->second;
@@ -758,9 +765,15 @@ void MasterpieceProcessor::advanceTremulants(int numFrames) {
     // ramps between them, which is what keeps a six hertz wobble smooth at a
     // 256-frame block instead of stepping thirty times a cycle.
     const float start = lfo.nextSample(t, engaged, graph_.engineSwitch);
+    TremEnds ends;
+    ends.phaseStart = lfo.phase01();
+    ends.depthStart = lfo.currentDepth();
     float end = start;
     for (int f = 1; f < numFrames; ++f)
       end = lfo.nextSample(t, engaged, graph_.engineSwitch);
+    ends.phaseEnd = lfo.phase01();
+    ends.depthEnd = lfo.currentDepth();
+    if (i < tremEnds_.size()) tremEnds_[i] = ends;
 
     const float step = numFrames > 1
                            ? (end - start) / static_cast<float>(numFrames - 1)
@@ -769,6 +782,29 @@ void MasterpieceProcessor::advanceTremulants(int numFrames) {
     tremMods_[i].ampStep = step;
     tremMods_[i].pitchStart = start;
     tremMods_[i].pitchStep = step;
+  }
+  // The recorded waveforms (#805): each file's shape read at its tremulant's
+  // phase at both ends of the block, under the tremulant's depth, level and
+  // pitch apart.
+  const size_t base = tremOrder_.size();
+  for (size_t s = 0; s < tremWaveSlots_.size() && base + s < tremMods_.size(); ++s) {
+    const TremWaveSlot& slot = tremWaveSlots_[s];
+    VoiceEngine::TremMod& m = tremMods_[base + s];
+    if (slot.tremIndex < 0 || static_cast<size_t>(slot.tremIndex) >= tremEnds_.size()) {
+      m = VoiceEngine::TremMod{};
+      continue;
+    }
+    const TremEnds& e = tremEnds_[static_cast<size_t>(slot.tremIndex)];
+    const TremulantShape& shape = tremShapes_[static_cast<size_t>(slot.shape)];
+    const float a0 = e.depthStart * shape.ampAt(e.phaseStart);
+    const float a1 = e.depthEnd * shape.ampAt(e.phaseEnd);
+    const float p0 = e.depthStart * shape.pitchAt(e.phaseStart);
+    const float p1 = e.depthEnd * shape.pitchAt(e.phaseEnd);
+    const float frames = numFrames > 1 ? static_cast<float>(numFrames - 1) : 0.0f;
+    m.ampStart = a0;
+    m.ampStep = frames > 0.0f ? (a1 - a0) / frames : 0.0f;
+    m.pitchStart = p0;
+    m.pitchStep = frames > 0.0f ? static_cast<double>((p1 - p0) / frames) : 0.0;
   }
   voices_.setTremMods(tremMods_.data(), static_cast<int>(tremMods_.size()));
 #else
@@ -3897,6 +3933,74 @@ void MasterpieceProcessor::resolveSamplePitches() {
   juce::Logger::writeToLog(line);
 }
 
+void MasterpieceProcessor::loadTremulantShapes(const std::string& organRootDir) {
+  tremShapes_.clear();
+  tremWaveSlots_.clear();
+  tremWaveSlotOf_.clear();
+  if (model_.tremulantWaveforms.empty() || model_.tremulantPipes.empty()) return;
+
+  // The waveforms some pipe follows, and their files.
+  std::unordered_set<Id> used;
+  for (const auto& [pipeId, mod] : model_.tremulantPipes)
+    if (mod.waveformId != 0) used.insert(mod.waveformId);
+  std::vector<Id> files;
+  std::unordered_set<Id> seen;
+  for (const Id w : used) {
+    const auto it = model_.tremulantWaveforms.find(w);
+    if (it == model_.tremulantWaveforms.end()) continue;
+    const Id sample = it->second.pitchAndFundamentalSampleId;
+    if (sample != 0 && seen.insert(sample).second) files.push_back(sample);
+  }
+  if (files.empty()) return;
+  std::sort(files.begin(), files.end());
+
+  const auto read = samples_.readWaveformFiles(files, model_, organRootDir);
+  std::unordered_map<Id, int> shapeOf; // sample id -> tremShapes_ index
+  int capped = 0;
+  for (const Id sample : files) {
+    const auto f = read.find(sample);
+    if (f == read.end()) continue;
+    const SampleLibrary::WaveformFile& file = f->second;
+    TremulantShape shape;
+    if (!buildTremulantShape(file.ch0.data(), file.ch1.empty() ? nullptr : file.ch1.data(),
+                             file.ch0.size(), static_cast<size_t>(file.loopStart),
+                             static_cast<size_t>(file.loopEnd), shape))
+      continue;
+    if (shape.pitchCapped) ++capped;
+    shapeOf[sample] = static_cast<int>(tremShapes_.size());
+    tremShapes_.push_back(shape);
+  }
+  normaliseTremulantShapes(tremShapes_);
+
+  // A slot per tremulant and file, in a stable order.
+  std::vector<Id> waves(used.begin(), used.end());
+  std::sort(waves.begin(), waves.end());
+  std::map<std::pair<Id, int>, int> slotOf;
+  for (const Id w : waves) {
+    const auto it = model_.tremulantWaveforms.find(w);
+    if (it == model_.tremulantWaveforms.end()) continue;
+    if (model_.tremulants.count(it->second.tremulantId) == 0) continue;
+    const auto s = shapeOf.find(it->second.pitchAndFundamentalSampleId);
+    if (s == shapeOf.end()) continue;
+    const auto key = std::make_pair(it->second.tremulantId, s->second);
+    auto slot = slotOf.find(key);
+    if (slot == slotOf.end()) {
+      slot = slotOf.emplace(key, static_cast<int>(tremWaveSlots_.size())).first;
+      tremWaveSlots_.push_back({it->second.tremulantId, s->second, -1});
+    }
+    tremWaveSlotOf_[w] = slot->second;
+  }
+  juce::Logger::writeToLog("load: " + juce::String(static_cast<int>(tremShapes_.size())) + " of " +
+                           juce::String(static_cast<int>(files.size())) +
+                           " tremulant waveform file(s) read; " +
+                           juce::String(static_cast<int>(tremWaveSlotOf_.size())) + " of " +
+                           juce::String(static_cast<int>(used.size())) +
+                           " waveform(s) play their recorded shape, the rest their tremulant's sine" +
+                           (capped > 0 ? "; " + juce::String(capped) +
+                                             " file(s) swing past 50 cents and play at the standard depth"
+                                       : juce::String()));
+}
+
 double MasterpieceProcessor::pipeTargetHzFor(const Pipe& pipe, const PipeLayer& layer,
                                               bool originalPitch) const {
   // What this pipe must sound at. Two modes: at the original instrument's own
@@ -4525,6 +4629,12 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
         const auto ti = tremIndexOf_.find(tm->second.tremulantId);
         if (ti != tremIndexOf_.end()) {
           vs.tremIndex = ti->second;
+          // The pipe's recorded waveform, where its file was read (#805).
+          if (tm->second.waveformId != 0 && !tremWaveSlotOf_.empty()) {
+            const auto ws = tremWaveSlotOf_.find(tm->second.waveformId);
+            if (ws != tremWaveSlotOf_.end())
+              vs.tremIndex = static_cast<int>(tremOrder_.size()) + ws->second;
+          }
           // The pipe's and the layer's adjustments to the waveform's own
           // depth, as a linear swing about unity (tremulantAmpSwing); and
           // percentages of the waveform's pitch swing, in semitones
@@ -8313,6 +8423,9 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   // into it.
   voices_.reset();
   samples_.clear();
+  tremShapes_.clear();
+  tremWaveSlots_.clear();
+  tremWaveSlotOf_.clear();
   if (!graphicsOnly) {
     const int64_t head =
         maxFramesPerSample > 0 ? maxFramesPerSample : preloadHead_;
@@ -8489,6 +8602,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     // asked what pitch it holds. This has to happen after loading because one
     // of the routes the format offers is "it is in the file".
     resolveSamplePitches();
+    loadTremulantShapes(opts.organRootDir);
   }
 
   // A load stopped while its samples were being read keeps what was read:

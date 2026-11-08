@@ -1830,6 +1830,12 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     }
     if (waveformId == 0) return;
     tremOfWaveform[waveformId] = tremId;
+    TremulantWaveform& wave = outModel.tremulantWaveforms[waveformId];
+    wave.waveformId = waveformId;
+    wave.tremulantId = tremId;
+    wave.pitchAndFundamentalSampleId =
+        fieldInt(row, "PitchAndFundamentalWaveformSampleID", "d", 0);
+    wave.thirdHarmonicSampleId = fieldInt(row, "ThirdHarmonicWaveformSampleID", "e", 0);
     // The first waveform stands for the tremulant where one is wanted.
     if (!it->second.hasWaveform) {
       it->second.waveformId = waveformId;
@@ -1854,6 +1860,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       }
       TremulantPipeMod mod;
       mod.tremulantId = tremIt->second;
+      mod.waveformId = waveformId;
       mod.ampDepthDb =
           fieldDouble(row, "AmplitudeModDepthAdjustDecibels", "c", 0.0);
       mod.pitchDepthPct =

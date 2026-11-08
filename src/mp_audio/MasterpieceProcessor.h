@@ -18,6 +18,7 @@
 #include "../mp_control/SwitchNetwork.h"
 #include "../mp_core/Temperament.h"
 #include "../mp_core/Perspectives.h"
+#include "../mp_core/TremulantShape.h"
 #if MP_ENABLE_DSP
 #include "../mp_dsp/Dsp.h"
 #endif
@@ -2424,6 +2425,26 @@ private:
   std::vector<Id> tremOrder_;
   std::unordered_map<Id, int> tremIndexOf_;
   std::vector<VoiceEngine::TremMod> tremMods_;
+  // The recorded tremulant waveforms (#805): one shape per file read, and a
+  // slot per tremulant and file, after the tremulants' own slots in
+  // tremMods_. A pipe whose waveform has a slot plays its shape; every other
+  // pipe plays its tremulant's sine, as before.
+  struct TremWaveSlot {
+    Id tremulantId = 0;
+    int shape = 0;
+    int tremIndex = -1; // into tremOrder_, set by prepareToPlay
+  };
+  std::vector<TremulantShape> tremShapes_;
+  std::vector<TremWaveSlot> tremWaveSlots_;
+  std::unordered_map<Id, int> tremWaveSlotOf_; // waveform id -> tremWaveSlots_ index
+  // Each tremulant's phase and depth at both ends of the block.
+  struct TremEnds {
+    double phaseStart = 0.0, phaseEnd = 0.0;
+    float depthStart = 0.0f, depthEnd = 0.0f;
+  };
+  std::vector<TremEnds> tremEnds_;
+  // Read the waveform files and make their shapes, at load.
+  void loadTremulantShapes(const std::string& organRootDir);
   // The live levels, and each rank's and division's place in them, resolved
   // at load like the wind.
   LiveLevels liveLevels_;
