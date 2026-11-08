@@ -97,6 +97,13 @@ void WindSolver::resolveLinks() {
     if (r.b < 0) r.fixedB = fixedPressure(link.secondCompartmentId);
     resolved_.push_back(r);
   }
+  linkWalks_.assign(resolved_.size(), RandomWalkState{});
+  linkFlowMul_.assign(resolved_.size(), 1.0);
+  anyLinkWalk_ = false;
+  for (size_t k = 0; k < resolved_.size(); ++k) {
+    linkWalks_[k].start(links_[resolved_[k].link].flowRandom, 0x57494E44ull + k);
+    anyLinkWalk_ = anyLinkWalk_ || linkWalks_[k].on();
+  }
 }
 
 void WindSolver::chooseStep() {
@@ -451,6 +458,11 @@ bool WindSolver::advance(double dtSeconds, const EngineSwitch& sw,
   }
   if (dtSeconds <= 0.0) return true;
 
+  // The links' flow drifts once a block (#807).
+  if (anyLinkWalk_)
+    for (size_t k = 0; k < linkWalks_.size(); ++k)
+      if (linkWalks_[k].on()) linkFlowMul_[k] = linkWalks_[k].step(dtSeconds);
+
   // Step at a FIXED rate, carrying whatever is left over to the next block.
   //
   // The obvious alternative — divide the block into equal sub-steps — makes
@@ -474,7 +486,9 @@ bool WindSolver::advance(double dtSeconds, const EngineSwitch& sw,
   const double dt = maxStep_;
 
   readValves(&engagedSwitches);
+  driftFlow_ = anyLinkWalk_;
   for (int step = 0; step < steps; ++step) integrate(dt, &engagedSwitches);
+  driftFlow_ = false;
   return true;
 }
 
@@ -521,8 +535,9 @@ void WindSolver::integrate(double dt,
     const int ib = r.b;
     const double pa = ia >= 0 ? order_[static_cast<size_t>(ia)].pressure : r.fixedA;
     const double pb = ib >= 0 ? order_[static_cast<size_t>(ib)].pressure : r.fixedB;
+    const double mul = driftFlow_ && k < linkFlowMul_.size() ? linkFlowMul_[k] : 1.0;
     const double flow =
-        orificeFlow(link.massFlowKgPerSec, link.refPressureInches, pa - pb);
+        orificeFlow(link.massFlowKgPerSec * mul, link.refPressureInches, pa - pb);
     if (ia >= 0) {
       State& a = order_[static_cast<size_t>(ia)];
       a.pressure -= kInchesPerKgPerM3 * flow * dt / a.volumeM3;

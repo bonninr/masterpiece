@@ -711,6 +711,10 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
     v.tremWalk.start(start.tremDepthRandom, start.tremRandomSeed);
   else
     v.tremWalk.stop();
+  if (start.windIndex >= 0 && start.windFlowRandom.active())
+    v.flowWalk.start(start.windFlowRandom, start.windRandomSeed);
+  else
+    v.flowWalk.stop();
   v.swayIndex = start.swayIndex;
   v.rankIndex = start.rankIndex;
   v.levelIndex = start.levelIndex;
@@ -2423,14 +2427,17 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
   }
 }
 
-void VoiceEngine::gatherWindDemand(float* out, int count) const {
+void VoiceEngine::gatherWindDemand(float* out, int count, double dtSeconds) {
   if (out == nullptr || count <= 0) return;
   for (int i = 0; i < count; ++i) out[i] = 0.0f;
   for (size_t slot = 0; slot < scanEnd_; ++slot) {
-    const Voice& v = voices_[slot];
+    Voice& v = voices_[slot];
     if (!v.active() || v.phase == VoicePhase::Release) continue;
     if (v.windIndex < 0 || v.windIndex >= count) continue;
-    out[v.windIndex] += v.windFlow;
+    if (v.flowWalk.on())
+      out[v.windIndex] += v.windFlow * static_cast<float>(v.flowWalk.step(dtSeconds));
+    else
+      out[v.windIndex] += v.windFlow;
   }
 }
 

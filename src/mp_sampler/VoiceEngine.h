@@ -389,6 +389,9 @@ struct Voice {
   // The slow drift of this pipe's share of the tremulant (#806), stepped
   // once a block; off for every pipe whose set states none.
   RandomWalkState tremWalk;
+  // The drift of the air it draws (#807), stepped once a block when the
+  // demand is gathered; off for every pipe whose set states none.
+  RandomWalkState flowWalk;
   // Which wind sway moves this pipe's pitch, as an index into the table
   // setSwayRatios() hands over; -1 for none.
   int swayIndex = -1;
@@ -498,6 +501,10 @@ struct VoiceStart {
   // starts it from.
   RandomWalk tremDepthRandom;
   uint64_t tremRandomSeed = 0;
+  // The pipe's drift of its air draw (#807), and the seed this voice starts
+  // it from.
+  RandomWalk windFlowRandom;
+  uint64_t windRandomSeed = 0;
   // How many frames into the next rendered block the voice begins: the place
   // of its note-on in that block, when the note came with one.
   int startOffset = 0;
@@ -905,7 +912,10 @@ public:
   // still sounding is the room, not the pipe. That is not a detail — it is why
   // the wind recovers the moment the keys come up rather than waiting for the
   // reverb to die.
-  void gatherWindDemand(float* out, int count) const;
+  //
+  // A pipe whose air draw drifts (#807) moves its drift on by `dtSeconds`
+  // here, once a block.
+  void gatherWindDemand(float* out, int count, double dtSeconds);
 
   WindMod windModFor(int index) const {
     if (windMods_ == nullptr || index < 0 || index >= windCount_) return {};
