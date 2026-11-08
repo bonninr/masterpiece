@@ -47,9 +47,10 @@ public:
   void run() override {
     const double dt = 256.0 / 48000.0;
 
-    // Off, or stated with no push or no room to move: exactly still.
+    // Off, or stated with no push, no damping or no room to move: exactly still.
     for (const mp::RandomWalk w : {mp::RandomWalk{false, 44.0, 4.6, 50, 15.0},
                                    mp::RandomWalk{true, 0.0, 4.6, 50, 15.0},
+                                   mp::RandomWalk{true, 44.0, 0.0, 50, 15.0},
                                    mp::RandomWalk{true, 44.0, 4.6, 50, 0.0}}) {
       mp::RandomWalkState s;
       s.start(w, 7);
@@ -63,18 +64,67 @@ public:
     const WalkStats a = walk(lemmer, 1, 200000, dt, 10);
     MP_CHECK(a.largest <= 15.0, "held inside 15 %: " + std::to_string(a.largest));
     MP_CHECK(a.largest > 14.0, "and reaching it: " + std::to_string(a.largest));
-    // Its free spread (14.5 %) meets the 15 % wall, so the held spread is
-    // smaller: between half and all of the maximum.
-    MP_CHECK(a.spread > 7.5 && a.spread < 15.0, "spread inside the maximum: " + std::to_string(a.spread));
-    MP_CHECK(std::fabs(a.mean) < 1.0, "centred on the stated rate: " + std::to_string(a.mean));
-    // Away from its wall the walk settles at accel / sqrt(2 x damping) and
-    // forgets at the damping rate: 10 blocks (53 ms) apart it keeps
-    // exp(-4.6 x 0.053).
-    const WalkStats free = walk(mp::RandomWalk{true, 10.0, 4.6, 50, 50.0}, 3, 200000, dt, 10);
-    MP_CHECK(std::fabs(free.spread - 10.0 / std::sqrt(9.2)) < 0.3,
-             "settled spread 3.30 %: " + std::to_string(free.spread));
-    MP_CHECK(std::fabs(free.lagCorrelation - std::exp(-4.6 * 10.0 * dt)) < 0.05,
-             "moving at the stated damping: " + std::to_string(free.lagCorrelation));
+    // Spread evenly across its range: 15 / sqrt 3 = 8.66 %.
+    MP_CHECK(a.spread > 7.5 && a.spread < 9.8, "spread across the range: " + std::to_string(a.spread));
+    MP_CHECK(std::fabs(a.mean) < 1.5, "centred on the stated rate: " + std::to_string(a.mean));
+    // The push and the damping act on the drift's speed: it settles at
+    // accel / sqrt(2 x damping) per second and forgets at the damping rate,
+    // 10 blocks (53 ms) apart keeping exp(-4.6 x 0.053).
+    {
+      mp::RandomWalkState s;
+      s.start(mp::RandomWalk{true, 10.0, 4.6, 50, 50.0}, 3);
+      std::vector<double> v(200000);
+      for (auto& x : v) {
+        s.step(dt);
+        x = s.speed();
+      }
+      double mean = 0.0, var = 0.0, cov = 0.0;
+      for (double x : v) mean += x;
+      mean /= static_cast<double>(v.size());
+      for (size_t i = 0; i < v.size(); ++i) {
+        var += (v[i] - mean) * (v[i] - mean);
+        if (i >= 10) cov += (v[i] - mean) * (v[i - 10] - mean);
+      }
+      const double spread = std::sqrt(var / static_cast<double>(v.size()));
+      MP_CHECK(std::fabs(spread - 10.0 / std::sqrt(9.2)) < 0.3,
+               "settled speed 3.30 % a second: " + std::to_string(spread));
+      MP_CHECK(std::fabs(cov / var - std::exp(-4.6 * 10.0 * dt)) < 0.05,
+               "the speed forgets at the stated damping: " + std::to_string(cov / var));
+    }
+    // The format's other figure sets, wind flow and a pipe's tremulant depth
+    // among them: each moves over its range smoothly and never sits at a
+    // wall. Read as a pull to the centre, these figures sat at the wall half
+    // the time or more and crossed the range in one block.
+    struct Figures { double accel, damping, maxPct; const char* where; };
+    for (const Figures f : {Figures{44.0, 4.6052, 15.0, "tremulant rate"},
+                            Figures{44.0, 5.0, 12.0, "pipe tremulant depth"},
+                            Figures{379.2876, 23.0259, 7.0, "pipe tremulant depth, fast"},
+                            Figures{200.0, 7.0, 5.0, "wind flow"},
+                            Figures{179.1213, 9.2103, 4.0, "wind flow, small"},
+                            Figures{204.186, 13.6048, 10.0, "wind flow, wide"}}) {
+      mp::RandomWalkState s;
+      s.start(mp::RandomWalk{true, f.accel, f.damping, 300, f.maxPct}, 11);
+      int atWall = 0;
+      double stepSum = 0.0, prev = s.percent(), largest = 0.0;
+      const int n = 100000;
+      for (int i = 0; i < n; ++i) {
+        s.step(dt);
+        const double x = s.percent();
+        if (std::fabs(x) >= 0.98 * f.maxPct) ++atWall;
+        largest = std::max(largest, std::fabs(x));
+        stepSum += std::fabs(x - prev);
+        prev = x;
+      }
+      const double wallShare = static_cast<double>(atWall) / n;
+      const double stepShare = stepSum / n / f.maxPct;
+      MP_CHECK(largest <= f.maxPct && largest > 0.95 * f.maxPct,
+               std::string(f.where) + ": over its range, largest " + std::to_string(largest));
+      MP_CHECK(wallShare < 0.05,
+               std::string(f.where) + ": at the wall " + std::to_string(wallShare * 100.0) + " % of the time");
+      MP_CHECK(stepShare < 0.06,
+               std::string(f.where) + ": a block moves it " + std::to_string(stepShare * 100.0) +
+                   " % of its range");
+    }
 
     // A gentle one, as St. Maximin states it: 2.6293, 0.8047, at most 2 %.
     const WalkStats b = walk(mp::RandomWalk{true, 2.6293, 0.8047, 5, 2.0}, 1, 200000, dt, 10);

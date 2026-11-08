@@ -4,15 +4,25 @@
 // Four numbers describe each one: a positive accelerating coefficient, a
 // positive damping coefficient, the index of a probability function, and the
 // largest fluctuation in percent. No public source documents how they
-// combine. They are read here as a mean-reverting walk (an Ornstein-Uhlenbeck
-// process): the damping pulls the drift back to zero at that rate per second,
-// and the accelerating coefficient is the strength of the random push. Its
-// spread settles at accel / sqrt(2 x damping), which lands on the stated
-// maximum for the sets that ship these fields: 44 and 4.6 settle at 14.5 %
-// against a 15 % maximum, 2.6293 and 0.8047 at 2.07 % against 2 %. The
-// damping figures are themselves rates (4.6052 = ln 100, 0.8047 = ln sqrt 5).
-// The drift is held inside the maximum. The probability function's index
-// seeds the generator, so two drifts with different indices move apart.
+// combine. They are read here by their names, as a body pushed about at
+// random inside a box:
+//
+// - The accelerating coefficient is the random push on the drift's speed.
+// - The damping coefficient slows that speed, as a rate per second. The sets'
+//   figures are rates (4.6052 = ln 100, 0.8047 = ln sqrt 5, 23.0259 = 10 ln 10).
+//   The speed settles at a spread of accel / sqrt(2 x damping), in percent
+//   per second.
+// - The largest fluctuation is the box: the drift turns back at its walls.
+//
+// Every figure set the format's sets state then drifts smoothly over the
+// whole of its range, spread evenly across it (0.58 x the maximum): about a
+// second to move across a tremulant's range (44, 4.6, 15 %), a tenth to a
+// third of a second for the wind's flow (200, 7, 5 %). Read as a pull back to
+// the centre, the same figures would sit at the wall most of the time and
+// jump across the range from one block to the next.
+//
+// The probability function's index seeds the generator, so two drifts with
+// different indices move apart. Some sets give each pipe its own index.
 //
 // JUCE-free: the tremulant LFO and the voice engine both step one.
 #pragma once
@@ -29,24 +39,29 @@ struct RandomWalk {
   double damping = 0.0; // PositiveDampingCoeff, per second
   int fn = 0;           // IndexGeneratingProbabilityFn
   double maxPct = 0.0;  // the largest fluctuation, in percent
-  bool active() const { return on && accel > 0.0 && maxPct > 0.0; }
+  // A speed with no damping would grow without end, so a drift needs all three.
+  bool active() const { return on && accel > 0.0 && damping > 0.0 && maxPct > 0.0; }
+  // The settled spread of the drift's speed, in percent per second.
+  double speedSpread() const { return damping > 0.0 ? accel / std::sqrt(2.0 * damping) : 0.0; }
 };
 
 class RandomWalkState {
 public:
-  // Start a drift from its settled spread, so a note struck now does not
-  // begin every time at the centre. A walk that is not active stays at 1.
+  // Start a drift where it would have settled: anywhere in its range, moving
+  // at a settled speed, so a note struck now does not begin every time at the
+  // centre. A walk that is not active stays at 1.
   void start(const RandomWalk& w, uint64_t seed) {
     w_ = w;
     on_ = w.active();
     x_ = 0.0;
+    v_ = 0.0;
     lastDt_ = -1.0;
     s_ = mix(seed ^ (static_cast<uint64_t>(static_cast<uint32_t>(w.fn)) << 32));
     if (!on_) return;
-    if (w_.damping > 0.0)
-      x_ = std::clamp(w_.accel / std::sqrt(2.0 * w_.damping) * normal(), -w_.maxPct, w_.maxPct);
+    x_ = (2.0 * uniform() - 1.0) * w_.maxPct;
+    v_ = w_.speedSpread() * normal();
   }
-  void stop() { on_ = false; x_ = 0.0; }
+  void stop() { on_ = false; x_ = 0.0; v_ = 0.0; }
   bool on() const { return on_; }
 
   // Move the drift on by dt seconds; returns the new multiplier.
@@ -54,17 +69,22 @@ public:
     if (!on_ || dt <= 0.0) return multiplier();
     if (dt != lastDt_) {
       lastDt_ = dt;
-      if (w_.damping > 0.0) {
-        keep_ = std::exp(-w_.damping * dt);
-        kick_ = w_.accel / std::sqrt(2.0 * w_.damping) * std::sqrt(std::max(0.0, 1.0 - keep_ * keep_));
-      } else {
-        keep_ = 1.0;
-        kick_ = w_.accel * std::sqrt(dt);
-      }
+      keep_ = std::exp(-w_.damping * dt);
+      kick_ = w_.speedSpread() * std::sqrt(std::max(0.0, 1.0 - keep_ * keep_));
     }
-    x_ = std::clamp(x_ * keep_ + kick_ * normal(), -w_.maxPct, w_.maxPct);
+    v_ = v_ * keep_ + kick_ * normal();
+    x_ += v_ * dt;
+    // The walls turn it back. A step longer than the range bounces more than
+    // once; the clamp is only for rounding.
+    for (int i = 0; i < 4 && (x_ > w_.maxPct || x_ < -w_.maxPct); ++i) {
+      x_ = (x_ > 0.0 ? 2.0 * w_.maxPct : -2.0 * w_.maxPct) - x_;
+      v_ = -v_;
+    }
+    x_ = std::clamp(x_, -w_.maxPct, w_.maxPct);
     return multiplier();
   }
+  // The drift's speed now, in percent per second.
+  double speed() const { return v_; }
   // 1 + the drift as a fraction: what the rate or depth is multiplied by.
   double multiplier() const { return on_ ? 1.0 + x_ / 100.0 : 1.0; }
   double percent() const { return x_; }
@@ -91,7 +111,7 @@ private:
 
   RandomWalk w_;
   bool on_ = false;
-  double x_ = 0.0;
+  double x_ = 0.0, v_ = 0.0;
   double lastDt_ = -1.0, keep_ = 1.0, kick_ = 0.0;
   uint64_t s_ = 1;
 };
