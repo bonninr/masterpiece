@@ -1236,6 +1236,7 @@ int MidiMap::matchKeyboards(int deviceId, int channel, int note, int velocity,
     hit.keyboardId = b.keyboardId;
     hit.midiNote = key;
     hit.on = on;
+    hit.shortOctave = b.shortOctave;
     // Tracker action has no velocity to report; a sample set that switches on
     // it would pick the wrong layer from a number the console never sent.
     if (b.ignoreVelocity) {

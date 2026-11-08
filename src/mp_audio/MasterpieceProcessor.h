@@ -2532,6 +2532,12 @@ private:
     const int n = midiNote + transpose_.load(std::memory_order_relaxed);
     return n < 0 ? 0 : (n > 127 ? 127 : n);
   }
+  // The key a MIDI device's note plays on this manual: the note itself, or
+  // where the definition's key map sends it; -1 for none.
+  int mappedKey(Id keyboard, int note) const {
+    const auto it = model_.keyboards.find(keyboard);
+    return it == model_.keyboards.end() ? note : it->second.keyForMidiNote(note);
+  }
   std::unordered_set<Id> engagedStops_;
   // The window's copy of engagedStops_ and engagedSwitches_, and whether
   // either has changed since it was made. The copy is made by whoever changed
