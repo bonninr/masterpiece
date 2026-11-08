@@ -4025,6 +4025,12 @@ double MasterpieceProcessor::pipeTargetHzFor(const Pipe& pipe, const PipeLayer& 
     targetHz = pipeTargetHz(pipe.midiNote, pipe.basePitch64ftHarmonicNum,
                             model_.basePitchHz, pipe.baseTuningDeviationCents,
                             activeTuning(), 0);
+    // The pipe's own tuning error, as the set states it (#808): a pipe tuned
+    // to a temperament lands near its note, never exactly on it.
+    if (pipe.tuningErrorUnit != 0.0)
+      targetHz *= std::pow(2.0, tuningErrorCents(pipe.tuningErrorUnit, pipe.tuningErrorMaxCents,
+                                                 pipe.tuningErrorMaxHz, targetHz) /
+                                    1200.0);
   }
   // The player's pitch moves the whole organ, in either mode.
   targetHz *= pitchFactor();

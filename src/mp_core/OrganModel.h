@@ -217,6 +217,12 @@ struct Pipe {
   // The slow drift of this pipe's share of its tremulant (#806); see
   // RandomWalk.
   RandomWalk tremDepthRandom;
+  // This pipe's fixed tuning error under a temperament (#808): a fraction of
+  // its largest error, from -1 to 1, and that largest error in cents and in
+  // hertz, the smaller one ruling. 0 for a pipe whose set states none.
+  double tuningErrorUnit = 0.0;
+  double tuningErrorMaxCents = 0.0;
+  double tuningErrorMaxHz = 0.0;
   // The drift of the air it draws while it speaks (#807).
   RandomWalk windFlowRandom;
 };
