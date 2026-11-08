@@ -49,6 +49,12 @@ add_library(mp_audio STATIC
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/CombinationsWindow.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/CouplersWindow.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/CouplersWindow.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/LearnInTurnWindow.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/LearnInTurnWindow.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/ConsoleProfiles.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/ConsoleProfiles.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/ConsoleProfileWindow.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/ConsoleProfileWindow.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/SplitKeyboardWindow.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/SplitKeyboardWindow.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/TuningPanel.h
