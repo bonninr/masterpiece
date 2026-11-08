@@ -349,6 +349,21 @@ public:
   bool samplePresent(Id sampleId, const OrganModel& model,
                       const std::string& organRootDir) const;
 
+  // A tremulant waveform's file (#805), read whole: its first two channels as
+  // floats and its longest loop, half-open. Not a sound, so it is never held
+  // with the samples.
+  struct WaveformFile {
+    std::vector<float> ch0, ch1;
+    int64_t loopStart = -1, loopEnd = -1;
+  };
+  // The waveform files of `sampleIds` that can be read, from the organ's
+  // folders or its archive, one pass per archive. A file that is missing,
+  // unreadable, without a loop, or waiting for the publisher's licence is left
+  // out.
+  std::unordered_map<Id, WaveformFile> readWaveformFiles(const std::vector<Id>& sampleIds,
+                                                         const OrganModel& model,
+                                                         const std::string& organRootDir) const;
+
   // A provider to hand VoiceEngine::setSampleProvider. Lock-free and
   // allocation-free: safe to call from the audio thread.
   SampleProvider provider() const;

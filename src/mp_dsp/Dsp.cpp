@@ -88,8 +88,6 @@ float TremulantLfo::nextSample(const Tremulant& t, bool engaged,
   phase_ += kTwoPi * hz / sampleRate_;
   if (phase_ >= kTwoPi) phase_ -= kTwoPi * std::floor(phase_ / kTwoPi);
 
-  // M3: when t.hasWaveform, read the sampled TremulantWaveform (t.waveformId)
-  // here instead of the sine table.
   return depth * sineTable()(static_cast<float>(phase_));
 }
 

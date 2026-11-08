@@ -681,6 +681,20 @@ struct TremulantPipeMod {
   // An adjustment, in percent, to the pitch swing of the tremulant's recorded
   // waveform: 100 is the waveform's own swing (tremulantPitchSwingSemitones).
   double pitchDepthPct = 0.0;
+  // The recorded waveform this pipe follows (#805). Its shape is played where
+  // its file can be read, and the tremulant's sine where it cannot.
+  Id waveformId = 0;
+};
+
+// A tremulant's recorded waveform (#805). Its pitch-and-fundamental file holds
+// the pitch's deviation as a fraction of its frequency in channel 0 and the
+// fundamental's level in channel 1, looped over whole cycles; the third
+// harmonic's level has a file of its own.
+struct TremulantWaveform {
+  Id waveformId = 0;
+  Id tremulantId = 0;
+  Id pitchAndFundamentalSampleId = 0;
+  Id thirdHarmonicSampleId = 0;
 };
 
 // The amplitude a tremulant's recorded waveform swings a pipe by, before a
@@ -976,6 +990,7 @@ struct OrganModel {
   // Pipe -> what its tremulant does to it. Empty on an organ whose tremulants
   // are declared but never wired to pipework, which is a real and common case.
   std::unordered_map<Id, TremulantPipeMod> tremulantPipes;
+  std::unordered_map<Id, TremulantWaveform> tremulantWaveforms;
   std::unordered_map<Id, WindCompartment> wind;
   std::vector<WindCompartmentLink> windLinks;
   // M2.3: which box encloses each pipe, from the EnclosurePipe rows. Kept as a

@@ -36,9 +36,10 @@ public:
   void prepare(const juce::dsp::ProcessSpec& spec);
   void reset(double sampleRate); // convenience wrapper over prepare()
 
-  // Waveform-sampled when the ODF provides a TremulantWaveform (M3), else the
-  // band-limited sine table below. Rate morphs engaged<->disengaged; depth
-  // envelopes in and out over the start/stop % ramps.
+  // The band-limited sine table below; a recorded waveform's shape is read at
+  // this LFO's phase by the processor (#805). Rate morphs
+  // engaged<->disengaged; depth envelopes in and out over the start/stop %
+  // ramps.
   float nextSample(const Tremulant& t, bool engaged, const EngineSwitch& sw);
   // Jump straight to the steady state for `engaged` (registration recall, or
   // starting a render with the tremulant already drawn).
@@ -46,6 +47,9 @@ public:
 
   float currentDepth() const { return depthEnv_.getCurrentValue(); }
   double currentRateHz() const { return rateHz_.getCurrentValue(); }
+  // Where in its cycle the LFO is, one cycle per unit: what a recorded
+  // waveform's shape is read at (#805).
+  double phase01() const { return phase_ * (1.0 / 6.283185307179586); }
 
 private:
   static float depthRampSeconds(double percent);
