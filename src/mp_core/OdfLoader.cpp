@@ -697,6 +697,18 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     p.palletSwitchId = fieldInt(row, "ControllingPalletSwitchID", "c", 0);
     p.baseTuningDeviationCents =
         fieldDouble(row, "Pitch_Tempered_BaseTuningDeviation", "g", 0.0);
+    // The pipe's random tuning error under a temperament (#808): the largest
+    // error in percent of a semitone (cents) and in hertz, and the share of
+    // pipes that err by less.
+    p.tuningErrorMaxCents = std::max(
+        0.0, fieldDouble(row, "Pitch_Tempered_RandomTuningError_MaxDetuningPctSemitones", "i", 0.0));
+    p.tuningErrorMaxHz = std::max(
+        0.0, fieldDouble(row, "Pitch_Tempered_RandomTuningError_MaxDetuningHz", "j", 0.0));
+    if (p.tuningErrorMaxCents > 0.0 || p.tuningErrorMaxHz > 0.0)
+      p.tuningErrorUnit = randomTuningUnit(
+          static_cast<uint64_t>(fieldInt(row, "PipeID", "a", 0)),
+          fieldInt(row, "Pitch_Tempered_RandomTuningError_IndexGeneratingProbabilityFn", "k", 4),
+          fieldDouble(row, "Pitch_Tempered_RandomTuningError_ProbPctOfDetuningByLessThanMax", "h", 99.0));
     // What this pipe does to the wind: where it draws from, where it exhausts
     // to, and how much it draws. The flow rate is the number that makes a
     // 32-foot reed sag the organ and a 2-foot flute not: on Nancy it varies by
