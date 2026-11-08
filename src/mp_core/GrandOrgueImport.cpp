@@ -580,9 +580,19 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
         const std::string f = ini.str(sec, pre);
         if (f.empty() || !inThisTake(pre)) continue;
         auto rel = out.row("Pipe_SoundEngine01_ReleaseSample");
+        const int releaseSample = sampleFor(f, nominalHz);
         Emitter::set(rel, "UniqueID", nextUniqueId++);
         Emitter::set(rel, "LayerID", pipeId);
-        Emitter::set(rel, "SampleID", sampleFor(f, nominalHz));
+        Emitter::set(rel, "SampleID", releaseSample);
+        // The pipe's own recording named again as a release: GrandOrgue
+        // plays a release file from its release marker. From the head, the
+        // whole attack and sustain sounded again after the key was let go
+        // (Norrfjarden's long-press release, #834).
+        for (const auto& a : attacks)
+          if (sampleFor(a.file, nominalHz) == releaseSample) {
+            Emitter::set(rel, "LoadSampleRange_StartPositionTypeCode", 1);
+            break;
+          }
         Emitter::yn(rel, "PhaseAlignAutomatically", true);
         const int maxMs = ini.num(sec, pre + "MaxKeyPressTime", -1);
         if (maxMs >= 0) Emitter::set(rel, "ReleaseSelCriteria_LatestKeyReleaseTimeMs", maxMs);
@@ -822,6 +832,17 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     Emitter::set(kb, "Hint_PrimaryAssociatedDivisionID", info.kb);
     Emitter::set(kb, "KeyGen_NumberOfKeys", ini.num(sec, "NumberOfAccessibleKeys", info.keys));
     Emitter::set(kb, "KeyGen_MIDINoteNumberOfFirstKey", firstAccessibleMidi);
+    // MIDIKeyNNN: the key a MIDI note plays on this manual. A short or broken
+    // octave is written this way, the lowest notes sent to the keys they
+    // sound on a historic keyboard. Only the notes that move are kept.
+    std::string keyMap;
+    for (int n = 0; n < 128; ++n) {
+      const int key = ini.num(sec, "MIDIKey" + n3(n), n);
+      if (key == n) continue;
+      if (!keyMap.empty()) keyMap += ' ';
+      keyMap += std::to_string(n) + "=" + std::to_string(key);
+    }
+    if (!keyMap.empty()) Emitter::set(kb, "MasterpieceMidiKeyMap", keyMap.c_str());
   }
 
   for (const auto& [m, info] : manualInfo) {

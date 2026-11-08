@@ -1632,11 +1632,21 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         // the same note to different manuals and each has to be released on
         // its own.
         const int key = noteKey(static_cast<int>(hit.keyboardId), hit.midiNote);
-        if (hit.on && msg.isNoteOn())
-          startNoteOnKeyboard(hit.keyboardId, key, transposed(hit.midiNote), hit.velocity,
-                              hit.midiNote);
-        else
+        if (hit.on && msg.isNoteOn()) {
+          // A GrandOrgue manual's key map moves a device's note to the key
+          // it plays, after the transposer, as GrandOrgue does. A short-octave
+          // binding has done that already. The note-off finds the press by
+          // the key pressed, so a moved note lets go like any other.
+          int sounding = transposed(hit.midiNote), played = hit.midiNote;
+          if (deviceId != MidiDeviceMap::kAnyDevice && !hit.shortOctave) {
+            sounding = mappedKey(hit.keyboardId, sounding);
+            played = mappedKey(hit.keyboardId, played);
+            if (sounding < 0) continue;
+          }
+          startNoteOnKeyboard(hit.keyboardId, key, sounding, hit.velocity, played);
+        } else {
           keyUp(key, hit.velocity);
+        }
       }
       continue;
     }
@@ -4223,8 +4233,15 @@ void MasterpieceProcessor::startNote(int channel, int midiNote, int velocity) {
                                     : " plays no manual: not set in Settings > MIDI, nor by the organ"));
     return;
   }
-  startNoteOnKeyboard(keyboard, noteKey(channel, midiNote), transposed(midiNote), velocity,
-                      midiNote);
+  // A device's note moves through the manual's key map, as on the claimed
+  // path above.
+  int sounding = transposed(midiNote), played = midiNote;
+  if (noteDeviceId_ != MidiDeviceMap::kAnyDevice) {
+    sounding = mappedKey(keyboard, sounding);
+    played = mappedKey(keyboard, played);
+    if (sounding < 0) return;
+  }
+  startNoteOnKeyboard(keyboard, noteKey(channel, midiNote), sounding, velocity, played);
 }
 
 void MasterpieceProcessor::setVoicingTarget(Id rankId, Id pipeId) {

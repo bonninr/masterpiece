@@ -647,6 +647,9 @@ public:
     int midiNote = 60;
     int velocity = 64;
     bool on = true;
+    // Played through a short-octave binding: the binding has already moved
+    // the note, so the organ's own key map is not applied on top.
+    bool shortOctave = false;
   };
 
   // Every manual this key press reaches. More than one is legitimate: a split

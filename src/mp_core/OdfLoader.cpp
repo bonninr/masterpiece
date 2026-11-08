@@ -945,6 +945,26 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     k.accessibleForInput = fieldBool(row, "AccessibleForInput", "e", true);
     k.numKeys = fieldInt(row, "KeyGen_NumberOfKeys", "h", 0);
     k.firstMidiNote = fieldInt(row, "KeyGen_MIDINoteNumberOfFirstKey", "i", 0);
+    // A GrandOrgue manual's key map, as the import writes it: "note=key"
+    // pairs for the notes that play another key. A key off the manual's
+    // range plays nothing, as GrandOrgue's manual ignores it.
+    if (const std::string map = field(row, "MasterpieceMidiKeyMap"); !map.empty()) {
+      k.midiKeyMap.resize(128);
+      for (int n = 0; n < 128; ++n) k.midiKeyMap[static_cast<size_t>(n)] = static_cast<int16_t>(n);
+      std::istringstream in(map);
+      std::string pair;
+      while (in >> pair) {
+        const auto eq = pair.find('=');
+        if (eq == std::string::npos) continue;
+        const int note = std::atoi(pair.substr(0, eq).c_str());
+        const int key = std::atoi(pair.substr(eq + 1).c_str());
+        if (note < 0 || note > 127) continue;
+        const bool onManual = key >= 0 && key <= 127 &&
+                              (k.numKeys <= 0 ||
+                               (key >= k.firstMidiNote && key < k.firstMidiNote + k.numKeys));
+        k.midiKeyMap[static_cast<size_t>(note)] = static_cast<int16_t>(onManual ? key : -1);
+      }
+    }
     // Where the console draws this manual, if it draws it at all.
     k.keyImageSetId = fieldInt(row, "KeyGen_KeyImageSetID", "j", 0);
     k.displayPageId = fieldInt(row, "KeyGen_DisplayPageID", "k", 0);

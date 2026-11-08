@@ -398,6 +398,16 @@ struct Keyboard {
   // keyboards and its drawn console manuals are marked N; the manuals a player
   // actually plays are marked Y or leave it unstated.
   bool accessibleForInput = true;
+  // A GrandOrgue manual's MIDIKeyNNN map: the key each MIDI note plays, -1
+  // for a note that plays nothing (a key mapped off the manual). Empty when
+  // every note plays its own key. GrandOrgue applies it to the notes of a
+  // MIDI device only; the drawn manual and its mouse clicks play as drawn.
+  std::vector<int16_t> midiKeyMap;
+  int keyForMidiNote(int note) const {
+    if (midiKeyMap.empty() || note < 0 || note >= static_cast<int>(midiKeyMap.size()))
+      return note;
+    return midiKeyMap[static_cast<size_t>(note)];
+  }
   // Console placement of a DRAWN manual. keyImageSetId 0 means this keyboard
   // is not drawn: a pedalboard usually is not, nor is an input-only keyboard.
   Id keyImageSetId = 0;
