@@ -896,6 +896,7 @@ public:
                                   ? " (mapped as " + juce::String(midiMap_.devices().nameFor(id)) + ")"
                                   : juce::String()) +
                              (identifier.isNotEmpty() ? " [" + identifier + "]" : juce::String()));
+    routeEchoes();
     return id;
   }
   const MidiDeviceMap& midiDevices() const { return midiMap_.devices(); }
@@ -1659,7 +1660,17 @@ public:
   // sends back, so engaging a stop on screen has to reach the hardware.
   void setMidiOutput(juce::MidiOutput* out) {
     midiOut_ = out;
-    moreMidiOuts_.clear();
+    outPorts_.clear();
+    outPortLabels_.clear();
+    outPortNames_.clear();
+    outPortLasting_.clear();
+    if (out != nullptr) {
+      outPorts_.push_back(out);
+      outPortLabels_.push_back(out->getName().toStdString());
+      outPortNames_.push_back(out->getName().toStdString());
+      outPortLasting_.emplace_back();
+    }
+    portOut_.resize(outPorts_.size());
   }
   // Page turns for a score app (ScorePageMessage): sent on the MIDI output
   // with the next audio block, from any thread. The message is kept in the
@@ -1686,10 +1697,30 @@ public:
     return openMidiOutputs(name.isEmpty() ? juce::StringArray() : juce::StringArray(name));
   }
   // Several consoles at once, such as two pad controllers that each light
-  // their own stops (#942): every message goes to every port. False when
+  // their own stops (#942). A send goes to the port it names, or to every
+  // port when it names none; a lamp echoed from a binding goes to the port
+  // of the binding's own device, where one can be told (#1001). False when
   // a port named is not there; its name is kept, as for one.
   bool openMidiOutputs(const juce::StringArray& names);
   const juce::StringArray& midiOutputNames() const { return midiOutputNames_; }
+  // The labels of the ports open now, in order. Message thread.
+  juce::StringArray openMidiOutputLabels() const {
+    juce::StringArray labels;
+    for (const auto& l : outPortLabels_) labels.add(juce::String::fromUTF8(l.c_str()));
+    return labels;
+  }
+  // Whether the output a send names is open now (outputForSend). Message thread.
+  bool midiOutputOpen(const std::string& device) const {
+    return outputForSend(device, outPortLabels_, outPortNames_) >= 0;
+  }
+  // The label of the output port that belongs to input device `deviceId`,
+  // among every port the system has, open or not: the device a new send to
+  // its lamps names. Empty where none can be told. Message thread.
+  juce::String outputLabelForInput(int deviceId) const;
+  // For tests, which have no MIDI port: output ports by label and name with
+  // no port behind them. What each is sent goes to portProbe.
+  void setMidiOutputPortsForTest(const std::vector<std::pair<std::string, std::string>>& labelsAndNames);
+  std::function<void(const std::string& label, const juce::MidiBuffer&)> portProbe;
   // The ports chosen, joined for display.
   juce::String midiOutputName() const { return midiOutputNames_.joinIntoString(", "); }
   // Echo switch changes to the console. Off by default: a console that echoes
@@ -1958,8 +1989,9 @@ public:
   // audio block as the LCD lines are. Dropped when no output is open.
   void sendSysexOut(std::vector<uint8_t> bytes);
   // Whole MIDI messages of any kind to the console's output, the same way: the
-  // MIDI window's test buttons, which light a lamp to check its colour.
-  void sendMidiNow(const std::vector<uint8_t>& bytes);
+  // MIDI window's test buttons, which light a lamp to check its colour. With
+  // a device, to that output alone, at once (MidiSend::device).
+  void sendMidiNow(const std::vector<uint8_t>& bytes, const std::string& device = {});
   // Re-sends every line regardless, for a console plugged in mid-session and
   // for the settings page's test button.
   int refreshLcdPanels();
@@ -2665,14 +2697,44 @@ private:
   std::atomic<int> organLoads_{0};
   bool applyOrganTrim_ = true;
   juce::MidiOutput* midiOut_ = nullptr; // the first of ownedMidiOuts_, or the application's
-  // The ports after the first, sent the same messages (sendOut).
-  std::vector<juce::MidiOutput*> moreMidiOuts_;
+  // Every open output port, the first of them midiOut_, with its label in
+  // Settings > MIDI output, the device's own name and its lasting identifier
+  // (MidiPorts.h); a port a test declares is null. Changed under the
+  // AudioLock.
+  std::vector<juce::MidiOutput*> outPorts_;
+  std::vector<std::string> outPortLabels_, outPortNames_, outPortLasting_;
+  // What one port alone is sent in this block: the sends that name it, and
+  // the lamps of its own device's bindings. One per port, sized with them.
+  std::vector<juce::MidiBuffer> portOut_;
+  // The port each input device's lamps go to, by device id; -1, or a device
+  // past the end, for every port.
+  std::vector<int> echoPort_;
   std::vector<std::unique_ptr<juce::MidiOutput>> ownedMidiOuts_;
   juce::StringArray midiOutputNames_;
+  // Every open port, the same messages.
   void sendOut(const juce::MidiBuffer& messages) {
-    if (midiOut_ != nullptr) midiOut_->sendBlockOfMessagesNow(messages);
-    for (auto* out : moreMidiOuts_) out->sendBlockOfMessagesNow(messages);
+    for (auto* out : outPorts_)
+      if (out != nullptr) out->sendBlockOfMessagesNow(messages);
   }
+  // Where a send naming `device` is put: outgoing_ for every port, the port's
+  // own buffer, or null when its port is not open and it goes nowhere.
+  juce::MidiBuffer* sendBuffer(const std::string& device) {
+    if (device.empty()) return &outgoing_;
+    const int i = outputForSend(device, outPortLabels_, outPortNames_);
+    return i < 0 ? nullptr : &portOut_[static_cast<size_t>(i)];
+  }
+  // Where a lamp echoed from a binding on input device `deviceId` is put.
+  juce::MidiBuffer& echoBuffer(int deviceId) {
+    const int i = deviceId > 0 && deviceId < static_cast<int>(echoPort_.size())
+                      ? echoPort_[static_cast<size_t>(deviceId)]
+                      : -1;
+    return i < 0 ? outgoing_ : portOut_[static_cast<size_t>(i)];
+  }
+  // Each port's own buffer out to it, and cleared. Audio thread, or under
+  // the AudioLock.
+  void sendPortBuffers();
+  // echoPort_ from the open ports and the devices known. Message thread.
+  void routeEchoes();
   bool midiFeedback_ = false;
   bool midiSendsHoldEcho_ = false;
   std::vector<uint8_t> loadMessage_;  // changed under the AudioLock

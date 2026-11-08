@@ -1090,7 +1090,7 @@ std::string MidiMap::toText() const {
   // What the console is sent, and the computer keys. Last for the same reason.
   if (!sends_.empty())
     out << "# send <target> <id> <message> <channel> <number> <low> <high> "
-           "[<SysEx on> <SysEx off>] [<program when off>]\n";
+           "[<SysEx on> <SysEx off>] [<program when off>] [| device=<MIDI output>]\n";
   for (const auto& s : sends_)
     out << "send " << targetName(s.targetKind) << ' ' << s.targetId << ' '
         << sendKindName(s) << ' ' << s.channel << ' ' << s.number << ' ' << s.low
@@ -1098,6 +1098,7 @@ std::string MidiMap::toText() const {
         << (s.kind == MidiSourceKind::ProgramChange && s.offProgram >= 0
                 ? " " + std::to_string(s.offProgram)
                 : std::string())
+        << (s.device.empty() ? std::string() : " | device=" + encodeName(s.device))
         << '\n';
   if (!shortcuts_.empty()) out << "# shortcut <target> <id> <step> <key>\n";
   for (const auto& k : shortcuts_)
@@ -1289,10 +1290,18 @@ bool MidiMap::fromText(const std::string& text) {
     }
 
     if (line.rfind("send ", 0) == 0) {
-      std::istringstream sl(line);
+      // The options after a bar, the device among them: a reader from
+      // before them reads the fields ahead of it and stops.
+      const size_t bar = line.find(" | ");
+      std::istringstream sl(line.substr(0, bar));
       std::string tag, tgt, kind;
       long long id = 0;
       MidiSend snd;
+      if (bar != std::string::npos) {
+        std::istringstream options(line.substr(bar + 3));
+        for (std::string o; options >> o;)
+          if (o.rfind("device=", 0) == 0) snd.device = decodeName(o.substr(7));
+      }
       if (sl >> tag >> tgt >> id >> kind >> snd.channel >> snd.number >> snd.low >> snd.high) {
         snd.targetKind = targetKindFrom(tgt);
         snd.targetId = static_cast<Id>(id);

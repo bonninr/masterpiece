@@ -341,12 +341,16 @@ struct MidiSend {
   // `number` and its colour in `low`; Text the 16-character string, F0 7D 19
   // <id> <text> F7. `high` is 1 for the value, 0 for the name. Kind SysEx.
   MidiDisplay display = MidiDisplay::None;
+  // The MIDI output it goes to, by its label in Settings > MIDI output
+  // (outputForSend); empty for every output (#1001).
+  std::string device;
 
   bool operator==(const MidiSend& o) const {
     return targetKind == o.targetKind && targetId == o.targetId && kind == o.kind &&
            channel == o.channel && number == o.number && low == o.low && high == o.high &&
            sysExOn == o.sysExOn && sysExOff == o.sysExOff && offProgram == o.offProgram &&
-           noteOff == o.noteOff && parameter == o.parameter && display == o.display;
+           noteOff == o.noteOff && parameter == o.parameter && display == o.display &&
+           device == o.device;
   }
   bool showsValue() const { return display != MidiDisplay::None && high == 1; }
 };

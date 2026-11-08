@@ -1,0 +1,3 @@
+"The MIDI output this event goes to: one console, or every MIDI output" = "Výstup MIDI, na který tato událost jde: jeden hrací stůl, nebo každý výstup MIDI"
+"Every MIDI output" = "Každý výstup MIDI"
+"To send to %1, choose it in Settings, MIDI, MIDI output." = "Chcete-li posílat na %1, zvolte jej v Nastavení, MIDI, Výstup MIDI."

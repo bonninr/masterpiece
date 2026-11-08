@@ -1,0 +1,3 @@
+"The MIDI output this event goes to: one console, or every MIDI output" = "La salida MIDI a la que va este evento: una consola, o cada salida MIDI"
+"Every MIDI output" = "Cada salida MIDI"
+"To send to %1, choose it in Settings, MIDI, MIDI output." = "Para enviar a %1, elígela en Ajustes, MIDI, Salida MIDI."

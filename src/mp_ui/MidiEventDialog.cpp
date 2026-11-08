@@ -2,6 +2,7 @@
 
 #include "ObjectLabels.h"
 #include "Mobile.h"
+#include "../mp_audio/MidiPorts.h"
 
 #include <optional>
 
@@ -735,11 +736,18 @@ juce::String describeSend(MidiTargetKind kind, const MidiSend& s) {
 class SendForm : public juce::Component {
 public:
   std::function<void()> onChange;
-  // The bytes a state puts out, sent at once by the test buttons.
-  std::function<void(const std::vector<uint8_t>&)> onTest;
+  // The bytes a state puts out, sent at once by the test buttons, with the
+  // output they go to.
+  std::function<void(const std::vector<uint8_t>&, const std::string&)> onTest;
 
-  SendForm(MidiTargetKind kind, std::optional<MidiSource> received, std::string name)
-      : kind_(kind), onOff_(MidiMap::sendsOnOff(kind)), received_(received), name_(std::move(name)) {
+  // `outputs` are the labels of the MIDI outputs the system has; `receivedOutput`
+  // the one of the device the Receive tab listens to, or empty.
+  SendForm(MidiTargetKind kind, std::optional<MidiSource> received, std::string name,
+           juce::StringArray outputs, juce::String receivedOutput)
+      : kind_(kind), onOff_(MidiMap::sendsOnOff(kind)), received_(received), name_(std::move(name)),
+        outputs_(std::move(outputs)), receivedOutput_(std::move(receivedOutput)) {
+    device_.onChange = [this] { changed(); };
+    device_.setTooltip(TRANS("The MIDI output this event goes to: one console, or every MIDI output"));
     if (kind_ != MidiTargetKind::Keyboard) {
       event_.addItem(TRANS("Note"), kSendNote);
       if (onOff_) event_.addItem(TRANS("Note, off as a Note Off (8n)"), kSendNoteOff);
@@ -800,11 +808,12 @@ public:
     hexOn_.setTextToShowWhenEmpty(TRANS("hex messages"), juce::Colours::grey);
     hexOff_.setTextToShowWhenEmpty(TRANS("none"), juce::Colours::grey);
 
-    for (auto* l : {&eventLabel_, &channelLabel_, &numberLabel_, &highLabel_, &lowLabel_, &bytesLabel_}) {
+    for (auto* l : {&deviceLabel_, &eventLabel_, &channelLabel_, &numberLabel_, &highLabel_, &lowLabel_, &bytesLabel_}) {
       l->setColour(juce::Label::textColourId, kDim);
       l->setJustificationType(juce::Justification::centredRight);
       addChildComponent(*l);
     }
+    deviceLabel_.setText(TRANS("Device"), juce::dontSendNotification);
     eventLabel_.setText(TRANS("Event"), juce::dontSendNotification);
     channelLabel_.setText(TRANS("Channel"), juce::dontSendNotification);
     bytesLabel_.setText(TRANS("Sends"), juce::dontSendNotification);
@@ -814,7 +823,7 @@ public:
     bytes_.setJustificationType(juce::Justification::topLeft);
 
     for (juce::Component* c : std::initializer_list<juce::Component*>{
-             &event_, &channel_, &number_, &parameter_, &transpose_, &offProgram_, &shows_, &high_, &low_,
+             &device_, &event_, &channel_, &number_, &parameter_, &transpose_, &offProgram_, &shows_, &high_, &low_,
              &hexOn_, &hexOff_, &bytes_, &copy_, &testOn_, &testOff_})
       addChildComponent(*c);
 
@@ -830,6 +839,7 @@ public:
         s.number = received_->number;
       }
       if (received_->channel > 0) s.channel = received_->channel;
+      if (receivedOutput_.isNotEmpty()) s.device = receivedOutput_.toStdString();
       load(s);
       changed();
     };
@@ -844,6 +854,7 @@ public:
 
   void load(const MidiSend& s) {
     send_ = s;
+    fillDevices();
     if (kind_ != MidiTargetKind::Keyboard) event_.setSelectedId(sendEventOf(s), juce::dontSendNotification);
     channel_.setSelectedId(juce::jlimit(1, 16, s.channel) + 1, juce::dontSendNotification);
     fillNumbers(number_, s.kind, s.number);
@@ -876,6 +887,7 @@ public:
       c.setBounds(width > 0 ? l.removeFromLeft(width) : l);
       return l;
     };
+    put(line(), deviceLabel_, device_, 0);
     if (kind_ != MidiTargetKind::Keyboard) put(line(), eventLabel_, event_, 0);
     if (hex()) {
       put(line(), highLabel_, hexOn_, 0);
@@ -923,8 +935,25 @@ private:
   // another when off: its two values are programs.
   bool programPair() const { return onOff_ && send_.kind == MidiSourceKind::ProgramChange; }
 
+  // Every output, then each the system has, and the one this event names
+  // when it is not plugged in.
+  void fillDevices() {
+    device_.clear(juce::dontSendNotification);
+    deviceItems_ = outputs_;
+    const juce::String named = juce::String::fromUTF8(send_.device.c_str());
+    device_.addItem(TRANS("Every MIDI output"), 1);
+    for (int i = 0; i < deviceItems_.size(); ++i) device_.addItem(deviceItems_[i], i + 2);
+    if (named.isNotEmpty() && !deviceItems_.contains(named)) {
+      deviceItems_.add(named);
+      device_.addItem(TRANS("%1 (not connected)").replace("%1", named), deviceItems_.size() + 1);
+    }
+    device_.setSelectedId(named.isEmpty() ? 1 : deviceItems_.indexOf(named) + 2, juce::dontSendNotification);
+  }
+
   void show() {
     const bool keys = kind_ == MidiTargetKind::Keyboard, h = hex();
+    deviceLabel_.setVisible(true);
+    device_.setVisible(true);
     const bool program = send_.kind == MidiSourceKind::ProgramChange;
     eventLabel_.setVisible(!keys);
     event_.setVisible(!keys);
@@ -1009,7 +1038,7 @@ private:
   }
 
   void test(bool on) {
-    if (onTest) onTest(bytesFor(on));
+    if (onTest) onTest(bytesFor(on), send_.device);
   }
 
   // A message that does not read is outlined in red and left out.
@@ -1027,6 +1056,8 @@ private:
 
   void changed() {
     MidiSend s = send_;
+    const int device = device_.getSelectedId() - 2;
+    s.device = device >= 0 && device < deviceItems_.size() ? deviceItems_[device].toStdString() : std::string();
     s.channel = juce::jmax(1, channel_.getSelectedId() - 1);
     if (kind_ == MidiTargetKind::Keyboard) {
       s.kind = MidiSourceKind::Note;
@@ -1055,9 +1086,11 @@ private:
   bool onOff_;
   std::optional<MidiSource> received_;
   std::string name_;  // what a display of the object's name shows
+  juce::StringArray outputs_, deviceItems_;  // deviceItems_: the Device box's, from its id 2
+  juce::String receivedOutput_;
   MidiSend send_;
-  juce::Label eventLabel_, channelLabel_, numberLabel_, highLabel_, lowLabel_, bytesLabel_, bytes_;
-  juce::ComboBox event_, channel_, number_, offProgram_, shows_;
+  juce::Label deviceLabel_, eventLabel_, channelLabel_, numberLabel_, highLabel_, lowLabel_, bytesLabel_, bytes_;
+  juce::ComboBox device_, event_, channel_, number_, offProgram_, shows_;
   juce::Slider parameter_, transpose_, high_, low_;
   juce::TextEditor hexOn_, hexOff_;
   juce::TextButton copy_, testOn_, testOff_;
@@ -1068,7 +1101,9 @@ private:
 class SendPanel : public juce::Component, private juce::ListBoxModel, private juce::Timer {
 public:
   SendPanel(MasterpieceProcessor& p, MidiTargetKind kind, Id id)
-      : proc_(p), kind_(kind), id_(id), form_(kind, received(p, kind, id), p.displayNameOf(kind, id)) {
+      : proc_(p), kind_(kind), id_(id), receivedOutput_(receivedOutput(p, kind, id)),
+        form_(kind, received(p, kind, id), p.displayNameOf(kind, id),
+              midiPortLabels(juce::MidiOutput::getAvailableDevices()), receivedOutput_) {
     rows_ = p.midiMap().sendsFor(kind, id);
     list_.setModel(this);
     list_.setRowHeight(kRow);
@@ -1080,8 +1115,11 @@ public:
       rows_[static_cast<size_t>(selected_)] = form_.read();
       commit();
       list_.repaintRow(selected_);
+      showOutput();
     };
-    form_.onTest = [this](const std::vector<uint8_t>& bytes) { proc_.sendMidiNow(bytes); };
+    form_.onTest = [this](const std::vector<uint8_t>& bytes, const std::string& device) {
+      proc_.sendMidiNow(bytes, device);
+    };
     for (auto* b : {&add_, &duplicate_, &delete_}) addAndMakeVisible(*b);
     add_.onClick = [this] {
       MidiSend s;
@@ -1096,6 +1134,8 @@ public:
             s.offProgram = s.number;
         }
         if (b->source.channel > 0) s.channel = b->source.channel;
+        // To the console it listens to, alone (#1001).
+        s.device = receivedOutput_.toStdString();
       }
       add(s);
     };
@@ -1163,6 +1203,11 @@ private:
       return std::nullopt;
     return b->source;
   }
+  // The output of the device the Receive tab listens to, or empty.
+  static juce::String receivedOutput(MasterpieceProcessor& p, MidiTargetKind kind, Id id) {
+    const auto* b = p.midiMap().bindingFor(kind, id);
+    return b == nullptr ? juce::String() : p.outputLabelForInput(b->source.deviceId);
+  }
 
   int getNumRows() override { return static_cast<int>(rows_.size()); }
 
@@ -1182,11 +1227,18 @@ private:
   void timerCallback() override { showOutput(); }
 
   void showOutput() {
-    const auto* out = proc_.midiOutput();
-    output_.setText(out != nullptr ? TRANS("Sent to %1").replace("%1", out->getName())
-                                   : TRANS("No MIDI output is chosen: choose one in Settings, MIDI."),
+    const auto open = proc_.openMidiOutputLabels();
+    const bool any = selected_ >= 0 && selected_ < static_cast<int>(rows_.size());
+    const juce::String device =
+        any ? juce::String::fromUTF8(rows_[static_cast<size_t>(selected_)].device.c_str()) : juce::String();
+    // The event's own output, or every one open.
+    const bool ready = device.isEmpty() ? !open.isEmpty() : proc_.midiOutputOpen(device.toStdString());
+    output_.setText(ready ? TRANS("Sent to %1").replace("%1", device.isEmpty() ? open.joinIntoString(", ") : device)
+                    : device.isEmpty()
+                        ? TRANS("No MIDI output is chosen: choose one in Settings, MIDI.")
+                        : TRANS("To send to %1, choose it in Settings, MIDI, MIDI output.").replace("%1", device),
                     juce::dontSendNotification);
-    output_.setColour(juce::Label::textColourId, out != nullptr ? kText : juce::Colours::orange);
+    output_.setColour(juce::Label::textColourId, ready ? kText : juce::Colours::orange);
   }
 
   void add(const MidiSend& s) {
@@ -1221,6 +1273,7 @@ private:
   std::vector<MidiSend> rows_;
   int selected_ = -1;
   juce::ListBox list_;
+  juce::String receivedOutput_;  // before form_, which is given it
   SendForm form_;
   juce::TextButton add_{TRANS("New event")}, duplicate_{TRANS("Duplicate")}, delete_{TRANS("Delete")};
   juce::Label empty_, output_, note_;

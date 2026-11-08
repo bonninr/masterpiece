@@ -225,6 +225,9 @@ std::optional<MidiSend> sendOf(const Section& s, int i, bool control) {
   m.high = std::clamp(s.num("MIDISendHighValue" + k, 127), 0, 127);
   const std::string off = lower(s.str("MIDISendNoteOff" + k));
   m.noteOff = off == "y" || off == "1" || off == "true";
+  // The output it goes to, by the port's name with GrandOrgue's decorations
+  // taken off (outputForSend); none for every output.
+  m.device = plainDeviceName(s.str("MIDISendDevice" + k));
   if (type == "Note" || type == "NoteOn") {
     if (control) return std::nullopt;
     m.kind = MidiSourceKind::Note;
