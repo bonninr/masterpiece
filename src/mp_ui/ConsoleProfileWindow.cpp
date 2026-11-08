@@ -1,6 +1,7 @@
 #include "ConsoleProfileWindow.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "MidiEventDialog.h"
 #include "Mobile.h"
@@ -242,7 +243,14 @@ public:
 
   void resized() override {
     auto r = getLocalBounds().reduced(2, 1);
-    kind_.setBounds(r.removeFromLeft(100));
+    // Wide enough for the longest kind in the player's language, and the arrow.
+    // The box's font follows its height, so the box takes its height first.
+    kind_.setBounds(r.withWidth(100));
+    const juce::Font font = getLookAndFeel().getComboBoxFont(kind_);
+    float longest = 0.0f;
+    for (auto k : {ConsoleTabKind::Stop, ConsoleTabKind::Coupler, ConsoleTabKind::Tremulant, ConsoleTabKind::Piston})
+      longest = std::max(longest, juce::GlyphArrangement::getStringWidth(font, kindText(k)));
+    kind_.setBounds(r.removeFromLeft(juce::jlimit(100, 200, static_cast<int>(std::ceil(longest)) + 40)));
     r.removeFromLeft(4);
     remove_.setBounds(r.removeFromRight(28));
     r.removeFromRight(4);
