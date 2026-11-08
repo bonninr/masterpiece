@@ -255,6 +255,25 @@ struct StopRankEntry {
   // when the alternate holds pipes recorded with the tremulant running.
   Id alternateSwitchId = 0;
   bool retriggerOnAlternate = false;
+  // What moves the rank, and when it sounds (#998). Type 1 is the division's
+  // keys; type 21 is the stop's own switch. Effect 1 sounds while the key is
+  // down or the stop is drawn; effect 2 sounds once as it engages, effect 3
+  // once as it disengages. Key and stop action noises are written this way:
+  // a key's "in" and "out" noise, a drawstop's two clicks, a blower that runs
+  // while its stop is drawn. A type 21 row names its pipe by the increment
+  // alone, its key window being empty.
+  int actionType = 1;    // ActionTypeCode
+  int actionEffect = 1;  // ActionEffectCode
+  static constexpr int kKeys = 1;
+  static constexpr int kStopSwitch = 21;
+  static constexpr int kWhileEngaged = 1;
+  static constexpr int kOnEngage = 2;
+  static constexpr int kOnDisengage = 3;
+  // A row that sounds once on a key or a stop moving, played apart from the
+  // pipework the keys hold.
+  bool isActionNoise() const {
+    return actionType == kStopSwitch || actionEffect == kOnEngage || actionEffect == kOnDisengage;
+  }
 };
 
 struct Stop {

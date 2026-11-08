@@ -3200,14 +3200,64 @@ private:
   // Start the voices one key press asks for, drawing only on `stops`. The
   // whole registration when a key is struck; only what just moved when a stop
   // changes under a key already down. Returns whether any pipe answered.
-  // `extreme`: see HeldNote.
+  // `extreme`: see HeldNote. `strike`: the key itself went down, so its key
+  // noises sound too; a stop drawn under a held key moves no key.
   bool startVoicesForKey(Id keyboard, int midiNote, int velocity,
-                         uint64_t noteId, const std::unordered_set<Id>& stops, int extreme = 0);
+                         uint64_t noteId, const std::unordered_set<Id>& stops, int extreme = 0,
+                         bool strike = false);
   // Bring the sounding notes into line with the registration.
   void applyStopChangeToHeldNotes();
-  // Every layer of one pipe, under `noteId`.
+  // Every layer of one pipe, under `noteId`. `once`: an action noise, which
+  // plays its recording out as it was made and is never held or joined.
   bool startPipeLayers(const Pipe& pipe, Id rankId, int midiNote, int velocity,
-                       uint64_t noteId);
+                       uint64_t noteId, bool once = false);
+
+  // Key and stop action noises written as StopRank rows (#998); see
+  // StopRankEntry::actionType. Each sounds as a voice of its own under a note
+  // id nothing releases, so a key let go at once still sounds its whole
+  // "in" noise.
+  void buildActionNoises();
+  // A key's noise rows for `effect` in this division note.
+  void playKeyNoises(int divisionId, int midiNote, int effect, int velocity);
+  // Whether a reached division note goes in through its input switch, where
+  // divisionInputMoved sounds it, noises and all.
+  bool reachesThroughInput(const ExpandedNote& reached) const;
+  // The key going up: its "out" noises, in the divisions it reaches now.
+  void keyUpNoises(const HeldNote& held);
+  // The stops' own rows: a click as each is drawn or pushed in, and a sound
+  // that runs while it is drawn (a blower).
+  void followStopActionNoises();
+  struct StopActionNoise {
+    Id rankId = 0;
+    int effect = 0;
+    const Pipe* pipe = nullptr;
+  };
+  std::unordered_map<Id, std::vector<StopActionNoise>> stopActionNoises_;
+  // The stops the action noises last saw drawn, and the running sound of
+  // each drawn stop that has one. Unprimed after a load or a new device:
+  // the first look starts the running sounds and clicks nothing.
+  std::unordered_set<Id> noiseStops_;
+  std::unordered_map<Id, uint64_t> stopNoiseNotes_;
+  bool noiseStopsPrimed_ = false;
+  bool hasKeyNoises_ = false;
+  std::vector<ResolvedPipe> keyNoiseScratch_;
+  std::vector<ExpandedNote> keyUpScratch_;
+  // The key noises started at this moment, so a key reached twice at once
+  // sounds once (playKeyNoises).
+  struct KeyNoiseStart {
+    Id pipeId = 0;
+    int divisionId = 0;
+    int midiNote = 0;
+    bool operator==(const KeyNoiseStart& o) const {
+      return pipeId == o.pipeId && divisionId == o.divisionId && midiNote == o.midiNote;
+    }
+  };
+  std::vector<KeyNoiseStart> keyNoisesNow_;
+  // The moment they started at: the block, counted by processBlock, and the
+  // event's offset in it.
+  uint64_t blockSerial_ = 0;
+  uint64_t keyNoisesBlock_ = 0;
+  int keyNoisesOffset_ = -1;
 
   // Pallet-driven pipework. Some organs reach their pipes through the switch
   // network instead of through StopRank: a key is a switch, the key switch is

@@ -60,6 +60,15 @@ void resolvePipesInto(const OrganModel& model, int divisionId, int midiNote,
                       const std::unordered_set<Id>& engagedStops,
                       const std::unordered_set<Id>* engagedSwitches,
                       std::vector<ResolvedPipe>& out);
+// Both leave out the action noise rows (StopRankEntry::isActionNoise): those
+// sound once as a key or a stop moves, never held with the key (#998).
+
+// The key noise rows of the engaged stops that `effect` names
+// (StopRankEntry::kOnEngage for a key going down, kOnDisengage for one coming
+// up), appended to `out`: the pipe each sounds once for this division note.
+void resolveKeyNoisesInto(const OrganModel& model, int divisionId, int midiNote, int effect,
+                          const std::unordered_set<Id>& engagedStops,
+                          std::vector<ResolvedPipe>& out);
 
 // Key flow: which divisions a key press actually reaches, and at what pitch.
 //

@@ -540,6 +540,7 @@ void resolvePipesInto(const OrganModel& model, int divisionId, int midiNote,
     if (stop.divisionId != divisionId) continue;
     if (engagedStops.count(stopId) == 0) continue;
     for (const StopRankEntry& entry : stop.ranks) {
+      if (entry.isActionNoise()) continue;
       if (midiNote < entry.firstMappedDivisionNote ||
           midiNote >= entry.firstMappedDivisionNote + entry.numMappedNotes)
         continue;
@@ -555,6 +556,34 @@ void resolvePipesInto(const OrganModel& model, int divisionId, int midiNote,
         ResolvedPipe rp;
         rp.stopId = stopId;
         rp.rankId = rankId;
+        rp.pipeId = pipe.pipeId;
+        rp.pipeMidiNote = pipeNote;
+        rp.pipe = &pipe;
+        out.push_back(rp);
+      }
+    }
+  }
+}
+
+void resolveKeyNoisesInto(const OrganModel& model, int divisionId, int midiNote, int effect,
+                          const std::unordered_set<Id>& engagedStops,
+                          std::vector<ResolvedPipe>& out) {
+  for (const auto& [stopId, stop] : model.stops) {
+    if (stop.divisionId != divisionId) continue;
+    if (engagedStops.count(stopId) == 0) continue;
+    for (const StopRankEntry& entry : stop.ranks) {
+      if (entry.actionType != StopRankEntry::kKeys || entry.actionEffect != effect) continue;
+      if (midiNote < entry.firstMappedDivisionNote ||
+          midiNote >= entry.firstMappedDivisionNote + entry.numMappedNotes)
+        continue;
+      const int pipeNote = midiNote + entry.midiIncrement;
+      const auto rankIt = model.ranks.find(entry.rankId);
+      if (rankIt == model.ranks.end()) continue;
+      for (const Pipe& pipe : rankIt->second.pipes) {
+        if (pipe.midiNote != pipeNote) continue;
+        ResolvedPipe rp;
+        rp.stopId = stopId;
+        rp.rankId = entry.rankId;
         rp.pipeId = pipe.pipeId;
         rp.pipeMidiNote = pipeNote;
         rp.pipe = &pipe;

@@ -1195,6 +1195,11 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     e.alternateSwitchId = fieldInt(row, "SwitchIDToSwitchToAlternateRank", "m", 0);
     e.retriggerOnAlternate = fieldBool(
         row, "RetriggerNotesWhenSwitchingBetweenNormalAndAlternateRanks", "n", false);
+    // When the rank sounds: with the keys, or once as a key or the stop's
+    // own switch moves (#998). Hebron, Mascioni and Klais write their key and
+    // stop action noises this way.
+    e.actionType = fieldInt(row, "ActionTypeCode", "f", StopRankEntry::kKeys);
+    e.actionEffect = fieldInt(row, "ActionEffectCode", "g", StopRankEntry::kWhileEngaged);
     stopIt->second.ranks.push_back(e);
   });
 

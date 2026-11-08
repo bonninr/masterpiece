@@ -471,6 +471,7 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     if (!rank.isNoise || rank.noiseTriggerSwitchId == 0) continue;
     noiseRanksBySwitch_[rank.noiseTriggerSwitchId].push_back(rankId);
   }
+  buildActionNoises();
 
   buildVoicePool(samplesPerBlock);
   // Worst case one pipe per rank sounding on a single key.
@@ -4360,6 +4361,13 @@ void MasterpieceProcessor::stopNote(int channel, int midiNote, int velocity) {
 void MasterpieceProcessor::keyUp(int key, int velocity) {
   // The option turned off with the pedal down: let go of what it held.
   if (sustainDown_ && !sustainPedal()) setSustainDown(false);
+  // The key's "out" noise, as the key comes up, whether or not the pedal
+  // holds its pipes on.
+  if (hasKeyNoises_)
+    if (const auto held = soundingNotes_.find(key);
+        held != soundingNotes_.end() &&
+        std::find(sustainedKeys_.begin(), sustainedKeys_.end(), key) == sustainedKeys_.end())
+      keyUpNoises(held->second);
   if (sustainDown_ && (soundingNotes_.count(key) != 0 || heldKeySwitches_.count(key) != 0)) {
     if (std::find(sustainedKeys_.begin(), sustainedKeys_.end(), key) == sustainedKeys_.end())
       sustainedKeys_.push_back(key);
@@ -4506,7 +4514,8 @@ void MasterpieceProcessor::reflowExtremes(Id keyboard) {
 
 bool MasterpieceProcessor::startVoicesForKey(Id keyboard, int midiNote,
                                              int velocity, uint64_t noteId,
-                                             const std::unordered_set<Id>& stops, int extreme) {
+                                             const std::unordered_set<Id>& stops, int extreme,
+                                             bool strike) {
   bool anyStarted = false;
   // Which divisions this key actually reaches, at which pitches. This is where
   // couplers live: a drawn "Great to Pedal" is an edge of the key-flow graph
@@ -4524,6 +4533,8 @@ bool MasterpieceProcessor::startVoicesForKey(Id keyboard, int midiNote,
     // wiring opens the pipe from there.
     const bool coupled = engageCoupledInput(reached, noteId, velocity);
     if (coupled) continue;
+    if (strike && hasKeyNoises_)
+      playKeyNoises(divisionId, reached.midiNote, StopRankEntry::kOnEngage, velocity);
     resolveScratch_.clear();
     resolvePipesInto(model_, divisionId, reached.midiNote, stops, &engagedSwitches_,
                      resolveScratch_);
@@ -4542,7 +4553,7 @@ bool MasterpieceProcessor::startVoicesForKey(Id keyboard, int midiNote,
 // it was asked for.
 bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
                                            int midiNote, int velocity,
-                                           uint64_t noteId) {
+                                           uint64_t noteId, bool once) {
   bool anyStarted = false;
   for (const auto& layer : pipe.layers) {
     NoteStrike strike;
@@ -4629,7 +4640,7 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
     vs.rankIndex = liveRankIndexOf(rankId);
     // The attack's emphasis, for a pipe's own speech only: a noise and a
     // release start as they were recorded.
-    if (const float db = attackDb(); db != 0.0f) {
+    if (const float db = attackDb(); db != 0.0f && !once) {
       vs.attackBoost = juce::Decibels::decibelsToGain(db) - 1.0f;
       vs.attackFrames = static_cast<int>(attackMs() * 0.001 * sampleRate_);
     }
@@ -4683,8 +4694,9 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
     vs.loopCrossfadeMs = layer.loopCrossfadeMs;
     vs.startOffset = eventOffset_;
     // Two keys reaching this pipe, through a coupler and directly, sound it
-    // once (#521).
-    vs.joinSpeaking = true;
+    // once (#521). An action noise sounds for every key that moves.
+    vs.joinSpeaking = !once;
+    vs.oneShot = once;
     if (voices_.startVoice(vs, noteId) >= 0) anyStarted = true;
   }
   return anyStarted;
@@ -4784,7 +4796,7 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
   const int extreme = 0;
   const bool anyStarted =
       !engagedStops_.empty() &&
-      startVoicesForKey(keyboard, midiNote, velocity, noteId, engagedStops_, extreme);
+      startVoicesForKey(keyboard, midiNote, velocity, noteId, engagedStops_, extreme, true);
 
   // Held whether or not anything sounds yet. A key pressed before its stop is
   // drawn speaks the moment the stop is drawn, as on a real organ; recorded
@@ -6858,10 +6870,14 @@ void MasterpieceProcessor::divisionInputMoved(Id switchId, bool engaged) {
     rel.velocity = palletVelocity_;
     voices_.noteOff(open->second, rel);
     divisionInputNotes_.erase(open);
+    if (hasKeyNoises_)
+      playKeyNoises(it->second.first, it->second.second, StopRankEntry::kOnDisengage,
+                    palletVelocity_);
     return;
   }
   if (open != divisionInputNotes_.end()) return;  // already sounding
   const auto [division, note] = it->second;
+  if (hasKeyNoises_) playKeyNoises(division, note, StopRankEntry::kOnEngage, palletVelocity_);
   const uint64_t noteId = nextNoteId_++;
   divisionInputScratch_.clear();
   resolvePipesInto(model_, division, note, engagedStops_, &engagedSwitches_, divisionInputScratch_);
@@ -7182,6 +7198,112 @@ void MasterpieceProcessor::palletMoved(Id switchId, bool engaged) {
   if (any) palletNotes_[switchId] = noteId;
 }
 
+void MasterpieceProcessor::buildActionNoises() {
+  stopActionNoises_.clear();
+  hasKeyNoises_ = false;
+  for (const auto& [stopId, stop] : model_.stops)
+    for (const StopRankEntry& e : stop.ranks) {
+      if (!e.isActionNoise()) continue;
+      if (e.actionType != StopRankEntry::kStopSwitch) {
+        hasKeyNoises_ = true;
+        continue;
+      }
+      const auto rank = model_.ranks.find(e.rankId);
+      if (rank == model_.ranks.end()) continue;
+      for (const Pipe& pipe : rank->second.pipes)
+        if (pipe.midiNote == e.midiIncrement && !pipe.layers.empty()) {
+          stopActionNoises_[stopId].push_back({e.rankId, e.actionEffect, &pipe});
+          break;
+        }
+    }
+  noiseStops_.clear();
+  noiseStops_.reserve(model_.stops.size());
+  stopNoiseNotes_.clear();
+  stopNoiseNotes_.reserve(stopActionNoises_.size());
+  noiseStopsPrimed_ = false;
+  keyNoiseScratch_.reserve(16);
+  keyUpScratch_.reserve(16);
+  keyNoisesNow_.clear();
+  keyNoisesNow_.reserve(64);
+  // The voices are new: what ran while a stop was drawn starts again.
+  if (!stopActionNoises_.empty()) stopsChanged_.store(true, std::memory_order_release);
+}
+
+void MasterpieceProcessor::playKeyNoises(int divisionId, int midiNote, int effect, int velocity) {
+  keyNoiseScratch_.clear();
+  resolveKeyNoisesInto(model_, divisionId, midiNote, effect, engagedStops_, keyNoiseScratch_);
+  if (keyNoiseScratch_.empty()) return;
+  // A key whose division is reached twice at one moment -- its own key and
+  // the input switch the key's wiring engages -- sounds its noise once.
+  if (keyNoisesBlock_ != blockSerial_ || keyNoisesOffset_ != eventOffset_) {
+    keyNoisesNow_.clear();
+    keyNoisesBlock_ = blockSerial_;
+    keyNoisesOffset_ = eventOffset_;
+  }
+  for (const auto& rp : keyNoiseScratch_) {
+    if (rp.pipe == nullptr) continue;
+    const KeyNoiseStart here{rp.pipeId, divisionId, midiNote};
+    if (std::find(keyNoisesNow_.begin(), keyNoisesNow_.end(), here) != keyNoisesNow_.end()) continue;
+    if (keyNoisesNow_.size() < keyNoisesNow_.capacity()) keyNoisesNow_.push_back(here);
+    startPipeLayers(*rp.pipe, rp.rankId, midiNote, velocity, nextNoteId_++, true);
+  }
+}
+
+bool MasterpieceProcessor::reachesThroughInput(const ExpandedNote& reached) const {
+  if (reached.couplerSwitch == 0 || coupledInput_.empty()) return false;
+  const auto it = coupledInput_.find(
+      CoupledInputKey{reached.couplerSwitch, static_cast<Id>(reached.divisionId), reached.midiNote});
+  if (it == coupledInput_.end()) return false;
+  return it->second.rankless || divisionInputBySwitch_.count(it->second.input) != 0;
+}
+
+void MasterpieceProcessor::keyUpNoises(const HeldNote& held) {
+  // The divisions the key reaches as it comes up, the way it went down
+  // (startVoicesForKey); a coupled one sounds through its input instead.
+  keyUpScratch_.clear();
+  couplers_.expandInto(static_cast<int>(held.keyboard), held.midiNote,
+                       static_cast<float>(held.velocity) / 127.0f, engagedSwitches_, keyFlow_,
+                       keyUpScratch_, held.extreme);
+  // The key's own touch: a release velocity is often 0, and a noise layer
+  // with a velocity response would fall silent at it.
+  for (const ExpandedNote& reached : keyUpScratch_)
+    if (!reachesThroughInput(reached))
+      playKeyNoises(reached.divisionId, reached.midiNote, StopRankEntry::kOnDisengage, held.velocity);
+}
+
+void MasterpieceProcessor::followStopActionNoises() {
+  // A stop drawn: its click, and the sound that runs while it is drawn.
+  for (const Id stopId : engagedStops_) {
+    if (noiseStops_.count(stopId) != 0) continue;
+    const auto it = stopActionNoises_.find(stopId);
+    if (it == stopActionNoises_.end()) continue;
+    for (const StopActionNoise& n : it->second) {
+      if (n.effect == StopRankEntry::kWhileEngaged) {
+        const uint64_t noteId = nextNoteId_++;
+        if (startPipeLayers(*n.pipe, n.rankId, n.pipe->midiNote, 100, noteId))
+          stopNoiseNotes_[stopId] = noteId;
+      } else if (n.effect == StopRankEntry::kOnEngage && noiseStopsPrimed_) {
+        startPipeLayers(*n.pipe, n.rankId, n.pipe->midiNote, 100, nextNoteId_++, true);
+      }
+    }
+  }
+  // A stop pushed in: its other click, and the running sound lets go.
+  for (const Id stopId : noiseStops_) {
+    if (engagedStops_.count(stopId) != 0) continue;
+    const auto it = stopActionNoises_.find(stopId);
+    if (it == stopActionNoises_.end()) continue;
+    for (const StopActionNoise& n : it->second)
+      if (n.effect == StopRankEntry::kOnDisengage && noiseStopsPrimed_)
+        startPipeLayers(*n.pipe, n.rankId, n.pipe->midiNote, 100, nextNoteId_++, true);
+    if (const auto running = stopNoiseNotes_.find(stopId); running != stopNoiseNotes_.end()) {
+      voices_.noteOff(running->second, NoteRelease{});
+      stopNoiseNotes_.erase(running);
+    }
+  }
+  noiseStops_ = engagedStops_;
+  noiseStopsPrimed_ = true;
+}
+
 void MasterpieceProcessor::triggerNoiseFor(Id switchId, bool engaged) {
   const auto it = noiseRanksBySwitch_.find(switchId);
   if (it == noiseRanksBySwitch_.end()) return;
@@ -7272,6 +7394,7 @@ bool MasterpieceProcessor::stopSourcesEngaged(Id stopId) const {
 void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
   juce::ScopedNoDenormals noDenormals;
   buffer.clear();
+  ++blockSerial_;
 
   // Real-time render threads turned on or off, or a new device: the audio
   // thread follows, once (it does anything only on Linux).
@@ -7410,8 +7533,10 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
 
   // A stop drawn or pushed in since the last block reaches the notes already
   // sounding, before this block's own keys are dealt with.
-  if (stopsChanged_.exchange(false, std::memory_order_acq_rel))
+  if (stopsChanged_.exchange(false, std::memory_order_acq_rel)) {
+    if (!stopActionNoises_.empty()) followStopActionNoises();
     applyStopChangeToHeldNotes();
+  }
 
   // outgoing_ already holds what the window queued since the last block: a
   // stop clicked on screen or moved by the remote lights its lamp from here.
