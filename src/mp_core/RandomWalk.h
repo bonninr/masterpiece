@@ -116,4 +116,43 @@ private:
   uint64_t s_ = 1;
 };
 
+// A pipe's fixed tuning error (#808), as a fraction of its largest allowed
+// error, from -1 to 1. The format states the probability that a pipe errs by
+// less than the largest error; the draw is a normal one whose spread puts that
+// share of pipes inside it, held inside it. The probability index and the pipe
+// seed it, so every load tunes the organ the same way.
+inline double randomTuningUnit(uint64_t pipeId, int fn, double probPct) {
+  const double p = std::clamp(probPct, 1.0, 99.9) / 100.0;
+  // The half-width, in spreads, that holds a share p of a normal draw.
+  double lo = 0.0, hi = 10.0;
+  for (int i = 0; i < 60; ++i) {
+    const double mid = 0.5 * (lo + hi);
+    (std::erf(mid / std::sqrt(2.0)) < p ? lo : hi) = mid;
+  }
+  uint64_t z = pipeId * 0x9E3779B97F4A7C15ull ^ (static_cast<uint64_t>(static_cast<uint32_t>(fn)) << 40);
+  const auto next = [&z]() {
+    z += 0x9E3779B97F4A7C15ull;
+    uint64_t x = z;
+    x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ull;
+    x = (x ^ (x >> 27)) * 0x94D049BB133111EBull;
+    x ^= x >> 31;
+    return (static_cast<double>(x >> 11) + 0.5) * (1.0 / 9007199254740992.0);
+  };
+  const double u1 = next(), u2 = next();
+  const double normal = std::sqrt(-2.0 * std::log(u1)) * std::cos(6.283185307179586 * u2);
+  return std::clamp(normal / (0.5 * (lo + hi)), -1.0, 1.0);
+}
+
+// That error in cents for a pipe sounding at targetHz: the unit times the
+// smaller of the two stated limits, the hertz one taken at the pipe's own
+// pitch. A limit of 0 states none.
+inline double tuningErrorCents(double unit, double maxCents, double maxHz, double targetHz) {
+  double limit = maxCents > 0.0 ? maxCents : -1.0;
+  if (maxHz > 0.0 && targetHz > 0.0) {
+    const double hzCents = 1200.0 * std::log2(1.0 + maxHz / targetHz);
+    limit = limit < 0.0 ? hzCents : std::min(limit, hzCents);
+  }
+  return limit > 0.0 ? unit * limit : 0.0;
+}
+
 } // namespace mp
