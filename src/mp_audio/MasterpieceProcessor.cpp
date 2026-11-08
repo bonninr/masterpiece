@@ -761,6 +761,7 @@ void MasterpieceProcessor::advanceTremulants(int numFrames) {
     const bool engaged =
         t.controllingSwitchId != 0 && switchEngaged(t.controllingSwitchId);
 
+    if (t.rateRandom.active() || t.depthRandom.active()) lfo.drift(t, numFrames);
     // Run the LFO across the block and take its value at each end. The voice
     // ramps between them, which is what keeps a six hertz wobble smooth at a
     // 256-frame block instead of stepping thirty times a cycle.
@@ -4645,6 +4646,12 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
           vs.tremPitchDepth =
               tremulantPitchSwingSemitones(tm->second.pitchDepthPct) *
               juce::jlimit(0.0, 4.0, layer.tremPitchDepthAdjustPct / 100.0);
+          // The drift of the pipe's share (#806), seeded per voice so two
+          // notes of one pipe drift apart, and the same way on every run.
+          if (pipe.tremDepthRandom.active()) {
+            vs.tremDepthRandom = pipe.tremDepthRandom;
+            vs.tremRandomSeed = (static_cast<uint64_t>(pipe.pipeId) << 24) ^ ++tremSeedCount_;
+          }
         }
       }
     }

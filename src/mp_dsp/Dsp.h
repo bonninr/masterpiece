@@ -45,7 +45,11 @@ public:
   // starting a render with the tremulant already drawn).
   void snapTo(const Tremulant& t, bool engaged);
 
-  float currentDepth() const { return depthEnv_.getCurrentValue(); }
+  float currentDepth() const { return depthEnv_.getCurrentValue() * depthMul_; }
+  // The slow drift of the rate and the depth the set states (#806), moved on
+  // once a block before the block's samples. A tremulant without one never
+  // calls it, and its multipliers stay at exactly 1.
+  void drift(const Tremulant& t, int numFrames);
   double currentRateHz() const { return rateHz_.getCurrentValue(); }
   // Where in its cycle the LFO is, one cycle per unit: what a recorded
   // waveform's shape is read at (#805).
@@ -60,6 +64,10 @@ private:
   juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> depthEnv_{0.0f};
   double lastStartPercent_ = -1.0, lastStopPercent_ = -1.0;
   bool lastEngaged_ = false;
+  RandomWalkState rateWalk_, depthWalk_;
+  bool walksStarted_ = false;
+  double rateMul_ = 1.0;
+  float depthMul_ = 1.0f;
 };
 
 // Swell-shade filter. A shelf whose corner morphs geometrically and whose

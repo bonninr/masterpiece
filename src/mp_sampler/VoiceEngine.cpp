@@ -653,6 +653,10 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   v.tremIndex = start.tremIndex;
   v.tremAmpDepth = start.tremAmpDepth;
   v.tremPitchDepth = start.tremPitchDepth;
+  if (start.tremIndex >= 0 && start.tremDepthRandom.active())
+    v.tremWalk.start(start.tremDepthRandom, start.tremRandomSeed);
+  else
+    v.tremWalk.stop();
   v.swayIndex = start.swayIndex;
   v.rankIndex = start.rankIndex;
   v.levelIndex = start.levelIndex;
@@ -1371,6 +1375,24 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
   // phase, the phase moving by a step a frame.
   float ampDepth = v.tremAmpDepth;
   float ampStep = trem.ampStep;
+  // The drift of this pipe's share of the tremulant (#806). The depth moves
+  // from one block to the next and is ramped across the block with the
+  // swing, so the level and the pitch follow it without a step.
+  if (tremMoving && v.tremWalk.on() && numFrames > 0) {
+    const double m0 = v.tremWalk.multiplier();
+    const double m1 = v.tremWalk.step(static_cast<double>(numFrames) / sampleRate_);
+    const float n = static_cast<float>(numFrames);
+    const float d0 = v.tremAmpDepth * static_cast<float>(m0) * tremPhase;
+    const float d1 = v.tremAmpDepth * static_cast<float>(m1) * (tremPhase + trem.ampStep * n);
+    ampDepth = 1.0f;
+    tremPhase = d0;
+    ampStep = (d1 - d0) / n;
+    const double p0 = v.tremPitchDepth * m0 * trem.pitchStart;
+    const double p1 = v.tremPitchDepth * m1 *
+                      (trem.pitchStart + trem.pitchStep * static_cast<double>(numFrames));
+    tremRatio = std::pow(2.0, p0 / 12.0);
+    tremRatioStep = std::pow(2.0, (p1 - p0) / static_cast<double>(numFrames) / 12.0);
+  }
   // The attack's emphasis, while it lasts: folded into that same ramp, so
   // every path that follows a tremulant's level follows it too. Over the
   // block the level goes in a straight line from what the tremulant and the
@@ -1381,8 +1403,8 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
     const int after = std::max(0, v.attackLeft - numFrames);
     const float e0 = 1.0f + v.attackBoost * static_cast<float>(v.attackLeft) / total;
     const float e1 = 1.0f + v.attackBoost * static_cast<float>(after) / total;
-    const float t0 = 1.0f + v.tremAmpDepth * tremPhase;
-    const float t1 = 1.0f + v.tremAmpDepth * (tremPhase + trem.ampStep * static_cast<float>(numFrames));
+    const float t0 = 1.0f + ampDepth * tremPhase;
+    const float t1 = 1.0f + ampDepth * (tremPhase + ampStep * static_cast<float>(numFrames));
     const float f0 = t0 * e0;
     const float f1 = t1 * e1;
     ampDepth = 1.0f;
