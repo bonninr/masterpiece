@@ -1286,6 +1286,13 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
         fieldDouble(row, "Bellows_FrameBaseLengthMetres", "i", 0.0);
     wc.bellowsExtensionM =
         fieldDouble(row, "Bellows_MaximumExtensionMetres", "j", 0.0);
+    wc.bellowsGravityMassKg =
+        fieldDouble(row, "Bellows_MassOfMovingBoardActedOnByGravityKg", "n", 0.0);
+    wc.bellowsShapeCode = fieldInt(row, "Bellows_ShapeCode", "l", 1);
+    wc.bellowsHingeDistanceM =
+        fieldDouble(row, "Bellows_DistOfCenOfMassOfMvgBrdFromAxisIfDiagTypMetres", "q", 0.0);
+    wc.bellowsExtensionOutputControlId =
+        fieldInt(row, "Bellows_ExtensionOutputContinuousControlID", "e1", 0);
     // A finite compartment with no volume cannot hold air; treating it as
     // finite would divide by zero in the solver.
     if (!wc.infiniteVolume && wc.volumeM3 <= 0.0) wc.infiniteVolume = true;

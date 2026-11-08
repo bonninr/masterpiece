@@ -29,15 +29,27 @@
 // volume plus 1.35 m3 of board travel, so it very nearly doubles. That is why
 // an organ with a big reservoir holds its wind under a chord.
 //
-// NOT solved: the board as a moving mass. Hauptwerk carries its weight, its
-// damping, spring lengths and tension curves, and a real bellows solver works
-// out where the board sits and what force is on it. That would add the
-// overshoot and the slow wobble a reservoir has when a big chord lands and
-// leaves. It is deliberately absent rather than approximated: an earlier draft
-// modelled the board as a spring pulling toward a "regulated pressure", and
-// since nothing in the file says what that pressure IS, the spring pulled
-// against the pipework forever — a steady two percent sag on an organ with
-// nobody playing it. A missing effect is better than an invented one.
+// The board as a moving mass (#812) is an option, off by default: "Moving
+// reservoir boards". While it is off none of the below runs and the solver
+// is the swallowed-volume model above, bit for bit.
+//
+// While it is on, each reservoir whose board the file describes in full has
+// that board moving. The file states everything it needs: the weight under
+// gravity, whose force over the frame's area IS the regulated pressure (a
+// round figure on every set: Klais 6.00 inches, Erfurt 5.12), the moving
+// mass, the damping, the travel, and for a hinged board its centre of mass.
+// No set in the corpus uses springs. The board is solved in the volume it
+// displaces, u: M u'' = p - pReg - R u', between its bottom and its full
+// travel, and the air in the reservoir follows its volume, V0 + u. The board
+// reports its height to the extension output control, 0 to 127, and every set
+// in the corpus drives its inlet valve from that through one control linkage
+// -- Klais closes it between 39 and 84 percent of the travel. That loop is
+// solved here, so the reservoir regulates itself as the real one does.
+//
+// The earlier objection to a board still holds and is met: a spring toward an
+// invented "regulated pressure" pulled against the pipework forever. The
+// pressure is the file's own, and the working pressures are re-solved with
+// the boards in place, so an organ with nobody playing reads no sag.
 #pragma once
 #include "../mp_core/OrganModel.h"
 
@@ -54,6 +66,11 @@ public:
     double ampMul = 1.0;
     double pitchRatio = 1.0;
   };
+
+  // Moving reservoir boards (#812). Takes effect at the next reset(): the
+  // working pressures are solved with the boards in place.
+  void setBellowsBoard(bool on) { boardWanted_ = on; }
+  bool bellowsBoard() const { return !boards_.empty(); }
 
   void reset(const OrganModel& model);
 
@@ -102,6 +119,14 @@ public:
   // nothing.
   double demandFor(Id compartmentId) const;
   bool active() const { return !order_.empty(); }
+
+  // A moving board's height, 0 at the bottom to 127 at full travel: what the
+  // compartment reports to its extension output control. -1 when the
+  // compartment has no moving board.
+  double extensionFor(Id compartmentId) const;
+  // The moving boards' compartments and their extension output controls, for
+  // the caller to publish; empty while the option is off.
+  std::vector<std::pair<Id, Id>> extensionOutputs() const;
 
 private:
   struct State {
@@ -179,6 +204,33 @@ private:
   // does not depend on the host's buffer size.
   double debtSeconds_ = 0.0;
   bool running_ = false;
+
+  // Moving reservoir boards (#812). Each in the volume it displaces, u, with
+  // its figures turned into that coordinate at reset: pressure in inches,
+  // u in cubic metres.
+  struct Board {
+    int at = -1;              // position in order_
+    Id outputControlId = 0;
+    double fixedVolumeM3 = 0.0;
+    double travelM3 = 0.0;    // u at full travel
+    double regulatedInches = 0.0;
+    double massPerInch = 0.0; // inches per (m3/s^2) of acceleration
+    double dampRate = 0.0;    // per second
+    double u = 0.0, uDot = 0.0;
+  };
+  std::vector<Board> boards_;
+  // Per resolved link, the board whose height drives its valve, or -1; and
+  // the control linkage between the two. Empty while the option is off.
+  std::vector<int> boardValve_;
+  std::vector<ContinuousControlLinkage> boardValveLink_;
+  bool boardWanted_ = false;
+  // While settling, each board is damped to critical: the balance is the
+  // same, and an organ whose boards would ring for minutes settles at once.
+  bool settlingBoards_ = false;
+  void resetBoards(const OrganModel& model);
+  void settleBoards(const std::unordered_set<Id>* engagedSwitches);
+  void stepBoards(double dt);
+  double boardValveOpening(size_t link) const;
 };
 
 } // namespace mp

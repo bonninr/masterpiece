@@ -30,6 +30,9 @@ struct EngineSwitch {
   // slow machines use SimpleWav, hi-end enables FullVoicing + WindModel.
   bool simpleWavOnly = false;   // bypass wind/trem/enclosure/voicing
   bool enableWindModel = true;  // false = InfiniteVolume fast path
+  // Reservoir boards as moving bodies (#812): the wind's overshoot and wobble
+  // when a chord lands. Read when the organ loads.
+  bool enableBellowsBoard = false;
   bool enableTremulant = true;
   bool enableEnclosure = true;
   bool enableVoicing = true;
@@ -811,6 +814,17 @@ struct WindCompartment {
   // the volume the reservoir can swallow before its pressure moves at all,
   // and that is the whole reason an organ has one.
   double bellowsWidthM = 0.0, bellowsLengthM = 0.0, bellowsExtensionM = 0.0;
+  // The board as a moving body (#812), played by the wind solver only while
+  // the player has "Moving reservoir boards" on. Its weight under gravity
+  // sets the regulated pressure: on every set in the corpus that weight over
+  // the frame's area is a round figure (Klais 6.00 inches). Shape 1 rises flat;
+  // shape 2 is hinged at one edge, its centre of mass hingeDistance from the
+  // hinge. The extension output reports how far the board has risen, 0 to
+  // 127, and the sets drive their inlet valves from it.
+  double bellowsGravityMassKg = 0.0;
+  int bellowsShapeCode = 1;
+  double bellowsHingeDistanceM = 0.0;
+  Id bellowsExtensionOutputControlId = 0;
   double sweptVolumeM3() const {
     return bellowsWidthM * bellowsLengthM * bellowsExtensionM;
   }

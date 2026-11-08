@@ -172,7 +172,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
   openMemLimit_ = proc_.memoryLimitSettingMB();
   openPolyphony_ = proc_.polyphonyLimit();
 
-  for (auto* b : {&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_,
+  for (auto* b : {&simpleWav_, &wind_, &bellows_, &tremulant_, &enclosure_, &voicing_,
                   &originalPitch_}) {
     addAndMakeVisible(*b);
     b->onClick = [this] { pushSwitches(); };
@@ -181,6 +181,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
   const auto sw = proc_.engineSwitch();
   simpleWav_.setToggleState(sw.simpleWavOnly, juce::dontSendNotification);
   wind_.setToggleState(sw.enableWindModel, juce::dontSendNotification);
+  bellows_.setToggleState(sw.enableBellowsBoard, juce::dontSendNotification);
   tremulant_.setToggleState(sw.enableTremulant, juce::dontSendNotification);
   enclosure_.setToggleState(sw.enableEnclosure, juce::dontSendNotification);
   voicing_.setToggleState(sw.enableVoicing, juce::dontSendNotification);
@@ -825,6 +826,7 @@ void EnginePanel::revert() {
 
   simpleWav_.setToggleState(openSwitch_.simpleWavOnly, juce::dontSendNotification);
   wind_.setToggleState(openSwitch_.enableWindModel, juce::dontSendNotification);
+  bellows_.setToggleState(openSwitch_.enableBellowsBoard, juce::dontSendNotification);
   tremulant_.setToggleState(openSwitch_.enableTremulant, juce::dontSendNotification);
   enclosure_.setToggleState(openSwitch_.enableEnclosure, juce::dontSendNotification);
   voicing_.setToggleState(openSwitch_.enableVoicing, juce::dontSendNotification);
@@ -843,6 +845,7 @@ void EnginePanel::revert() {
   const bool detailed = !openSwitch_.simpleWavOnly;
   for (auto* b : {&wind_, &tremulant_, &enclosure_, &voicing_})
     b->setEnabled(detailed);
+  bellows_.setEnabled(detailed && wind_.getToggleState());
   syncPerformance();
 }
 
@@ -876,6 +879,7 @@ void EnginePanel::pushSwitches() {
   auto sw = proc_.engineSwitch();
   sw.simpleWavOnly = simpleWav_.getToggleState();
   sw.enableWindModel = wind_.getToggleState();
+  sw.enableBellowsBoard = bellows_.getToggleState();
   sw.enableTremulant = tremulant_.getToggleState();
   sw.enableEnclosure = enclosure_.getToggleState();
   sw.enableVoicing = voicing_.getToggleState();
@@ -887,6 +891,7 @@ void EnginePanel::pushSwitches() {
   const bool detailed = !sw.simpleWavOnly;
   for (auto* b : {&wind_, &tremulant_, &enclosure_, &voicing_})
     b->setEnabled(detailed);
+  bellows_.setEnabled(detailed && wind_.getToggleState());
 }
 
 void EnginePanel::showReleaseLength(int ms) {
@@ -922,6 +927,7 @@ bool EnginePanel::loadingChanged() const {
          proc_.polyphonyLimit() != openPolyphony_ ||
          sw.simpleWavOnly != openSwitch_.simpleWavOnly ||
          sw.enableWindModel != openSwitch_.enableWindModel ||
+         sw.enableBellowsBoard != openSwitch_.enableBellowsBoard ||
          sw.enableTremulant != openSwitch_.enableTremulant ||
          sw.enableEnclosure != openSwitch_.enableEnclosure ||
          sw.enableVoicing != openSwitch_.enableVoicing ||
@@ -1215,7 +1221,7 @@ void EnginePanel::applyPart() {
   shownSimple_ = proc_.simpleMode();
   const bool simple = shownSimple_;
   using List = std::initializer_list<juce::Component*>;
-  const List organ{&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_, &originalPitch_,
+  const List organ{&simpleWav_, &wind_, &bellows_, &tremulant_, &enclosure_, &voicing_, &originalPitch_,
                    &profileLabel_, &profile_, &preloadLabel_, &preload_, &storageLabel_, &storage_,
                    &rateLabel_, &rate_, &sparseLabel_, &sparse_, &releasesLabel_, &releases_,
                    &releaseLengthLabel_, &releaseLength_, &releaseShortLabel_, &releaseShort_, &releaseCutoffLabel_, &releaseCutoff_,
@@ -1311,7 +1317,7 @@ void EnginePanel::resized() {
     std::vector<juce::Component*> boxes;
     // A GrandOrgue set's two (#833) make a row of their own, each under the
     // effect it adds to.
-    for (auto* b : std::initializer_list<juce::Component*>{&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_,
+    for (auto* b : std::initializer_list<juce::Component*>{&simpleWav_, &wind_, &bellows_, &tremulant_, &enclosure_, &voicing_,
                                                            &originalPitch_, &goTremulantPitch_, &goSwellFilter_})
       if (b->isVisible()) boxes.push_back(b);
     // Two columns where the longest label fits in half the width.
