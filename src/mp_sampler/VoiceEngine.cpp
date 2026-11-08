@@ -217,7 +217,7 @@ void VoiceEngine::prepare(double sampleRate, int maxVoices, int numChannels,
   // The voicing shelves: figures and state for every voice, and the audio
   // thread's buffer; the workers' come with the workers.
   shelfFigures_.assign(voices_.size(), ShelfFigures{});
-  shelfState_.assign(voices_.size() * static_cast<size_t>(numChannels_) * 2, 0.0f);
+  shelfState_.assign(voices_.size() * static_cast<size_t>(numChannels_) * kShelfStates, 0.0f);
   shelfScratch_.clear();
   shelfScratch_.resize(kMaxDecodeThreads);
   makeShelfScratch(1);
@@ -267,14 +267,29 @@ void shelfFigures(double sampleRate, double kHz, double widthPct, double db, flo
 } // namespace
 
 void VoiceEngine::armShelf(Voice& v, size_t index) {
-  v.shelf = v.layer != nullptr && v.layer->voicingShelfDb != 0.0 && index < shelfFigures_.size();
-  if (!v.shelf) return;
+  v.shelf = false;
+  if (v.layer == nullptr || index >= shelfFigures_.size()) return;
+  ShelfFigures fig;
   float f[5];
-  shelfFigures(sampleRate_, v.layer->voicingShelfKHz, v.layer->voicingShelfWidthPct,
-               v.layer->voicingShelfDb, f);
-  shelfFigures_[index] = ShelfFigures{f[0], f[1], f[2], f[3], f[4]};
-  float* z = shelfState_.data() + index * static_cast<size_t>(numChannels_) * 2;
-  std::fill(z, z + static_cast<size_t>(numChannels_) * 2, 0.0f);
+  if (v.layer->voicingShelfDb != 0.0) {
+    shelfFigures(sampleRate_, v.layer->voicingShelfKHz, v.layer->voicingShelfWidthPct,
+                 v.layer->voicingShelfDb, f);
+    fig.section[fig.count++] = ShelfSection{f[0], f[1], f[2], f[3], f[4]};
+  }
+  // The third and upper harmonics (#809): a shelf at the geometric middle of
+  // the second and third harmonic of the pipe's pitch, half its level there,
+  // most of it from the third harmonic up. A pipe whose third harmonic lies
+  // above the audible band has nothing to adjust.
+  const double pitch = v.harmonicHz;
+  if (v.layer->harmonicLevelDb != 0.0 && pitch > 0.0 && 3.0 * pitch < 0.45 * sampleRate_) {
+    shelfFigures(sampleRate_, pitch * std::sqrt(6.0) / 1000.0, 100.0, v.layer->harmonicLevelDb, f);
+    fig.section[fig.count++] = ShelfSection{f[0], f[1], f[2], f[3], f[4]};
+  }
+  if (fig.count == 0) return;
+  v.shelf = true;
+  shelfFigures_[index] = fig;
+  float* z = shelfState_.data() + index * static_cast<size_t>(numChannels_) * kShelfStates;
+  std::fill(z, z + static_cast<size_t>(numChannels_) * kShelfStates, 0.0f);
 }
 
 uint64_t VoiceEngine::blocksDecoded() const {
@@ -691,6 +706,17 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   v.gain = start.gain;
   v.releaseGain = 1.0f;
   v.layer = start.layer;
+  // The pitch the pipe sounds: its recording's, else its key's at its rank's
+  // footage.
+  v.harmonicHz = 0.0;
+  if (start.layer != nullptr && start.layer->harmonicLevelDb != 0.0) {
+    const auto& atts = start.layer->attacks;
+    if (start.attackIndex >= 0 && static_cast<size_t>(start.attackIndex) < atts.size())
+      v.harmonicHz = atts[static_cast<size_t>(start.attackIndex)].sample.resolvedPitchHz;
+    if (!(v.harmonicHz > 0.0) && start.pipe != nullptr)
+      v.harmonicHz = 440.0 * std::pow(2.0, (start.pipe->midiNote - 69) / 12.0) *
+                     (start.pipe->basePitch64ftHarmonicNum > 0 ? start.pipe->basePitch64ftHarmonicNum : 8) / 8.0;
+  }
   armShelf(v, static_cast<size_t>(slot));
   v.busIndex = start.busIndex;
   v.mixBus = start.mixBus;
@@ -1322,28 +1348,44 @@ void VoiceEngine::renderVoiceNow(Voice& v, size_t index, float* const* out, int 
   float* planes[kMaxChannels];
   for (int c = 0; c < channels; ++c) planes[c] = buf->data() + static_cast<size_t>(c) * kShelfChunk;
   const ShelfFigures& f = shelfFigures_[index];
-  float* const state = shelfState_.data() + index * static_cast<size_t>(numChannels_) * 2;
+  float* const state = shelfState_.data() + index * static_cast<size_t>(numChannels_) * kShelfStates;
   for (int done = 0; done < numFrames && v.active();) {
     const int n = std::min(kShelfChunk, numFrames - done);
     for (int c = 0; c < channels; ++c) std::fill(planes[c], planes[c] + n, 0.0f);
     renderVoiceRaw(v, index, planes, channels, n, scratch);
     for (int c = 0; c < channels; ++c) {
-      float z1 = state[c * 2], z2 = state[c * 2 + 1];
-      const float* x = planes[c];
+      // Every section but the last filters the plane in place; the last adds
+      // to the output.
+      float* x = planes[c];
       float* y = out[c] + done;
-      for (int i = 0; i < n; ++i) {
-        const float in = x[i];
-        const float o = f.b0 * in + z1;
-        z1 = f.b1 * in - f.a1 * o + z2;
-        z2 = f.b2 * in - f.a2 * o;
-        y[i] += o;
+      for (int s = 0; s < f.count; ++s) {
+        const ShelfSection& q = f.section[s];
+        float* z = state + c * kShelfStates + s * 2;
+        float z1 = z[0], z2 = z[1];
+        if (s + 1 < f.count) {
+          for (int i = 0; i < n; ++i) {
+            const float in = x[i];
+            const float o = q.b0 * in + z1;
+            z1 = q.b1 * in - q.a1 * o + z2;
+            z2 = q.b2 * in - q.a2 * o;
+            x[i] = o;
+          }
+        } else {
+          for (int i = 0; i < n; ++i) {
+            const float in = x[i];
+            const float o = q.b0 * in + z1;
+            z1 = q.b1 * in - q.a1 * o + z2;
+            z2 = q.b2 * in - q.a2 * o;
+            y[i] += o;
+          }
+        }
+        // A dying tail leaves the state far below hearing: let it be silent
+        // there, short of the denormals.
+        if (std::fabs(z1) < 1.0e-20f) z1 = 0.0f;
+        if (std::fabs(z2) < 1.0e-20f) z2 = 0.0f;
+        z[0] = z1;
+        z[1] = z2;
       }
-      // A dying tail leaves the state far below hearing: let it be silent
-      // there, short of the denormals.
-      if (std::fabs(z1) < 1.0e-20f) z1 = 0.0f;
-      if (std::fabs(z2) < 1.0e-20f) z2 = 0.0f;
-      state[c * 2] = z1;
-      state[c * 2 + 1] = z2;
     }
     done += n;
   }

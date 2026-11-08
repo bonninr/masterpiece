@@ -461,6 +461,9 @@ struct Voice {
   // The layer's voicing shelf is on this voice (#815); its figures and state
   // are kept beside the voices, read only while this is set.
   bool shelf = false;
+  // The pitch the pipe sounds, for its harmonic level (#809); 0 when its
+  // layer adjusts none.
+  double harmonicHz = 0.0;
 
   bool active() const { return phase != VoicePhase::Idle; }
   bool loops() const {
@@ -1115,12 +1118,20 @@ private:
   // voice and output channel, and a buffer per render thread that a shelved
   // voice renders into before it is filtered. A voice without a shelf never
   // reads any of them.
+  // A voice has up to two: the layer's voicing EQ, then its level of the
+  // third and upper harmonics (#809).
   static constexpr int kShelfChunk = 256;
-  struct ShelfFigures {
+  static constexpr int kShelfSections = 2;
+  static constexpr int kShelfStates = kShelfSections * 2;
+  struct ShelfSection {
     float b0 = 1.0f, b1 = 0.0f, b2 = 0.0f, a1 = 0.0f, a2 = 0.0f;
   };
+  struct ShelfFigures {
+    ShelfSection section[kShelfSections];
+    int count = 0;
+  };
   std::vector<ShelfFigures> shelfFigures_;
-  std::vector<float> shelfState_;  // voices x numChannels_ x 2
+  std::vector<float> shelfState_;  // voices x numChannels_ x kShelfStates
   std::vector<std::unique_ptr<std::vector<float>>> shelfScratch_;
   void makeShelfScratch(size_t threads);
   // Sets the voice's shelf from its layer, its state silent.
