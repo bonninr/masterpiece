@@ -5,6 +5,7 @@
 #pragma once
 #include "../mp_core/OdfLoader.h"
 #include "../mp_core/OrganModel.h"
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <unordered_map>
@@ -302,6 +303,19 @@ public:
   void propagate(Id pinned = 0,
                  const std::unordered_set<Id>* engagedSwitches = nullptr);
 
+  // Timed linkages (LinkTypeCode 2 and 3, #811). Until setTimed(true) every
+  // linkage acts at once, as an organ settles while it loads; reset() puts the
+  // bank back there. Once timed, a Willis or inertia linkage sets where its
+  // destination is going, and advance() moves the destination toward it by the
+  // time that has passed: call it once per control block, before propagate().
+  void setTimed(bool on);
+  bool timed() const { return timed_; }
+  void advance(double seconds);
+  // Whether a timed linkage is still on its way.
+  bool moving() const { return !movingList_.empty(); }
+  // How many propagates carried only the controls timed linkages moved.
+  size_t movedPasses() const { return movedPasses_; }
+
   // Convenience for the audio graph: shutter position 0..1 for an enclosure,
   // via whichever continuous control drives it. An enclosure with no control
   // is fully open, which is the safe reading — a silent organ is worse than an
@@ -329,8 +343,25 @@ private:
     // Into a drawn or clickable control, or between twins: fires only when
     // its source moves (see propagate).
     bool carriesChange = false;
+    // Index into motions_ for a timed linkage, -1 for one that acts at once.
+    int32_t motion = -1;
     const ContinuousControlLinkage* link = nullptr;
   };
+  // Where a timed linkage's destination is and is going.
+  struct Motion {
+    int32_t dst = -1;
+    int type = 1;
+    double tau = 0.0;          // Willis: seconds
+    double accel = 0.0;        // inertia: per second squared, per step left
+    double damping = 0.0;      // inertia: per second
+    double pos = 0.0, vel = 0.0, target = 0.0;
+    bool live = false;         // its condition met: it owns the destination
+    bool listed = false;       // in movingList_
+  };
+  std::vector<Motion> motions_;
+  std::vector<int32_t> movingList_;
+  bool timed_ = false;
+  void writeMotion(Motion& m, bool settled);
   struct DoubleLink {
     int32_t a = -1, b = -1, dst = -1;
     const ContinuousControlDoubleLinkage* link = nullptr;
@@ -345,6 +376,39 @@ private:
   // ran with: with neither changed, the settled graph is left as it is.
   bool dirty_ = true;
   std::unordered_set<Id> lastSwitches_;
+  // Whether the last pass left the graph settled: a pass from moved controls
+  // builds on that, and a graph still changing at the pass cap has none.
+  bool settled_ = false;
+
+  // Controls a timed linkage moved since the last propagate, with a flag per
+  // control so each is listed once. From a settled graph these are all that
+  // can change anything, and propagateMoved() carries only them (#811).
+  std::vector<int32_t> moved_, frontier_;
+  std::vector<char> movedFlag_;
+  size_t movedPasses_ = 0;
+  void markMoved(int32_t slot);
+  void clearMoved();
+  void propagateMoved(const std::unordered_set<Id>& switches);
+  // Per control, the single linkages that read or write it, and the double
+  // linkages that read or write it, each in the order the full pass runs them.
+  std::vector<std::vector<int32_t>> singlesBySlot_, doublesBySlot_;
+  // A pass's queues, smallest index first, and whether each linkage is queued.
+  std::vector<int32_t> singleHeap_, doubleHeap_;
+  std::vector<char> singleQueued_, doubleQueued_;
+
+  // One linkage applied, as a pass applies it: true when its destination
+  // changed.
+  bool runSingle(size_t li, const std::unordered_set<Id>& switches, int pinnedSlot);
+  bool runDouble(size_t di, int pinnedSlot);
+  // What a linkage reads from a control: the reading between two steps when
+  // setExact() gave one, the step otherwise.
+  double reading(int i) const {
+    return std::isnan(exact_[i]) ? static_cast<double>(vals_[i]) : exact_[i];
+  }
+  int clampSlot(int i, double scaled) const {
+    const int v = static_cast<int>(scaled < 0.0 ? scaled - 0.5 : scaled + 0.5);
+    return v < lo_[i] ? lo_[i] : (v > hi_[i] ? hi_[i] : v);
+  }
 
   int clampToRange(const ContinuousControl& c, int v) const;
 };

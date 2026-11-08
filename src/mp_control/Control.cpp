@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <set>
 #include <tuple>
 #include <utility>
@@ -614,6 +615,9 @@ void ContinuousControlBank::reset(const OrganModel& model) {
 
   links_.clear();
   links_.reserve(model.controlLinkages.size());
+  motions_.clear();
+  movingList_.clear();
+  timed_ = false;
   for (const auto& l : model.controlLinkages) {
     if (l.sourceControlId == 0 || l.destControlId == 0) continue;
     Link k;
@@ -636,6 +640,16 @@ void ContinuousControlBank::reset(const OrganModel& model) {
     k.carriesChange = dest.imageSetInstanceId != 0 || dest.clickable || twin ||
                       l.conditionSwitchId != 0 || sharedByShoes;
     k.link = &l;
+    if (l.timed()) {
+      Motion m;
+      m.dst = k.dst;
+      m.type = l.linkType;
+      m.tau = l.willisMsPerStep / 1000.0;
+      m.accel = l.inertiaAccel;
+      m.damping = std::max(0.0, l.inertiaDamping);
+      k.motion = static_cast<int32_t>(motions_.size());
+      motions_.push_back(m);
+    }
     links_.push_back(k);
   }
   doubles_.clear();
@@ -650,6 +664,37 @@ void ContinuousControlBank::reset(const OrganModel& model) {
     doubles_.push_back(k);
   }
   linkSeen_.assign(links_.size(), kNotLive);
+  // Which linkages each control can change: those reading it and those
+  // writing it. A pass from moved controls walks these (see propagateMoved).
+  singlesBySlot_.assign(vals_.size(), {});
+  for (size_t li = 0; li < links_.size(); ++li) {
+    const Link& k = links_[li];
+    singlesBySlot_[k.src].push_back(static_cast<int32_t>(li));
+    if (k.dst != k.src) singlesBySlot_[k.dst].push_back(static_cast<int32_t>(li));
+  }
+  doublesBySlot_.assign(vals_.size(), {});
+  for (size_t di = 0; di < doubles_.size(); ++di) {
+    const DoubleLink& k = doubles_[di];
+    doublesBySlot_[k.a].push_back(static_cast<int32_t>(di));
+    if (k.b != k.a) doublesBySlot_[k.b].push_back(static_cast<int32_t>(di));
+    if (k.dst != k.a && k.dst != k.b) doublesBySlot_[k.dst].push_back(static_cast<int32_t>(di));
+  }
+  // Sized once, so the audio thread never allocates: the moved list and the
+  // frontier trade buffers every pass, and the frontier can hold every
+  // control plus one entry per linkage that changed.
+  singleQueued_.assign(links_.size(), 0);
+  doubleQueued_.assign(doubles_.size(), 0);
+  singleHeap_.clear();
+  singleHeap_.reserve(links_.size());
+  doubleHeap_.clear();
+  doubleHeap_.reserve(doubles_.size());
+  movedFlag_.assign(vals_.size(), 0);
+  moved_.clear();
+  frontier_.clear();
+  const size_t most = vals_.size() + links_.size() + doubles_.size();
+  moved_.reserve(most);
+  frontier_.reserve(most);
+  settled_ = false;
   lastSwitches_.clear();
   dirty_ = true;
   propagate();
@@ -730,114 +775,319 @@ void ContinuousControlBank::propagate(Id pinned,
   // would settle to the same values again. This is every block at rest.
   static const std::unordered_set<Id> kNone;
   const std::unordered_set<Id>& switches = engagedSwitches != nullptr ? *engagedSwitches : kNone;
-  if (!dirty_ && switches == lastSwitches_) return;
-  if (switches != lastSwitches_) lastSwitches_ = switches;
+  const bool sameSwitches = switches == lastSwitches_;
+  if (!dirty_ && sameSwitches && moved_.empty()) return;
+  // Only timed linkages moved their controls since a pass that settled: carry
+  // those controls along and leave the rest of the graph alone. A pipe's
+  // detune gliding on Bueckeburg is one control among tens of thousands of
+  // linkages, and a whole pass for it on every block cost the audio thread
+  // more than every other control put together (#811).
+  if (!dirty_ && sameSwitches && pinned == 0 && settled_) {
+    ++movedPasses_;
+    propagateMoved(switches);
+    return;
+  }
+  clearMoved();
+  if (!sameSwitches) lastSwitches_ = switches;
   dirty_ = false;
 
   int pinnedSlot = -1;
   if (pinned != 0)
     if (const auto it = index_.find(pinned); it != index_.end()) pinnedSlot = it->second;
 
-  // What a linkage reads from a control: the reading between two steps when
-  // setExact() gave one, the step otherwise.
-  auto reading = [this](int i) {
-    return std::isnan(exact_[i]) ? static_cast<double>(vals_[i]) : exact_[i];
-  };
-  auto clampSlot = [this](int i, double scaled) {
-    const int v = static_cast<int>(scaled < 0.0 ? scaled - 0.5 : scaled + 0.5);
-    return v < lo_[i] ? lo_[i] : (v > hi_[i] ? hi_[i] : v);
-  };
-
   // One pass per linkage is enough to carry a value along the longest possible
   // acyclic chain; stop early once a pass changes nothing.
   // Capped: real chains are a handful of links long, and a file whose
   // linkages disagree would otherwise cost linkCount squared on every block.
   const size_t maxPasses = std::min<size_t>(linkCount, 64);
-  for (size_t pass = 0; pass < maxPasses; ++pass) {
-    bool changed = false;
-    for (size_t li = 0; li < links_.size(); ++li) {
-      const Link& k = links_[li];
-      const int source = vals_[k.src];
-      // A conditional linkage is a button, not a wire. Nancy hangs her preset
-      // Load buttons and her "reset all settings to defaults" off these, and
-      // running them whenever they are looked at pins every control they
-      // touch to its stored value.
-      //
-      // The condition has a sense. Reading every one as "while engaged" made
-      // both halves of a tremulant pair live at once, and two linkages then
-      // overwrote the same control on every pass without ever settling.
-      int& seen = linkSeen_[li];
-      if (k.condition != 0) {
-        const bool on = switches.count(k.condition) != 0;
-        if (on != k.whenEngaged) {
-          seen = kNotLive;
-          continue;
-        }
-      }
-      // A linkage into a control the player moves carries a change: it fires
-      // once at load, when its condition comes on, and when its source moves,
-      // and otherwise leaves the control where the player put it. Hill feeds
-      // its swell shoe from three drawn twins and from whichever user pedal the
-      // expression matrix selects; reasserting every unmoved feeder on every
-      // block let the last one written win, and the swell would not close.
-      //
-      // So does a linkage between twins. Ashton joins five drawn copies of its
-      // swell shoe both ways to one hidden pedal; recomputing that pedal from
-      // all five on every pass set it to the moved shoe and back to an
-      // unmoved copy in turn, the passes never settled, and each swell step
-      // cost 30 ms of the audio thread (#166).
-      //
-      // Any other control has no position of its own and is recomputed every
-      // pass. Azzio feeds its tremulant crossfade from constants and from a
-      // delay ramp at once, and relies on the constants holding it at rest.
-      if (k.carriesChange) {
-        if (seen == source) continue;
-        seen = source;
-      }
-      if (k.dst == pinnedSlot) continue; // the player's own move stands
-
-      const int next = clampSlot(k.dst, k.link->apply(reading(k.src)));
-      int& slot = vals_[k.dst];
-      if (slot != next) {
-        slot = next;
-        exact_[k.dst] = std::nan("");
-        changed = true;
-      }
-    }
-
+  bool changed = true;
+  for (size_t pass = 0; pass < maxPasses && changed; ++pass) {
+    changed = false;
+    for (size_t li = 0; li < links_.size(); ++li)
+      if (runSingle(li, switches, pinnedSlot)) changed = true;
     // Two-source linkages settle in the same loop, because a chain routinely
     // runs through both kinds: a slider feeds a single linkage, that feeds a
     // double one, and its answer is what a pipe layer actually reads.
-    for (const DoubleLink& k : doubles_) {
-      if (k.dst == pinnedSlot) continue;
-      const ContinuousControlDoubleLinkage& d = *k.link;
-      const double x = reading(k.a) * d.firstCoefficient + d.firstIncrement;
-      const double y = reading(k.b) * d.secondCoefficient + d.secondIncrement;
-      double combined = 0.0;
-      switch (d.operationCode) {
-        case 1: combined = x + y; break;
-        case 2: combined = x - y; break;
-        case 3: combined = x * y; break;
-        // A product kept in the controls' own range. The sets renormalise a
-        // plain product (3) by giving it a destination coefficient of 1/127;
-        // 7 comes with a coefficient of 1 and two 0..127 sources, so it has
-        // to land in range by itself. Azzio's Sesquialtera is the one use
-        // known: a perspective level times the knob's position, which is a
-        // level that opens one rank as the other closes (#285).
-        case 7: combined = x * y / 127.0; break;
-        default: continue;  // the loader rejected anything else
-      }
-      const int next = clampSlot(k.dst, combined * d.destCoefficient + d.destIncrement);
-      int& slot = vals_[k.dst];
-      if (slot != next) {
-        slot = next;
-        exact_[k.dst] = std::nan("");
-        changed = true;
+    for (size_t di = 0; di < doubles_.size(); ++di)
+      if (runDouble(di, pinnedSlot)) changed = true;
+  }
+  // A graph still changing at the cap has no settled state to build on.
+  settled_ = !changed;
+}
+
+bool ContinuousControlBank::runSingle(size_t li, const std::unordered_set<Id>& switches,
+                                      int pinnedSlot) {
+  const Link& k = links_[li];
+  const int source = vals_[k.src];
+  // A conditional linkage is a button, not a wire. Nancy hangs her preset
+  // Load buttons and her "reset all settings to defaults" off these, and
+  // running them whenever they are looked at pins every control they
+  // touch to its stored value.
+  //
+  // The condition has a sense. Reading every one as "while engaged" made
+  // both halves of a tremulant pair live at once, and two linkages then
+  // overwrote the same control on every pass without ever settling.
+  int& seen = linkSeen_[li];
+  if (k.condition != 0) {
+    const bool on = switches.count(k.condition) != 0;
+    if (on != k.whenEngaged) {
+      seen = kNotLive;
+      // A timed linkage whose condition lapses lets go of its control
+      // where it stands; the linkage that takes over moves it from there.
+      if (k.motion >= 0) motions_[k.motion].live = false;
+      return false;
+    }
+  }
+  // A linkage into a control the player moves carries a change: it fires
+  // once at load, when its condition comes on, and when its source moves,
+  // and otherwise leaves the control where the player put it. Hill feeds
+  // its swell shoe from three drawn twins and from whichever user pedal the
+  // expression matrix selects; reasserting every unmoved feeder on every
+  // block let the last one written win, and the swell would not close.
+  //
+  // So does a linkage between twins. Ashton joins five drawn copies of its
+  // swell shoe both ways to one hidden pedal; recomputing that pedal from
+  // all five on every pass set it to the moved shoe and back to an
+  // unmoved copy in turn, the passes never settled, and each swell step
+  // cost 30 ms of the audio thread (#166).
+  //
+  // Any other control has no position of its own and is recomputed every
+  // pass. Azzio feeds its tremulant crossfade from constants and from a
+  // delay ramp at once, and relies on the constants holding it at rest.
+  if (k.carriesChange) {
+    if (seen == source) return false;
+    seen = source;
+  }
+  if (k.dst == pinnedSlot) return false; // the player's own move stands
+
+  // A timed linkage only says where its control is going; advance()
+  // takes it there. It starts from wherever the control stands when the
+  // linkage comes live: Bueckeburg hands a pipe's detune from the
+  // coupling level to the detune target as its key goes down, and the
+  // pitch glides between the two.
+  if (k.motion >= 0 && timed_) {
+    Motion& m = motions_[k.motion];
+    const double goal = k.link->apply(reading(k.src));
+    if (!m.live) {
+      m.live = true;
+      m.pos = reading(k.dst);
+      m.vel = 0.0;
+      m.target = std::nan("");
+    }
+    if (!(m.target == goal)) {
+      m.target = goal;
+      if (!m.listed) {
+        m.listed = true;
+        movingList_.push_back(k.motion);
       }
     }
-
-    if (!changed) break;
+    return false;
   }
+
+  const int next = clampSlot(k.dst, k.link->apply(reading(k.src)));
+  int& slot = vals_[k.dst];
+  if (slot == next) return false;
+  slot = next;
+  exact_[k.dst] = std::nan("");
+  return true;
+}
+
+bool ContinuousControlBank::runDouble(size_t di, int pinnedSlot) {
+  const DoubleLink& k = doubles_[di];
+  if (k.dst == pinnedSlot) return false;
+  const ContinuousControlDoubleLinkage& d = *k.link;
+  const double x = reading(k.a) * d.firstCoefficient + d.firstIncrement;
+  const double y = reading(k.b) * d.secondCoefficient + d.secondIncrement;
+  double combined = 0.0;
+  switch (d.operationCode) {
+    case 1: combined = x + y; break;
+    case 2: combined = x - y; break;
+    case 3: combined = x * y; break;
+    // A product kept in the controls' own range. The sets renormalise a
+    // plain product (3) by giving it a destination coefficient of 1/127;
+    // 7 comes with a coefficient of 1 and two 0..127 sources, so it has
+    // to land in range by itself. Azzio's Sesquialtera is the one use
+    // known: a perspective level times the knob's position, which is a
+    // level that opens one rank as the other closes (#285).
+    case 7: combined = x * y / 127.0; break;
+    default: return false;  // the loader rejected anything else
+  }
+  const int next = clampSlot(k.dst, combined * d.destCoefficient + d.destIncrement);
+  int& slot = vals_[k.dst];
+  if (slot == next) return false;
+  slot = next;
+  exact_[k.dst] = std::nan("");
+  return true;
+}
+
+void ContinuousControlBank::markMoved(int32_t slot) {
+  if (movedFlag_[slot]) return;
+  movedFlag_[slot] = 1;
+  moved_.push_back(slot);
+}
+
+void ContinuousControlBank::clearMoved() {
+  for (const int32_t s : moved_) movedFlag_[s] = 0;
+  moved_.clear();
+}
+
+// The full pass restricted to the linkages that can change anything: from a
+// settled graph, a linkage changes its destination only when its source or its
+// destination moved. Within a pass the linkages run in the full pass's order,
+// a change reaching the later ones in the same pass and the earlier ones in the
+// next, so the graph settles exactly where the full pass would take it.
+void ContinuousControlBank::propagateMoved(const std::unordered_set<Id>& switches) {
+  const size_t maxPasses = std::min<size_t>(links_.size() + doubles_.size(), 64);
+  const auto later = std::greater<int32_t>();
+  bool changed = true;
+  for (size_t pass = 0; pass < maxPasses && changed; ++pass) {
+    changed = false;
+    // This pass's frontier: the controls moved since the last pass.
+    frontier_.swap(moved_);
+    for (const int32_t s : frontier_) movedFlag_[s] = 0;
+    for (const int32_t s : frontier_)
+      for (const int32_t li : singlesBySlot_[s])
+        if (!singleQueued_[li]) {
+          singleQueued_[li] = 1;
+          singleHeap_.push_back(li);
+          std::push_heap(singleHeap_.begin(), singleHeap_.end(), later);
+        }
+    while (!singleHeap_.empty()) {
+      std::pop_heap(singleHeap_.begin(), singleHeap_.end(), later);
+      const int32_t li = singleHeap_.back();
+      singleHeap_.pop_back();
+      singleQueued_[li] = 0;
+      if (!runSingle(static_cast<size_t>(li), switches, -1)) continue;
+      changed = true;
+      const int32_t dst = links_[li].dst;
+      markMoved(dst);
+      frontier_.push_back(dst);
+      for (const int32_t lj : singlesBySlot_[dst])
+        if (lj > li && !singleQueued_[lj]) {
+          singleQueued_[lj] = 1;
+          singleHeap_.push_back(lj);
+          std::push_heap(singleHeap_.begin(), singleHeap_.end(), later);
+        }
+    }
+    for (const int32_t s : frontier_)
+      for (const int32_t di : doublesBySlot_[s])
+        if (!doubleQueued_[di]) {
+          doubleQueued_[di] = 1;
+          doubleHeap_.push_back(di);
+          std::push_heap(doubleHeap_.begin(), doubleHeap_.end(), later);
+        }
+    while (!doubleHeap_.empty()) {
+      std::pop_heap(doubleHeap_.begin(), doubleHeap_.end(), later);
+      const int32_t di = doubleHeap_.back();
+      doubleHeap_.pop_back();
+      doubleQueued_[di] = 0;
+      if (!runDouble(static_cast<size_t>(di), -1)) continue;
+      changed = true;
+      const int32_t dst = doubles_[di].dst;
+      markMoved(dst);
+      for (const int32_t dj : doublesBySlot_[dst])
+        if (dj > di && !doubleQueued_[dj]) {
+          doubleQueued_[dj] = 1;
+          doubleHeap_.push_back(dj);
+          std::push_heap(doubleHeap_.begin(), doubleHeap_.end(), later);
+        }
+    }
+    frontier_.clear();
+  }
+  // What the last pass moved has nothing further to reach, or the cap ended
+  // the passes and the next propagate starts over from a full one.
+  clearMoved();
+  settled_ = !changed;
+}
+
+void ContinuousControlBank::setTimed(bool on) {
+  if (on == timed_) return;
+  timed_ = on;
+  // Every timed linkage starts from where the settled graph left its control,
+  // the next time it fires.
+  for (Motion& m : motions_) {
+    m.live = false;
+    m.listed = false;
+  }
+  movingList_.clear();
+}
+
+void ContinuousControlBank::writeMotion(Motion& m, bool settled) {
+  const int i = m.dst;
+  const double lo = lo_[i], hi = hi_[i];
+  if (settled) {
+    // The value the linkage would have written at once, step for step.
+    const double t = m.target;
+    int v = static_cast<int>(t < 0.0 ? t - 0.5 : t + 0.5);
+    v = v < lo_[i] ? lo_[i] : (v > hi_[i] ? hi_[i] : v);
+    m.pos = v;
+    m.vel = 0.0;
+    if (vals_[i] != v || !std::isnan(exact_[i])) markMoved(i);
+    vals_[i] = v;
+    exact_[i] = std::nan("");
+    flagged_[i] = v;
+    return;
+  }
+  const double p = std::clamp(m.pos, lo, hi);
+  const int step = static_cast<int>(std::ceil(p - 0.5));
+  const bool changed = vals_[i] != step;
+  vals_[i] = step;
+  exact_[i] = p;
+  // As setExact(): the graph is woken for a new step, or for a reading that
+  // has crept an eighth of a step since it last woke it.
+  if (changed || std::fabs(p - flagged_[i]) >= 1.0 / 8.0) {
+    markMoved(i);
+    flagged_[i] = p;
+  }
+}
+
+void ContinuousControlBank::advance(double seconds) {
+  if (!timed_ || movingList_.empty() || !(seconds > 0.0)) return;
+  // Close enough to call it there: a sixty-fourth of a step, still.
+  constexpr double kNear = 1.0 / 64.0;
+  size_t kept = 0;
+  for (const int32_t idx : movingList_) {
+    Motion& m = motions_[idx];
+    if (!m.live) {
+      m.listed = false;
+      continue;
+    }
+    const double lo = lo_[m.dst], hi = hi_[m.dst];
+    const double goal = std::clamp(m.target, lo, hi);
+    bool settled = false;
+    if (m.type == 2) {
+      // A lag: the speed is the distance left over the time constant.
+      m.pos = goal + (m.pos - goal) * std::exp(-seconds / m.tau);
+      settled = std::fabs(m.pos - goal) < kNear;
+    } else {
+      // A damped spring, integrated in steps short beside its own period
+      // (the damping implicitly, so a heavy one cannot overshoot the
+      // integration). Figures too stiff to follow at all act at once: the
+      // combination steppers of several sets ride on an accelerating
+      // coefficient of 1000 and more, and are meant to be instant.
+      const double omega = std::sqrt(m.accel);
+      const double sub = std::ceil(omega * seconds / 0.25);
+      if (!(sub <= 512.0)) {
+        settled = true;
+      } else {
+        const int n = std::max(1, static_cast<int>(sub));
+        const double h = seconds / n;
+        for (int s = 0; s < n; ++s) {
+          m.vel = (m.vel + m.accel * (goal - m.pos) * h) / (1.0 + m.damping * h);
+          m.pos += m.vel * h;
+          // The ends of the control's range are walls: a shutter that
+          // reaches fully open stops there.
+          if (m.pos <= lo) { m.pos = lo; if (m.vel < 0.0) m.vel = 0.0; }
+          if (m.pos >= hi) { m.pos = hi; if (m.vel > 0.0) m.vel = 0.0; }
+        }
+        settled = std::fabs(m.pos - goal) < kNear && std::fabs(m.vel) < 4.0 * kNear;
+      }
+    }
+    writeMotion(m, settled);
+    if (settled) m.listed = false;
+    else movingList_[kept++] = idx;
+  }
+  movingList_.resize(kept);
 }
 
 double ContinuousControlBank::shutterFor(const Enclosure& e) const {

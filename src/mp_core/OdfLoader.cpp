@@ -1649,6 +1649,11 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     l.invert = fieldBool(row, "InvertSourceControlValue", "j", false);
     l.increment = fieldDouble(row, "SourceControlValueIncrement", "k", 0.0);
     l.coefficient = fieldDouble(row, "SourceControlValueCoefficient", "l", 1.0);
+    l.linkType = fieldInt(row, "LinkTypeCode", "d", 1);
+    l.willisMsPerStep =
+        fieldDouble(row, "WillisTypeIncSpeedInMillisecondsPerStepWithOneStepDiff", "e", 0.0);
+    l.inertiaAccel = fieldDouble(row, "InertiaModelTypePositiveAcceleratingCoeff", "f", 0.0);
+    l.inertiaDamping = fieldDouble(row, "InertiaModelTypePositiveDampingCoeff", "g", 0.0);
     for (Id ref : {l.sourceControlId, l.destControlId})
       if (ref != 0 && outModel.continuousControls.count(ref) == 0)
         outDiag.danglingIds.push_back(ref);
