@@ -464,7 +464,7 @@ public:
     const bool had = mp::splitRiceVectorKernels();
     std::printf("    split Rice: vector kernels %s on this machine\n", had ? "present" : "absent");
     mp::SplitRiceScratch scratch;
-    for (auto level : {mp::SplitRiceLevel::Medium, mp::SplitRiceLevel::Light})
+    for (auto level : {mp::SplitRiceLevel::Medium, mp::SplitRiceLevel::Light, mp::SplitRiceLevel::High})
     for (int width : {8, 16, 20, 24})
       for (int channels : {1, 2})
         for (Signal signal : {Signal::Noise, Signal::Silence, Signal::Square, Signal::Sine}) {
@@ -574,6 +574,64 @@ public:
   }
 };
 
+// High on a pipe-like tone at 16 bits: a few harmonics of a 240 Hz pitch, a
+// period of 200 frames, and a little noise. The cycle stage codes it, it comes back exact with
+// every kernel, it takes a tenth less than Medium at the least, and a
+// damaged lag is refused.
+class SplitRiceHighTest : public mp::test::Test {
+public:
+  SplitRiceHighTest() : mp::test::Test("functional.codec.split-rice-high", Category::Functional) {}
+
+  void run() override {
+    const uint64_t frames = 5 * mp::kSplitRiceBlockFrames + 300;
+    std::vector<int32_t> input(frames * 2);
+    std::mt19937 rng(21u);
+    std::normal_distribution<double> noise(0.0, 3.0);
+    const double w = 2.0 * 3.14159265358979 * 240.0 / 48000.0;
+    for (uint64_t f = 0; f < frames; ++f) {
+      const double t = static_cast<double>(f);
+      const double tone = 9000.0 * std::sin(w * t) + 4000.0 * std::sin(2 * w * t + 0.3) +
+                          2500.0 * std::sin(3 * w * t + 1.1) + 1200.0 * std::sin(5 * w * t + 2.0);
+      input[2 * f] = static_cast<int32_t>(std::lround(tone + noise(rng)));
+      input[2 * f + 1] = static_cast<int32_t>(std::lround(0.8 * tone + noise(rng)));
+    }
+    mp::SplitRiceStream medium, high;
+    MP_CHECK(mp::encodeSplitRice(input.data(), frames, 2, 16, medium), "medium codes");
+    MP_CHECK(mp::encodeSplitRice(input.data(), frames, 2, 16, high, nullptr, mp::SplitRiceLevel::High),
+             "high codes");
+    std::printf("    a 240 Hz tone at 16 bits: medium %zu bytes, high %zu\n", medium.data.size(), high.data.size());
+    MP_CHECK(high.data.size() * 10 < medium.data.size() * 9, "high takes a tenth less than medium");
+
+    // The second block's first channel: its predictor byte follows the mode.
+    const size_t first = high.blockOffsets[1] + 1;
+    MP_CHECK(((high.data[first] >> 4) & 3) != 0, "the second block's first channel has a cycle");
+
+    mp::SplitRiceScratch scratch;
+    std::vector<int32_t> out(mp::kSplitRiceBlockFrames * 2);
+    bool exact = true;
+    for (int kernels = 0; kernels < 3; ++kernels) {
+      mp::setSplitRiceVectorKernels(kernels > 0);
+      mp::setSplitRiceAvx2Kernels(kernels > 1);
+      for (size_t b = 0; b < high.blockCount(); ++b) {
+        exact = exact && mp::decodeSplitRiceBlock(high, b, out.data(), scratch);
+        const size_t n = static_cast<size_t>(high.framesInBlock(b)) * 2;
+        exact = exact && std::equal(out.begin(), out.begin() + static_cast<std::ptrdiff_t>(n),
+                                    input.begin() + static_cast<std::ptrdiff_t>(b * mp::kSplitRiceBlockFrames * 2));
+      }
+    }
+    mp::setSplitRiceVectorKernels(true);
+    mp::setSplitRiceAvx2Kernels(true);
+    MP_CHECK(exact, "every block comes back exact with every kernel");
+
+    // A lag under eight is no block this codec writes.
+    auto damaged = high;
+    damaged.data[first + 1] = 3;
+    damaged.data[first + 2] = 0;
+    mp::CodecError error = mp::CodecError::None;
+    MP_CHECK(!mp::decodeSplitRiceBlock(damaged, 1, out.data(), scratch, &error), "a lag of 3 is refused");
+  }
+};
+
 // What it is for: a bass pipe's tone, as in the delta codec's test, takes
 // under half the room of plain storage and less than the delta codec.
 class SplitRiceRatioTest : public mp::test::Test {
@@ -679,6 +737,7 @@ static SplitRiceLightBytesTest g_splitRiceLightBytes;
 static SplitRiceKernelsTest g_splitRiceKernels;
 static SplitRiceStoreTest g_splitRiceStore;
 static SplitRiceLevelsTest g_splitRiceLevels;
+static SplitRiceHighTest g_splitRiceHigh;
 static SplitRiceRatioTest g_splitRiceRatio;
 static SplitRiceSpeedTest g_splitRiceSpeed;
 
