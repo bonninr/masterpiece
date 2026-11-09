@@ -32,6 +32,7 @@
 //           cycle gain in bits 4 and 5 and its half frame in bit 6 (below);
 //           then, with a gain, u16 the cycle's lag; then order i32: the
 //           samples before the block, newest first
+//           (bit 7 set: a linear predictor, below)
 //   per channel but the last: u32 the bytes of its body
 //   per channel, its body:
 //     the k of each group, 5 bits each, least significant bit first,
@@ -63,6 +64,24 @@
 // to 7.30x and decodes in the same time as Medium:
 // the extra pass costs what the smaller residuals save. The encoder finds
 // the pipe's period once per sample and works about four times as long.
+//
+// The max level adds a linear predictor: a channel may predict each value
+// from the 8, 16 or 32 before it, with coefficients fitted to the block by
+// least squares. Its predictor byte has bit 7 set, the order (1 to 32) in
+// bits 0 to 5 and bit 6 clear; then
+//
+//     u8 the shift (0 to 15)
+//     order i16: the coefficients, the first for the value one back
+//     order i16: the samples before the block, newest first
+//
+// and the values are x[i] = r[i] + (the sum of q[k - 1] * x[i - k], k 1 to
+// the order, in 32-bit arithmetic that wraps) >> shift, with every x read
+// back as 16 bits. Each value waits for the one before it, so the decoder
+// takes what the values before a run of eight give as a vector dot product
+// and the rest one value after another, both channels side by side. On the
+// same 41 samples held at 16 bits, Max takes the ratio to 8.64x and decodes
+// in about twice Medium's time; the encoder works half as long again as
+// High's.
 //
 // The stream ends with 16 zero bytes, so the decoder's 16-byte reads never
 // leave it.
@@ -116,12 +135,14 @@ struct SplitRiceScratch {
   std::vector<int32_t> marks;  // the unary stream's ones, per channel
   std::vector<int32_t> work;   // the residuals and each channel's values
   std::vector<int32_t> cycle;  // a cycle-coded channel's residuals, the whole block
+  std::vector<int16_t> lpc;    // a channel with a linear predictor: its taps and values
 };
 
 // How hard the encoder packs. Light packs every block at a fixed width per
 // run, for the least work at decode; Medium codes every block split Rice;
-// High adds the cycle stage where it pays. High and Max code samples of 16
-// bits or fewer; wider ones are coded Medium.
+// High adds the cycle stage where it pays; Max adds the linear predictor.
+// High and Max code samples of 16 bits or fewer; wider ones are coded
+// Medium.
 enum class SplitRiceLevel : uint8_t { Light, Medium, High, Max };
 
 // The level's name in settings and on the command line: "light", "medium",

@@ -464,7 +464,8 @@ public:
     const bool had = mp::splitRiceVectorKernels();
     std::printf("    split Rice: vector kernels %s on this machine\n", had ? "present" : "absent");
     mp::SplitRiceScratch scratch;
-    for (auto level : {mp::SplitRiceLevel::Medium, mp::SplitRiceLevel::Light, mp::SplitRiceLevel::High})
+    for (auto level : {mp::SplitRiceLevel::Medium, mp::SplitRiceLevel::Light, mp::SplitRiceLevel::High,
+                       mp::SplitRiceLevel::Max})
     for (int width : {8, 16, 20, 24})
       for (int channels : {1, 2})
         for (Signal signal : {Signal::Noise, Signal::Silence, Signal::Square, Signal::Sine}) {
@@ -659,6 +660,79 @@ public:
   }
 };
 
+// Max on resonant noise at 16 bits: white noise through three resonances
+// at unrelated pitches, so no period repeats and the linear predictor has
+// the spectrum to work on. Some channel takes one, every block comes back
+// exact with every kernel, Max takes less than High, and a damaged
+// predictor is refused. A pair at full scale, whose side needs 17 bits,
+// comes back exact too.
+class SplitRiceMaxTest : public mp::test::Test {
+public:
+  SplitRiceMaxTest() : mp::test::Test("functional.codec.split-rice-max", Category::Functional) {}
+
+  void run() override {
+    const uint64_t frames = SplitRiceHighTest::kFrames;
+    std::vector<int32_t> input(frames * 2);
+    std::mt19937 rng(33u);
+    std::normal_distribution<double> noise(0.0, 1.0);
+    // Cycles a frame, high in the band, where the fixed predictors lose.
+    const double pitch[3] = {0.1931, 0.2773, 0.3619};
+    double y[3][2][2] = {};
+    for (uint64_t f = 0; f < frames; ++f) {
+      double v[2] = {0.0, 0.0};
+      for (int c = 0; c < 2; ++c) {
+        const double drive = noise(rng);
+        for (int k = 0; k < 3; ++k) {
+          const double a1 = 2.0 * 0.997 * std::cos(2.0 * 3.14159265358979 * pitch[k]), a2 = -0.997 * 0.997;
+          const double out = a1 * y[k][c][0] + a2 * y[k][c][1] + drive;
+          y[k][c][1] = y[k][c][0];
+          y[k][c][0] = out;
+          v[c] += out;
+        }
+      }
+      input[2 * f] = std::clamp(static_cast<int32_t>(std::lround(60.0 * v[0])), -32768, 32767);
+      input[2 * f + 1] = std::clamp(static_cast<int32_t>(std::lround(60.0 * (0.7 * v[0] + 0.3 * v[1]))), -32768, 32767);
+    }
+    mp::SplitRiceStream high, max;
+    MP_CHECK(mp::encodeSplitRice(input.data(), frames, 2, 16, high, nullptr, mp::SplitRiceLevel::High),
+             "high codes");
+    MP_CHECK(mp::encodeSplitRice(input.data(), frames, 2, 16, max, nullptr, mp::SplitRiceLevel::Max),
+             "max codes");
+    std::printf("    resonant noise at 16 bits: high %zu bytes, max %zu\n", high.data.size(), max.data.size());
+    MP_CHECK(max.data.size() * 10 < high.data.size() * 9, "max takes a tenth less than high");
+
+    // The second block's first channel: its predictor byte follows the mode.
+    const size_t first = max.blockOffsets[1] + 1;
+    MP_CHECK((max.data[first] & 0x80) != 0, "the second block's first channel has a linear predictor");
+    MP_CHECK(SplitRiceHighTest::exact(max, input), "every block comes back exact with every kernel");
+
+    mp::SplitRiceScratch scratch;
+    std::vector<int32_t> out(mp::kSplitRiceBlockFrames * 2);
+    mp::CodecError error = mp::CodecError::None;
+    auto damaged = max;
+    damaged.data[first] |= 0x40;
+    MP_CHECK(!mp::decodeSplitRiceBlock(damaged, 1, out.data(), scratch, &error), "bit 6 beside a predictor is refused");
+    damaged = max;
+    damaged.data[first + 1] = 16;
+    MP_CHECK(!mp::decodeSplitRiceBlock(damaged, 1, out.data(), scratch, &error), "a shift of 16 is refused");
+    damaged = max;
+    damaged.data[first] = 0x80 | 33;
+    MP_CHECK(!mp::decodeSplitRiceBlock(damaged, 1, out.data(), scratch, &error), "33 taps are refused");
+
+    // Full scale, the channels opposite: the side leaves 16 bits.
+    std::vector<int32_t> loud(input.size());
+    for (uint64_t f = 0; f < frames; ++f) {
+      const int32_t v = std::clamp(input[2 * f] * 4, -32768, 32767);
+      loud[2 * f] = v;
+      loud[2 * f + 1] = v == -32768 ? 32767 : -v;
+    }
+    mp::SplitRiceStream wide;
+    MP_CHECK(mp::encodeSplitRice(loud.data(), frames, 2, 16, wide, nullptr, mp::SplitRiceLevel::Max),
+             "full scale codes");
+    MP_CHECK(SplitRiceHighTest::exact(wide, loud), "and comes back exact with every kernel");
+  }
+};
+
 // What it is for: a bass pipe's tone, as in the delta codec's test, takes
 // under half the room of plain storage and less than the delta codec.
 class SplitRiceRatioTest : public mp::test::Test {
@@ -765,6 +839,7 @@ static SplitRiceKernelsTest g_splitRiceKernels;
 static SplitRiceStoreTest g_splitRiceStore;
 static SplitRiceLevelsTest g_splitRiceLevels;
 static SplitRiceHighTest g_splitRiceHigh;
+static SplitRiceMaxTest g_splitRiceMax;
 static SplitRiceRatioTest g_splitRiceRatio;
 static SplitRiceSpeedTest g_splitRiceSpeed;
 
