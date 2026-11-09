@@ -8,7 +8,6 @@
 </head>
 <body>
 <title>Masterpiece Interface Workshop</title>
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -943,7 +942,7 @@ const toBlob = (c) => new Promise((res) => c.toBlob(res, "image/png"));
 async function doExport() {
   const all = $("#exAll").checked; const shots = pictures(all); const xml = buildXml();
   const readme = "Masterpiece interface proposal\n\nproposal.xml  the whole interface as proposed: every window, element, menu and drawing, with the original names and places beside the new ones\nchanges.md    the list of changes, in words\nimages/       a picture of each changed window and menu\n\nPost the ZIP in the discussion: " + DISCUSSION_URL + "\nThe workshop's Import button opens this ZIP again.\n";
-  const dl = window.claude && window.claude.use ? await window.claude.use("downloads") : null;
+  const dl = null;
   if (window.JSZip) {
     const zip = new JSZip(); zip.file("proposal.xml", xml); zip.file("changes.md", changesMd()); zip.file("README.txt", readme);
     for (const [name, c] of shots) zip.file(name, await toBlob(c));
