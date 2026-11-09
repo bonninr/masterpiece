@@ -30,20 +30,11 @@ bool putBlock(DecodedWindow& w, const SplitRiceStream& s, int64_t block, int64_t
                    static_cast<size_t>(s.channels);
   const size_t first = static_cast<size_t>(at) * static_cast<size_t>(s.channels);
   const size_t pad = static_cast<size_t>(kWindowPad) * static_cast<size_t>(s.channels);
-  if (w.wide) {
-    // Four bytes stored a value, three kept: each store's top byte is
-    // written over by the next value, the last one's by the zeroed pad.
-    unsigned char* p = w.data + first * 3;
-    for (size_t i = 0; i < n; ++i, p += 3) {
-      const auto x = static_cast<uint32_t>(v[i]);
-      std::memcpy(p, &x, 4);
-    }
-    std::memset(p, 0, pad * 3);
-  } else {
-    auto* p = reinterpret_cast<int16_t*>(w.data) + first;
-    for (size_t i = 0; i < n; ++i) p[i] = static_cast<int16_t>(v[i]);
-    std::memset(p + n, 0, pad * 2);
-  }
+  // A wide store writes a few bytes past the last value; the zeroed pad
+  // after it writes over them.
+  const size_t bytes = w.wide ? 3 : 2;
+  storeSplitRiceValues(v, n, w.wide, w.data + first * bytes);
+  std::memset(w.data + (first + n) * bytes, 0, pad * bytes);
   return true;
 }
 

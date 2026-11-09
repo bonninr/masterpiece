@@ -425,6 +425,34 @@ public:
   }
 };
 
+// One mono 16-bit frame of value 5, light, byte for byte:
+//
+//   04                 mode: packed, mono
+//   00                 predictor order 0
+//   04 00 00           the widths of the four runs, 5 bits each: 4, 0, 0, 0
+//   0A 00 x31          run 0: 64 values of 4 bits; the first is zigzag(5) = 10
+//   00 x16             the stream's tail
+class SplitRiceLightBytesTest : public mp::test::Test {
+public:
+  SplitRiceLightBytesTest() : mp::test::Test("functional.codec.split-rice-light-bytes", Category::Functional) {}
+
+  void run() override {
+    std::vector<uint8_t> expected = {0x04, 0x00, 0x04, 0x00, 0x00, 0x0A};
+    expected.insert(expected.end(), 31 + 16, 0x00);
+    const int32_t sample = 5;
+    mp::SplitRiceStream stream;
+    mp::CodecError error = mp::CodecError::None;
+    MP_CHECK(mp::encodeSplitRice(&sample, 1, 1, 16, stream, &error, mp::SplitRiceLevel::Light),
+             "one frame encodes light");
+    MP_CHECK(stream.data == expected, "the bytes are as worked out");
+    int32_t back = 0;
+    MP_CHECK(mp::decodeSplitRiceFrames(stream, 0, 1, &back, &error) && back == 5, "and it decodes to 5");
+    // A width past the run's bytes is a damaged block.
+    stream.data[2] = 0x1F;
+    MP_CHECK(!mp::decodeSplitRiceFrames(stream, 0, 1, &back, &error), "a damaged width fails");
+  }
+};
+
 // The vector kernels give the plain kernels' numbers, block by block, on
 // every signal and width, and on full-scale noise at 24 bits, whose groups
 // take a k too wide for the vector unpack.
@@ -436,6 +464,8 @@ public:
     const bool had = mp::splitRiceVectorKernels();
     std::printf("    split Rice: vector kernels %s on this machine\n", had ? "present" : "absent");
     mp::SplitRiceScratch scratch;
+    for (auto level : {mp::SplitRiceLevel::Medium, mp::SplitRiceLevel::Light, mp::SplitRiceLevel::High,
+                       mp::SplitRiceLevel::Max})
     for (int width : {8, 16, 20, 24})
       for (int channels : {1, 2})
         for (Signal signal : {Signal::Noise, Signal::Silence, Signal::Square, Signal::Sine}) {
@@ -443,24 +473,263 @@ public:
           const auto input = makeSignal(signal, frames, channels, width, 11u);
           mp::SplitRiceStream stream;
           mp::CodecError error = mp::CodecError::None;
-          MP_CHECK(mp::encodeSplitRice(input.data(), frames, channels, width, stream, &error), "encode");
+          MP_CHECK(mp::encodeSplitRice(input.data(), frames, channels, width, stream, &error, level), "encode");
           std::vector<int32_t> plain(mp::kSplitRiceBlockFrames * static_cast<size_t>(channels));
-          std::vector<int32_t> fast(plain.size());
+          std::vector<int32_t> fast(plain.size()), wide(plain.size());
           for (size_t b = 0; b < stream.blockCount(); ++b) {
             mp::setSplitRiceVectorKernels(false);
             MP_CHECK(mp::decodeSplitRiceBlock(stream, b, plain.data(), scratch, &error), "plain decode");
             mp::setSplitRiceVectorKernels(true);
+            mp::setSplitRiceAvx2Kernels(false);
             MP_CHECK(mp::decodeSplitRiceBlock(stream, b, fast.data(), scratch, &error), "vector decode");
+            mp::setSplitRiceAvx2Kernels(true);
+            MP_CHECK(mp::decodeSplitRiceBlock(stream, b, wide.data(), scratch, &error), "AVX2 decode");
             const size_t n = static_cast<size_t>(stream.framesInBlock(b)) * static_cast<size_t>(channels);
             const size_t at = b * mp::kSplitRiceBlockFrames * static_cast<size_t>(channels);
             MP_CHECK(std::equal(plain.begin(), plain.begin() + static_cast<std::ptrdiff_t>(n), fast.begin()),
                      "the two kernels agree, block " + std::to_string(b) + " at " + std::to_string(width) + " bits");
+            MP_CHECK(std::equal(plain.begin(), plain.begin() + static_cast<std::ptrdiff_t>(n), wide.begin()),
+                     "and the AVX2 ones, block " + std::to_string(b) + " at " + std::to_string(width) + " bits");
             MP_CHECK(std::equal(plain.begin(), plain.begin() + static_cast<std::ptrdiff_t>(n),
                                 input.begin() + static_cast<std::ptrdiff_t>(at)),
                      "and give the input back");
           }
         }
     mp::setSplitRiceVectorKernels(true);
+    mp::setSplitRiceAvx2Kernels(true);
+  }
+};
+
+// The values go into a voice's storage the same with the vector store and
+// the plain one: three bytes each or 16-bit counts, for any count.
+class SplitRiceStoreTest : public mp::test::Test {
+public:
+  SplitRiceStoreTest() : mp::test::Test("functional.codec.split-rice-store", Category::Functional) {}
+
+  void run() override {
+    std::mt19937 rng(5u);
+    for (bool wide : {false, true})
+      for (size_t count : {size_t{0}, size_t{1}, size_t{7}, size_t{8}, size_t{13}, size_t{8192}}) {
+        std::uniform_int_distribution<int32_t> d(wide ? -8388608 : -32768, wide ? 8388607 : 32767);
+        std::vector<int32_t> v(count);
+        for (auto& x : v) x = d(rng);
+        const size_t bytes = count * (wide ? 3 : 2);
+        std::vector<unsigned char> plain(bytes + 16, 0xAA), fast(bytes + 16, 0xAA);
+        mp::setSplitRiceVectorKernels(false);
+        mp::storeSplitRiceValues(v.data(), count, wide, plain.data());
+        mp::setSplitRiceVectorKernels(true);
+        mp::storeSplitRiceValues(v.data(), count, wide, fast.data());
+        const std::string label = std::to_string(count) + (wide ? " wide" : " narrow");
+        MP_CHECK(std::equal(plain.begin(), plain.begin() + static_cast<std::ptrdiff_t>(bytes), fast.begin()),
+                 label + ": the two stores agree");
+        bool back = true;
+        for (size_t i = 0; i < count && back; ++i) {
+          int32_t x;
+          if (wide) {
+            x = plain[3 * i] | (plain[3 * i + 1] << 8) | (plain[3 * i + 2] << 16);
+            if (x & 0x800000) x -= 0x1000000;
+          } else {
+            x = static_cast<int16_t>(plain[2 * i] | (plain[2 * i + 1] << 8));
+          }
+          back = x == v[i];
+        }
+        MP_CHECK(back, label + ": every value reads back");
+      }
+    mp::setSplitRiceVectorKernels(true);
+  }
+};
+
+// The levels by name, as settings and the command line give them, and a
+// 24-bit sample asked for at High or Max coded as Medium codes it.
+class SplitRiceLevelsTest : public mp::test::Test {
+public:
+  SplitRiceLevelsTest() : mp::test::Test("functional.codec.split-rice-levels", Category::Functional) {}
+
+  void run() override {
+    for (auto level : {mp::SplitRiceLevel::Light, mp::SplitRiceLevel::Medium, mp::SplitRiceLevel::High,
+                       mp::SplitRiceLevel::Max}) {
+      mp::SplitRiceLevel back = mp::SplitRiceLevel::Light;
+      const char* name = mp::splitRiceLevelName(level);
+      MP_CHECK(mp::splitRiceLevelFromName(name, back) && back == level, std::string(name) + " reads back");
+    }
+    mp::SplitRiceLevel none = mp::SplitRiceLevel::Medium;
+    MP_CHECK(!mp::splitRiceLevelFromName("full", none) && !mp::splitRiceLevelFromName(nullptr, none),
+             "a name that is no level is refused");
+
+    const uint64_t frames = 3 * mp::kSplitRiceBlockFrames + 100;
+    std::vector<int32_t> input(frames * 2);
+    std::mt19937 rng(9u);
+    std::uniform_int_distribution<int32_t> noise(-300, 300);
+    for (uint64_t f = 0; f < frames; ++f) {
+      const int32_t tone = static_cast<int32_t>(2000000.0 * std::sin(0.013 * static_cast<double>(f)));
+      input[2 * f] = tone + noise(rng);
+      input[2 * f + 1] = tone / 2 + noise(rng);
+    }
+    mp::SplitRiceStream medium;
+    MP_CHECK(mp::encodeSplitRice(input.data(), frames, 2, 24, medium), "medium codes");
+    for (auto level : {mp::SplitRiceLevel::High, mp::SplitRiceLevel::Max}) {
+      mp::SplitRiceStream s;
+      MP_CHECK(mp::encodeSplitRice(input.data(), frames, 2, 24, s, nullptr, level), "24-bit codes");
+      MP_CHECK(s.data == medium.data, std::string(mp::splitRiceLevelName(level)) + " at 24 bits is medium");
+    }
+  }
+};
+
+// High on pipe-like tones at 16 bits: a few harmonics and a little noise,
+// at a period of 200 frames and of 200.5. The cycle stage codes them, the
+// half-frame reference the second, they come back exact with every kernel,
+// the first takes a tenth less than Medium at the least, and a damaged lag
+// is refused.
+class SplitRiceHighTest : public mp::test::Test {
+public:
+  SplitRiceHighTest() : mp::test::Test("functional.codec.split-rice-high", Category::Functional) {}
+
+  static constexpr uint64_t kFrames = 5 * mp::kSplitRiceBlockFrames + 300;
+
+  static std::vector<int32_t> tone(double period) {
+    std::vector<int32_t> input(kFrames * 2);
+    std::mt19937 rng(21u);
+    std::normal_distribution<double> noise(0.0, 3.0);
+    const double w = 2.0 * 3.14159265358979 / period;
+    for (uint64_t f = 0; f < kFrames; ++f) {
+      const double t = static_cast<double>(f);
+      const double v = 9000.0 * std::sin(w * t) + 4000.0 * std::sin(2 * w * t + 0.3) +
+                       2500.0 * std::sin(3 * w * t + 1.1) + 1200.0 * std::sin(5 * w * t + 2.0);
+      input[2 * f] = static_cast<int32_t>(std::lround(v + noise(rng)));
+      input[2 * f + 1] = static_cast<int32_t>(std::lround(0.8 * v + noise(rng)));
+    }
+    return input;
+  }
+
+  // Every block decodes to the input with the plain, SSE4.1 and AVX2 kernels.
+  static bool exact(const mp::SplitRiceStream& s, const std::vector<int32_t>& input) {
+    mp::SplitRiceScratch scratch;
+    std::vector<int32_t> out(mp::kSplitRiceBlockFrames * 2);
+    bool same = true;
+    for (int kernels = 0; kernels < 3; ++kernels) {
+      mp::setSplitRiceVectorKernels(kernels > 0);
+      mp::setSplitRiceAvx2Kernels(kernels > 1);
+      for (size_t b = 0; b < s.blockCount(); ++b) {
+        same = same && mp::decodeSplitRiceBlock(s, b, out.data(), scratch);
+        const size_t n = static_cast<size_t>(s.framesInBlock(b)) * 2;
+        same = same && std::equal(out.begin(), out.begin() + static_cast<std::ptrdiff_t>(n),
+                                  input.begin() + static_cast<std::ptrdiff_t>(b * mp::kSplitRiceBlockFrames * 2));
+      }
+    }
+    mp::setSplitRiceVectorKernels(true);
+    mp::setSplitRiceAvx2Kernels(true);
+    return same;
+  }
+
+  void run() override {
+    const uint64_t frames = kFrames;
+    const auto input = tone(200.0);
+    mp::SplitRiceStream medium, high;
+    MP_CHECK(mp::encodeSplitRice(input.data(), frames, 2, 16, medium), "medium codes");
+    MP_CHECK(mp::encodeSplitRice(input.data(), frames, 2, 16, high, nullptr, mp::SplitRiceLevel::High),
+             "high codes");
+    std::printf("    a 240 Hz tone at 16 bits: medium %zu bytes, high %zu\n", medium.data.size(), high.data.size());
+    MP_CHECK(high.data.size() * 10 < medium.data.size() * 9, "high takes a tenth less than medium");
+
+    // The second block's first channel: its predictor byte follows the mode.
+    const size_t first = high.blockOffsets[1] + 1;
+    MP_CHECK(((high.data[first] >> 4) & 3) != 0, "the second block's first channel has a cycle");
+
+    MP_CHECK(exact(high, input), "every block comes back exact with every kernel");
+
+    // Half a frame off a whole period: some block takes the point between two.
+    const auto between = tone(200.5);
+    mp::SplitRiceStream halfway;
+    MP_CHECK(mp::encodeSplitRice(between.data(), frames, 2, 16, halfway, nullptr, mp::SplitRiceLevel::High),
+             "the 200.5-frame tone codes");
+    bool half = false;
+    for (size_t b = 0; b < halfway.blockCount(); ++b)
+      half = half || ((halfway.data[halfway.blockOffsets[b] + 1] >> 6) & 1) != 0;
+    MP_CHECK(half, "a block references half a frame between two");
+    MP_CHECK(exact(halfway, between), "and comes back exact with every kernel");
+
+    mp::SplitRiceScratch scratch;
+    std::vector<int32_t> out(mp::kSplitRiceBlockFrames * 2);
+
+    // A lag under eight is no block this codec writes.
+    auto damaged = high;
+    damaged.data[first + 1] = 3;
+    damaged.data[first + 2] = 0;
+    mp::CodecError error = mp::CodecError::None;
+    MP_CHECK(!mp::decodeSplitRiceBlock(damaged, 1, out.data(), scratch, &error), "a lag of 3 is refused");
+  }
+};
+
+// Max on resonant noise at 16 bits: white noise through three resonances
+// at unrelated pitches, so no period repeats and the linear predictor has
+// the spectrum to work on. Some channel takes one, every block comes back
+// exact with every kernel, Max takes less than High, and a damaged
+// predictor is refused. A pair at full scale, whose side needs 17 bits,
+// comes back exact too.
+class SplitRiceMaxTest : public mp::test::Test {
+public:
+  SplitRiceMaxTest() : mp::test::Test("functional.codec.split-rice-max", Category::Functional) {}
+
+  void run() override {
+    const uint64_t frames = SplitRiceHighTest::kFrames;
+    std::vector<int32_t> input(frames * 2);
+    std::mt19937 rng(33u);
+    std::normal_distribution<double> noise(0.0, 1.0);
+    // Cycles a frame, high in the band, where the fixed predictors lose.
+    const double pitch[3] = {0.1931, 0.2773, 0.3619};
+    double y[3][2][2] = {};
+    for (uint64_t f = 0; f < frames; ++f) {
+      double v[2] = {0.0, 0.0};
+      for (int c = 0; c < 2; ++c) {
+        const double drive = noise(rng);
+        for (int k = 0; k < 3; ++k) {
+          const double a1 = 2.0 * 0.997 * std::cos(2.0 * 3.14159265358979 * pitch[k]), a2 = -0.997 * 0.997;
+          const double out = a1 * y[k][c][0] + a2 * y[k][c][1] + drive;
+          y[k][c][1] = y[k][c][0];
+          y[k][c][0] = out;
+          v[c] += out;
+        }
+      }
+      input[2 * f] = std::clamp(static_cast<int32_t>(std::lround(60.0 * v[0])), -32768, 32767);
+      input[2 * f + 1] = std::clamp(static_cast<int32_t>(std::lround(60.0 * (0.7 * v[0] + 0.3 * v[1]))), -32768, 32767);
+    }
+    mp::SplitRiceStream high, max;
+    MP_CHECK(mp::encodeSplitRice(input.data(), frames, 2, 16, high, nullptr, mp::SplitRiceLevel::High),
+             "high codes");
+    MP_CHECK(mp::encodeSplitRice(input.data(), frames, 2, 16, max, nullptr, mp::SplitRiceLevel::Max),
+             "max codes");
+    std::printf("    resonant noise at 16 bits: high %zu bytes, max %zu\n", high.data.size(), max.data.size());
+    MP_CHECK(max.data.size() * 10 < high.data.size() * 9, "max takes a tenth less than high");
+
+    // The second block's first channel: its predictor byte follows the mode.
+    const size_t first = max.blockOffsets[1] + 1;
+    MP_CHECK((max.data[first] & 0x80) != 0, "the second block's first channel has a linear predictor");
+    MP_CHECK(SplitRiceHighTest::exact(max, input), "every block comes back exact with every kernel");
+
+    mp::SplitRiceScratch scratch;
+    std::vector<int32_t> out(mp::kSplitRiceBlockFrames * 2);
+    mp::CodecError error = mp::CodecError::None;
+    auto damaged = max;
+    damaged.data[first] |= 0x40;
+    MP_CHECK(!mp::decodeSplitRiceBlock(damaged, 1, out.data(), scratch, &error), "bit 6 beside a predictor is refused");
+    damaged = max;
+    damaged.data[first + 1] = 16;
+    MP_CHECK(!mp::decodeSplitRiceBlock(damaged, 1, out.data(), scratch, &error), "a shift of 16 is refused");
+    damaged = max;
+    damaged.data[first] = 0x80 | 33;
+    MP_CHECK(!mp::decodeSplitRiceBlock(damaged, 1, out.data(), scratch, &error), "33 taps are refused");
+
+    // Full scale, the channels opposite: the side leaves 16 bits.
+    std::vector<int32_t> loud(input.size());
+    for (uint64_t f = 0; f < frames; ++f) {
+      const int32_t v = std::clamp(input[2 * f] * 4, -32768, 32767);
+      loud[2 * f] = v;
+      loud[2 * f + 1] = v == -32768 ? 32767 : -v;
+    }
+    mp::SplitRiceStream wide;
+    MP_CHECK(mp::encodeSplitRice(loud.data(), frames, 2, 16, wide, nullptr, mp::SplitRiceLevel::Max),
+             "full scale codes");
+    MP_CHECK(SplitRiceHighTest::exact(wide, loud), "and comes back exact with every kernel");
   }
 };
 
@@ -493,6 +762,12 @@ public:
                   100.0 * static_cast<double>(deltaPayload.size()) / plain);
       MP_CHECK(static_cast<double>(ricePayload.size()) < 0.5 * plain, "under half of plain storage");
       MP_CHECK(ricePayload.size() < deltaPayload.size(), "and smaller than predictive delta");
+      mp::SplitRiceStream light;
+      MP_CHECK(mp::encodeSplitRice(input.data(), frames, 2, width, light, &error, mp::SplitRiceLevel::Light),
+               "light encode");
+      std::printf("    the same tone light: %.1f %% of plain\n",
+                  100.0 * static_cast<double>(light.data.size()) / plain);
+      MP_CHECK(static_cast<double>(light.data.size()) < 0.6 * plain, "light: under 60 percent of plain storage");
     }
   }
 };
@@ -514,13 +789,16 @@ public:
         input[f * 2 + c] = static_cast<int32_t>(
             std::lround(400000.0 * std::sin(2.0 * 3.141592653589793 * (static_cast<double>(f) / 183.7 + 0.1 * static_cast<double>(c))))) +
                            noise(rng);
-    mp::SplitRiceStream stream;
+    mp::SplitRiceStream stream, light;
     MP_CHECK(mp::encodeSplitRice(input.data(), frames, 2, 24, stream), "encode");
-    std::printf("    split Rice: %.1f %% of plain 24-bit\n",
-                100.0 * static_cast<double>(stream.bytes()) / (static_cast<double>(frames) * 6.0));
+    MP_CHECK(mp::encodeSplitRice(input.data(), frames, 2, 24, light, nullptr, mp::SplitRiceLevel::Light),
+             "light encode");
+    std::printf("    split Rice: %.1f %% of plain 24-bit, light %.1f %%\n",
+                100.0 * static_cast<double>(stream.bytes()) / (static_cast<double>(frames) * 6.0),
+                100.0 * static_cast<double>(light.bytes()) / (static_cast<double>(frames) * 6.0));
     mp::SplitRiceScratch scratch;
     std::vector<int32_t> out(mp::kSplitRiceBlockFrames * 2);
-    auto rate = [&](bool useVector) {
+    auto rateOf = [&](const mp::SplitRiceStream& stream, bool useVector) {
       mp::setSplitRiceVectorKernels(useVector);
       const auto t0 = std::chrono::steady_clock::now();
       int rounds = 0;
@@ -532,10 +810,15 @@ public:
       } while (seconds < 0.5);
       return static_cast<double>(rounds) * static_cast<double>(frames) / seconds;
     };
-    const double plain = rate(false);
-    const double fast = rate(true);
+    const double plain = rateOf(stream, false);
+    const double fast = rateOf(stream, true);
+    const double lightPlain = rateOf(light, false);
+    const double lightFast = rateOf(light, true);
     mp::setSplitRiceVectorKernels(true);
     std::printf("    split Rice decode: %.0f M frames/s plain, %.0f M frames/s vector\n", plain / 1e6, fast / 1e6);
+    std::printf("    light decode: %.0f M frames/s plain, %.0f M frames/s vector\n", lightPlain / 1e6,
+                lightFast / 1e6);
+    MP_CHECK(lightPlain > 0.0 && lightFast > 0.0, "light decodes");
     MP_CHECK(plain > 0.0 && fast > 0.0, "both decode");
     if (mp::splitRiceVectorKernels())
       MP_CHECK(fast > 0.8 * plain, "the vector kernels are no slower than the plain ones");
@@ -551,7 +834,12 @@ static DeltaBytesTest g_deltaBytes;
 static DeltaResumeTest g_deltaResume;
 static DeltaRatioTest g_deltaRatio;
 static SplitRiceBytesTest g_splitRiceBytes;
+static SplitRiceLightBytesTest g_splitRiceLightBytes;
 static SplitRiceKernelsTest g_splitRiceKernels;
+static SplitRiceStoreTest g_splitRiceStore;
+static SplitRiceLevelsTest g_splitRiceLevels;
+static SplitRiceHighTest g_splitRiceHigh;
+static SplitRiceMaxTest g_splitRiceMax;
 static SplitRiceRatioTest g_splitRiceRatio;
 static SplitRiceSpeedTest g_splitRiceSpeed;
 

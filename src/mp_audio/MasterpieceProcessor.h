@@ -2074,6 +2074,9 @@ public:
   // as they play. Applies to the next load.
   void setCodeSamples(bool on) { samples_.setCodeSamples(on); }
   bool codeSamples() const { return samples_.codeSamples(); }
+  // How hard: Light is the least work at decode, Max the least memory.
+  void setCodeLevel(SplitRiceLevel level) { samples_.setCodeLevel(level); }
+  SplitRiceLevel codeLevel() const { return samples_.codeLevel(); }
 
   // --- sparse loading -----------------------------------------------------
   // How many notes of a rank are loaded: 1 for every note, 2 for every second
@@ -3187,6 +3190,7 @@ private:
     juce::File organ;
     SampleStorage storage = SampleStorage::Float32;
     bool mono = false, stream = false, code = false;
+    SplitRiceLevel level = SplitRiceLevel::Medium;
     int64_t streamHead = 0, preload = 0;
     int streamHeadPercent = 0;
     double releaseBuffer = 0.0;

@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <atomic>
 #include <bit>
+#include <cmath>
+#include <complex>
 #include <cstring>
 
 #if defined(_M_X64) || defined(__x86_64__)
@@ -15,8 +17,10 @@
 #if defined(_MSC_VER) && !defined(__clang__)
 #include <intrin.h>
 #define MP_SSE41
+#define MP_SR_AVX2
 #else
 #define MP_SSE41 __attribute__((target("sse4.1")))
+#define MP_SR_AVX2 __attribute__((target("avx2")))
 #endif
 #endif
 
@@ -31,6 +35,25 @@ constexpr int kMaxK = 31;
 constexpr int kVectorK = 25;                   // the widest k the vector unpack takes
 constexpr int kMaxOrder = 8;                   // what the decoder takes
 constexpr int kEncodeOrder = 3;                // what the encoder tries
+constexpr int kLightOrder = 2;                 // what it tries for a packed block: order 3
+                                               // costs a sixth more decode for 1.5 % of size
+constexpr int kRun = 64;                       // values that share a width, packed
+constexpr int kRunsPerGroup = kGroup / kRun;
+constexpr int kRunsPerBlock = kBlock / kRun;
+constexpr int kPackedMode = 4;                 // the mode bit of a packed block
+constexpr int kMinLag = 8;                     // the shortest cycle: eight values at a time
+constexpr int kLagCost = 16;                   // a cycle's lag in the channel's header, bits
+constexpr int kLpcBit = 0x80;                  // the predictor byte of a linear predictor
+constexpr int kLpcMaxOrder = 32;               // its most taps
+constexpr int kLpcMaxShift = 15;               // the most fraction bits of its coefficients
+constexpr int kLpcOrders[] = {8, 16, 32};      // what the encoder tries
+// The decoder's working memory for a channel with a linear predictor: the
+// taps each of eight values takes from the values before the eight, then
+// the samples before the block and the block's values, 16 bits each.
+constexpr int kLpcMats = 8 * kLpcMaxOrder;
+constexpr size_t kLpcStride = kLpcMats + kLpcMaxOrder + kBlock + 16;
+// The frames before a block the encoder keeps for its predictors.
+constexpr int kBack = kLpcMaxOrder;
 // One channel's positions of the unary stream's ones: the -1 before the
 // first, one per value, and room for the eight a byte may add past the end.
 constexpr size_t kMarkStride = 1 + kBlock + 128;
@@ -94,8 +117,13 @@ struct Candidate {
   int order = 0;
   std::vector<uint32_t> u;  // the residuals, zigzagged, padded to whole groups
   uint8_t k[kGroupsPerBlock] = {};
+  uint8_t w[kRunsPerBlock] = {};  // packed: each run's width
   int groups = 0;
   int32_t hist[kMaxOrder] = {};
+  int lag = 0, half = 0, gain = 0;  // the cycle stage; gain 0 for none
+  int lpc = 0, shift = 0;           // Max: the linear predictor's taps; 0 for none
+  int16_t q[kLpcMaxOrder] = {};     // its coefficients, q[k - 1] for the value k back
+  int16_t back[kLpcMaxOrder] = {};  // the samples before the block, newest first
 };
 
 // The best k for one group, and its cost in bits.
@@ -119,19 +147,310 @@ int pickK(const uint32_t* u, uint64_t& bits) {
   return best;
 }
 
-// `t` is frame 0 of the block; t[-1] to t[-kMaxOrder] are the frames before.
-void analyse(const int32_t* t, int n, int padded, int order, Candidate& c) {
-  std::vector<uint32_t> tmp(static_cast<size_t>(order + n));
-  for (int i = 0; i < order; ++i) tmp[static_cast<size_t>(i)] = static_cast<uint32_t>(t[i - order]);
-  for (int i = 0; i < n; ++i) tmp[static_cast<size_t>(order + i)] = static_cast<uint32_t>(t[i]);
+// The residuals the order-`order` fixed predictor leaves for the block's n
+// frames, into e. `t` is frame 0 of the block; t[-1] to t[-kMaxOrder] are
+// the frames before.
+void differences(const int32_t* t, int n, int order, int32_t* e) {
+  uint32_t tmp[kBlock + kMaxOrder];
+  const int size = order + n;
+  for (int i = 0; i < size; ++i) tmp[i] = static_cast<uint32_t>(t[i - order]);
   for (int m = 0; m < order; ++m)
-    for (size_t i = tmp.size() - 1; i >= 1; --i) tmp[i] -= tmp[i - 1];
+    for (int i = size - 1; i >= 1; --i) tmp[i] -= tmp[i - 1];
+  for (int i = 0; i < n; ++i) e[i] = static_cast<int32_t>(tmp[order + i]);
+}
+
+// What the cycle stage takes from residual i: (e[i - lag] * g >> 2), or
+// with `half` the point between two residuals, ((e[i - lag] + e[i - lag -
+// 1]) * g >> 3), from value lag + half on; in arithmetic that wraps.
+inline uint32_t cycleShare(const int32_t* e, int i, int lag, int half, int g) {
+  uint32_t back = static_cast<uint32_t>(e[i - lag]);
+  if (half) back += static_cast<uint32_t>(e[i - lag - 1]);
+  return static_cast<uint32_t>(static_cast<int32_t>(back * static_cast<uint32_t>(g)) >> (2 + half));
+}
+
+// The residual less its share a period back: r[i] = e[i] - share.
+void cycleResiduals(const int32_t* e, int n, int lag, int half, int g, int32_t* r) {
+  for (int i = 0; i < n; ++i) {
+    uint32_t v = static_cast<uint32_t>(e[i]);
+    if (i >= lag + half) v -= cycleShare(e, i, lag, half, g);
+    r[i] = static_cast<int32_t>(v);
+  }
+}
+
+// About what n residuals cost split Rice: each group at the k its mean
+// gives. Close enough to rank candidates before one is coded in full.
+uint64_t estimateBits(const int32_t* r, int n) {
+  uint64_t total = 0;
+  for (int g0 = 0; g0 < n; g0 += kGroup) {
+    const int count = std::min(kGroup, n - g0);
+    uint64_t sum = 0;
+    for (int i = 0; i < count; ++i) sum += zigzag(r[g0 + i]);
+    const uint64_t mean = sum / static_cast<uint64_t>(count);
+    const int k = mean ? bitLength(static_cast<uint32_t>(std::min<uint64_t>(mean, 0xFFFFFFFFu))) - 1 : 0;
+    total += static_cast<uint64_t>(count) * static_cast<uint64_t>(k + 1) + (sum >> k);
+  }
+  return total;
+}
+
+void costResiduals(const int32_t* e, int n, int padded, bool packed, Candidate& c);
+
+// `t` is frame 0 of the block; t[-1] to t[-kMaxOrder] are the frames before.
+// Packed, a run costs its width in every value; otherwise a group costs its
+// Rice code.
+void analyse(const int32_t* t, int n, int padded, int order, bool packed, Candidate& c) {
+  std::vector<int32_t> e(static_cast<size_t>(n));
+  differences(t, n, order, e.data());
   c.order = order;
-  c.u.assign(static_cast<size_t>(padded), 0);
-  for (int i = 0; i < n; ++i)
-    c.u[static_cast<size_t>(i)] = zigzag(static_cast<int32_t>(tmp[static_cast<size_t>(order + i)]));
+  c.lag = 0;
+  c.half = 0;
+  c.gain = 0;
+  c.lpc = 0;
   for (int i = 0; i < kMaxOrder; ++i) c.hist[i] = i < order ? t[-1 - i] : 0;
+  costResiduals(e.data(), n, padded, packed, c);
+}
+
+// The same with the cycle stage after the predictor.
+void analyseCycle(const int32_t* t, int n, int padded, int order, int lag, int half, int g,
+                  Candidate& c) {
+  std::vector<int32_t> e(static_cast<size_t>(n)), r(static_cast<size_t>(n));
+  differences(t, n, order, e.data());
+  cycleResiduals(e.data(), n, lag, half, g, r.data());
+  c.order = order;
+  c.lag = lag;
+  c.half = half;
+  c.gain = g;
+  c.lpc = 0;
+  for (int i = 0; i < kMaxOrder; ++i) c.hist[i] = i < order ? t[-1 - i] : 0;
+  costResiduals(r.data(), n, padded, false, c);
+  if (c.bits != ~0ull) c.bits += kLagCost;
+}
+
+// The cheapest cycle for one signal of a block, coded into c: lags a frame
+// either side of the pipe's period in half frames, gains a half, three
+// quarters and one, predictor orders 0 to 3, ranked by estimate. False when the period gives
+// the block no lag to try.
+bool bestCycle(const int32_t* t, int n, int padded, int period, std::vector<int32_t>& e,
+               std::vector<int32_t>& r, Candidate& c) {
+  e.resize(static_cast<size_t>(n));
+  r.resize(static_cast<size_t>(n));
+  uint64_t least = ~0ull;
+  int bestOrder = 0, bestLag = 0, bestHalf = 0, bestGain = 0;
+  for (int order = 0; order <= kEncodeOrder; ++order) {
+    differences(t, n, order, e.data());
+    for (int twice = 2 * period - 2; twice <= 2 * period + 2; ++twice) {
+      const int lag = twice >> 1, half = twice & 1;
+      if (lag < kMinLag || lag + half >= n - kGroup / 4) continue;
+      for (int g = 2; g <= 4; ++g) {
+        cycleResiduals(e.data(), n, lag, half, g, r.data());
+        const uint64_t bits = estimateBits(r.data(), n) + static_cast<uint64_t>(order) * 32;
+        if (bits < least) {
+          least = bits;
+          bestOrder = order;
+          bestLag = lag;
+          bestHalf = half;
+          bestGain = g;
+        }
+      }
+    }
+  }
+  if (bestLag == 0) return false;
+  analyseCycle(t, n, padded, bestOrder, bestLag, bestHalf, bestGain, c);
+  return true;
+}
+
+// Max: the covariance of the block's values and their delays, R[j][k] the
+// sum over the block of t[i - j] * t[i - k], j and k 0 to kLpcMaxOrder, in
+// a square of kLpcMaxOrder + 1. The first row is summed; every other entry
+// is its neighbour up and left, with the frame that enters added and the
+// frame that leaves taken away. Exact for 16-bit values.
+void lpcCovariance(const int32_t* t, int n, double* R) {
+  constexpr int D = kLpcMaxOrder + 1;
+  for (int k = 0; k < D; ++k) {
+    int64_t s = 0;
+    for (int i = 0; i < n; ++i) s += static_cast<int64_t>(t[i]) * t[i - k];
+    R[k] = R[k * D] = static_cast<double>(s);
+  }
+  for (int j = 1; j < D; ++j)
+    for (int k = j; k < D; ++k) {
+      const int64_t enters = static_cast<int64_t>(t[-j]) * t[-k];
+      const int64_t leaves = static_cast<int64_t>(t[n - j]) * t[n - k];
+      R[j * D + k] = R[k * D + j] = R[(j - 1) * D + k - 1] + static_cast<double>(enters - leaves);
+    }
+}
+
+// The `order` coefficients that predict t[i] best from the values before it,
+// a[k - 1] weighing t[i - k], least squares by Cholesky on the covariance.
+// False when the fit fails.
+bool lpcFit(const double* R, int order, double* a) {
+  constexpr int D = kLpcMaxOrder + 1;
+  double L[kLpcMaxOrder][kLpcMaxOrder];
+  double trace = 0.0;
+  for (int j = 1; j <= order; ++j) trace += R[j * D + j];
+  const double ridge = 1e-9 * trace / order + 1e-3;  // keeps a pure tone solvable
+  for (int j = 0; j < order; ++j)
+    for (int k = 0; k <= j; ++k) {
+      double s = R[(j + 1) * D + k + 1] + (j == k ? ridge : 0.0);
+      for (int m = 0; m < k; ++m) s -= L[j][m] * L[k][m];
+      if (j == k) {
+        if (!(s > 0.0)) return false;
+        L[j][j] = std::sqrt(s);
+      } else {
+        L[j][k] = s / L[k][k];
+      }
+    }
+  double y[kLpcMaxOrder];
+  for (int j = 0; j < order; ++j) {
+    double s = R[(j + 1) * D];
+    for (int m = 0; m < j; ++m) s -= L[j][m] * y[m];
+    y[j] = s / L[j][j];
+  }
+  for (int j = order - 1; j >= 0; --j) {
+    double s = y[j];
+    for (int m = j + 1; m < order; ++m) s -= L[m][j] * a[m];
+    a[j] = s / L[j][j];
+  }
+  return true;
+}
+
+// What the linear predictor leaves: r[i] = t[i] - (the sum of q[k - 1] *
+// t[i - k], k 1 to order, in arithmetic that wraps) >> shift. The decoder
+// reads the values back as 16 bits, so the predictor does too.
+void lpcResiduals(const int32_t* t, int n, int order, const int16_t* q, int shift, int32_t* r) {
+  for (int i = 0; i < n; ++i) {
+    uint32_t acc = 0;
+    for (int k = 1; k <= order; ++k)
+      acc += static_cast<uint32_t>(q[k - 1] * static_cast<int16_t>(t[i - k]));
+    r[i] = static_cast<int32_t>(static_cast<uint32_t>(t[i]) -
+                                static_cast<uint32_t>(static_cast<int32_t>(acc) >> shift));
+  }
+}
+
+// The cheapest linear predictor for one signal of a block, 8, 16 or 32 taps,
+// coded into `best`; `work` is room for the others. False when the signal
+// does not fit 16 bits, block and history, or no fit holds.
+bool bestLpc(const int32_t* t, int n, int padded, std::vector<int32_t>& r, Candidate& best,
+             Candidate& work) {
+  for (int i = -kLpcMaxOrder; i < n; ++i)
+    if (t[i] < INT16_MIN || t[i] > INT16_MAX) return false;
+  constexpr int D = kLpcMaxOrder + 1;
+  double R[D * D];
+  lpcCovariance(t, n, R);
+  r.resize(static_cast<size_t>(n));
+  best.bits = ~0ull;
+  bool found = false;
+  for (const int order : kLpcOrders) {
+    if (n <= 8 * order) continue;  // a short block pays more for the taps than they save
+    double a[kLpcMaxOrder];
+    if (!lpcFit(R, order, a)) continue;
+    double most = 0.0;
+    bool finite = true;
+    for (int k = 0; k < order; ++k) {
+      most = std::max(most, std::fabs(a[k]));
+      finite = finite && std::isfinite(a[k]);
+    }
+    if (!finite) continue;
+    int shift = kLpcMaxShift;
+    while (shift > 0 && most * static_cast<double>(1 << shift) > 32767.0) --shift;
+    if (most * static_cast<double>(1 << shift) > 32767.0) continue;
+    work.order = 0;
+    work.lag = work.half = work.gain = 0;
+    work.lpc = order;
+    work.shift = shift;
+    for (int k = 0; k < kLpcMaxOrder; ++k) {
+      work.q[k] = k < order ? static_cast<int16_t>(std::lround(a[k] * static_cast<double>(1 << shift))) : 0;
+      work.back[k] = k < order ? static_cast<int16_t>(t[-1 - k]) : 0;
+    }
+    lpcResiduals(t, n, order, work.q, shift, r.data());
+    costResiduals(r.data(), n, padded, false, work);
+    work.bits += 8 + static_cast<uint64_t>(order) * 32;  // the shift, the coefficients, the history
+    if (work.bits < best.bits) {
+      std::swap(best, work);
+      found = true;
+    }
+  }
+  return found;
+}
+
+// In place, a power of two long.
+void fft(std::vector<std::complex<double>>& a, bool inverse) {
+  const size_t n = a.size();
+  for (size_t i = 1, j = 0; i < n; ++i) {
+    size_t bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) std::swap(a[i], a[j]);
+  }
+  constexpr double kTwoPi = 6.283185307179586;
+  for (size_t len = 2; len <= n; len <<= 1) {
+    const double angle = (inverse ? kTwoPi : -kTwoPi) / static_cast<double>(len);
+    const std::complex<double> step(std::cos(angle), std::sin(angle));
+    for (size_t i = 0; i < n; i += len) {
+      std::complex<double> w(1.0, 0.0);
+      for (size_t k = 0; k < len / 2; ++k) {
+        const std::complex<double> u = a[i + k], v = a[i + k + len / 2] * w;
+        a[i + k] = u + v;
+        a[i + k + len / 2] = u - v;
+        w *= step;
+      }
+    }
+  }
+}
+
+// The pipe's period in frames: the strongest peak of the autocorrelation of
+// up to 8192 frames of the first channel from the sample's middle, past its
+// first fall below zero, when it holds at least 0.3 of the energy. 0 when
+// the sample has none.
+int samplePeriod(const int32_t* samples, uint64_t frames, int channels) {
+  constexpr size_t kWindow = 8192;
+  const size_t len = static_cast<size_t>(std::min<uint64_t>(frames, kWindow));
+  if (len < 4 * kMinLag) return 0;
+  const size_t first = static_cast<size_t>((frames - len) / 2);
+  double mean = 0.0;
+  for (size_t i = 0; i < len; ++i) mean += samples[(first + i) * static_cast<size_t>(channels)];
+  mean /= static_cast<double>(len);
+  std::vector<std::complex<double>> a(std::bit_ceil(2 * len));
+  for (size_t i = 0; i < len; ++i) a[i] = samples[(first + i) * static_cast<size_t>(channels)] - mean;
+  fft(a, false);
+  for (auto& v : a) v = std::norm(v);
+  fft(a, true);
+  const size_t top = std::min(len / 2, static_cast<size_t>(kBlock));
+  const double energy = a[0].real();
+  if (energy <= 0.0) return 0;
+  size_t lo = 1;
+  while (lo < top && a[lo].real() >= 0.0) ++lo;
+  if (lo >= top) return 0;
+  size_t peak = lo;
+  for (size_t i = lo; i < top; ++i)
+    if (a[i].real() > a[peak].real()) peak = i;
+  if (a[peak].real() < 0.3 * energy || peak + 1 >= top) return 0;
+  const double y0 = a[peak - 1].real(), y1 = a[peak].real(), y2 = a[peak + 1].real();
+  const double den = y0 - 2.0 * y1 + y2;
+  const double at = static_cast<double>(peak) + (den != 0.0 ? 0.5 * (y0 - y2) / den : 0.0);
+  return static_cast<int>(std::lround(at));
+}
+
+// Residuals into the candidate's body and its cost, with its header: the
+// order's samples before the block and the k or widths.
+void costResiduals(const int32_t* e, int n, int padded, bool packed, Candidate& c) {
+  const int order = c.order;
+  c.u.assign(static_cast<size_t>(padded), 0);
+  for (int i = 0; i < n; ++i) c.u[static_cast<size_t>(i)] = zigzag(e[i]);
   c.groups = padded / kGroup;
+  if (packed) {
+    const int runs = padded / kRun;
+    uint64_t total = static_cast<uint64_t>(order) * 32 + static_cast<uint64_t>(runs) * 5;
+    for (int j = 0; j < runs; ++j) {
+      uint32_t all = 0;  // or'ed: the same bit length as the largest
+      for (int i = 0; i < kRun; ++i) all |= c.u[static_cast<size_t>(j) * kRun + static_cast<size_t>(i)];
+      const int w = bitLength(all);
+      c.w[j] = static_cast<uint8_t>(w);
+      total += static_cast<uint64_t>(kRun) * static_cast<uint64_t>(w);
+      if (w > kMaxK) total = ~0ull;  // wider than a run's width can say
+      if (total == ~0ull) break;
+    }
+    c.bits = total;
+    return;
+  }
   uint64_t total = static_cast<uint64_t>(order) * 32 + static_cast<uint64_t>(c.groups) * 5;
   for (int g = 0; g < c.groups; ++g) {
     uint64_t b = 0;
@@ -176,6 +495,23 @@ void writeBody(const Candidate& c, std::vector<uint8_t>& out) {
   while ((out.size() - start) % 8) out.push_back(0);
 }
 
+// A run of 64 values at width w is 8 * w bytes, so the runs stay whole bytes.
+void writePackedBody(const Candidate& c, std::vector<uint8_t>& out) {
+  const int runs = c.groups * kRunsPerGroup;
+  {
+    BitWriter w(out);
+    for (int j = 0; j < runs; ++j) w.put(c.w[j], 5);
+    w.flush();
+  }
+  BitWriter w(out);
+  for (int j = 0; j < runs; ++j) {
+    const int width = c.w[j];
+    if (width == 0) continue;
+    for (int i = 0; i < kRun; ++i) w.put(c.u[static_cast<size_t>(j) * kRun + static_cast<size_t>(i)], width);
+  }
+  w.flush();
+}
+
 // ------------------------------------------------------------------ kernels
 
 // The tables the vector unpack and the byte-at-a-time mark parse read.
@@ -185,8 +521,25 @@ struct Tables {
   uint16_t start[kVectorK + 1][8];
   alignas(16) uint8_t markPos[256][8];
   uint8_t markCount[256];
+  // The AVX2 unpack of a packed run: eight values of w bits are w bytes, so
+  // every eight start on a byte. The low half's four values start at its
+  // first byte, the high half's at byte packedHigh; each lane takes the four
+  // bytes its value starts in and shifts right by packedShift.
+  alignas(32) uint8_t packedShuffle[kVectorK + 1][32];
+  alignas(32) uint32_t packedShift[kVectorK + 1][8];
+  uint8_t packedHigh[kVectorK + 1];
   Tables() {
     std::memset(this, 0, sizeof *this);
+    for (int w = 0; w <= kVectorK; ++w) {
+      packedHigh[w] = static_cast<uint8_t>((4 * w) >> 3);
+      for (int l = 0; l < 8; ++l) {
+        const int bit = l * w;
+        const int base = l < 4 ? 0 : 8 * packedHigh[w];
+        const int off = (bit - base) >> 3;
+        for (int b = 0; b < 4; ++b) packedShuffle[w][4 * l + b] = static_cast<uint8_t>(off + b);
+        packedShift[w][l] = static_cast<uint32_t>((bit - base) & 7);
+      }
+    }
     for (int b = 0; b < 256; ++b) {
       int c = 0;
       for (int i = 0; i < 8; ++i)
@@ -213,6 +566,20 @@ const Tables& tables() {
   static const Tables t;
   return t;
 }
+
+// One group of a channel with a linear predictor, for the kernels: x[i] =
+// r[i] + (the sum of q[k - 1] * h[i - k], k 1 to taps, in arithmetic that
+// wraps) >> shift. `h` holds the channel's values at 16 bits, the group's
+// first at h[0] and the 32 before it below; the group's values go there
+// too. q is 0 past the predictor's order. `mats` is for the vector kernels.
+struct LpcRun {
+  const int32_t* r;
+  int32_t* x;
+  int16_t* h;
+  const int16_t* q;
+  const int16_t* mats;
+  int taps, shift;
+};
 
 // The plain kernels: every machine, and the reference the vector ones match.
 struct Plain {
@@ -245,6 +612,16 @@ struct Plain {
     }
   }
 
+  // One packed run: kRun values of w bits each.
+  static void packed(const uint8_t* low, unsigned w, int32_t* r) {
+    const uint32_t mask = w >= 32 ? ~0u : (1u << w) - 1;
+    for (int i = 0; i < kRun; ++i) {
+      const uint64_t bit = static_cast<uint64_t>(i) * w;
+      const uint32_t v = w ? static_cast<uint32_t>(ld64(low + (bit >> 3)) >> (bit & 7)) & mask : 0;
+      r[i] = static_cast<int32_t>((v >> 1) ^ (0u - (v & 1u)));
+    }
+  }
+
   template <int P>
   static void prefix(const int32_t* r, int32_t* x, int32_t* carry) {
     for (int i = 0; i < kGroup; ++i) {
@@ -254,6 +631,43 @@ struct Plain {
         carry[m] = static_cast<int32_t>(v);
       }
       x[i] = static_cast<int32_t>(v);
+    }
+  }
+
+  // Undoes the cycle stage over `count` residuals from value `from` of the
+  // block: e[i] = r[i] + its share a period back (cycleShare), in 32-bit
+  // arithmetic that wraps. `e` holds the block's values before `from`.
+  static void cycle(const int32_t* r, int32_t* e, int from, int count, int lag, int half, int g) {
+    for (int i = 0; i < count; ++i) {
+      const int at = from + i;
+      uint32_t v = static_cast<uint32_t>(r[i]);
+      if (at >= lag + half) v += cycleShare(e, at, lag, half, g);
+      e[at] = static_cast<int32_t>(v);
+    }
+  }
+
+  // Undoes the linear predictor over a group.
+  static void lpc(const LpcRun& c) {
+    for (int i = 0; i < kGroup; ++i) {
+      uint32_t acc = 0;
+      for (int k = 1; k <= c.taps; ++k) acc += static_cast<uint32_t>(c.q[k - 1] * c.h[i - k]);
+      const int32_t v = static_cast<int32_t>(static_cast<uint32_t>(c.r[i]) +
+                                             static_cast<uint32_t>(static_cast<int32_t>(acc) >> c.shift));
+      c.x[i] = v;
+      c.h[i] = static_cast<int16_t>(v);
+    }
+  }
+  // Both channels of a stereo group.
+  static void lpc2(const LpcRun& a, const LpcRun& b) {
+    lpc(a);
+    lpc(b);
+  }
+
+  // The smallest and largest of `count` values, folded into lo and hi.
+  static void range(const int32_t* v, size_t count, int32_t& lo, int32_t& hi) {
+    for (size_t i = 0; i < count; ++i) {
+      lo = std::min(lo, v[i]);
+      hi = std::max(hi, v[i]);
     }
   }
 
@@ -330,6 +744,33 @@ struct Vector {
     }
   }
 
+  MP_SSE41 static void packed(const uint8_t* low, unsigned w, int32_t* r) {
+    if (w > static_cast<unsigned>(kVectorK)) {
+      Plain::packed(low, w, r);
+      return;
+    }
+    if (w == 0) {
+      std::memset(r, 0, sizeof(int32_t) * kRun);
+      return;
+    }
+    const Tables& T = tables();
+    const __m128i one = _mm_set1_epi32(1);
+    const __m128i zero = _mm_setzero_si128();
+    const __m128i mask = _mm_set1_epi32(static_cast<int>((1u << w) - 1));
+    for (int b = 0; b < kRun / 4; b += 8) {
+      const uint8_t* blk = low + static_cast<size_t>(b >> 1) * w;  // 32 values: 4 * w bytes
+      for (int jj = 0; jj < 8; ++jj) {
+        const uint8_t* s = blk + T.start[w][jj];
+        __m128i v = _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i*>(s)),
+                                     _mm_load_si128(reinterpret_cast<const __m128i*>(T.shuffle[w][jj])));
+        v = _mm_mullo_epi32(v, _mm_load_si128(reinterpret_cast<const __m128i*>(T.multiply[w][jj])));
+        v = _mm_and_si128(_mm_srli_epi32(v, 7), mask);
+        const __m128i d = _mm_xor_si128(_mm_srli_epi32(v, 1), _mm_sub_epi32(zero, _mm_and_si128(v, one)));
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(r + 4 * (b + jj)), d);
+      }
+    }
+  }
+
   template <int P>
   MP_SSE41 static void prefix(const int32_t* r, int32_t* x, int32_t* carry) {
     if constexpr (P == 0) {
@@ -351,6 +792,155 @@ struct Vector {
     }
   }
 
+  // Four at a time: a lag of 8 or more means the four values one lag back
+  // are all done.
+  MP_SSE41 static void cycle(const int32_t* r, int32_t* e, int from, int count, int lag, int half,
+                             int g) {
+    int i = std::clamp(lag + half - from, 0, count);
+    std::memcpy(e + from, r, sizeof(int32_t) * static_cast<size_t>(i));
+    const __m128i gain = _mm_set1_epi32(g);
+    const __m128i shift = _mm_cvtsi32_si128(2 + half);
+    for (; i + 4 <= count; i += 4) {
+      const int at = from + i;
+      __m128i back = _mm_loadu_si128(reinterpret_cast<const __m128i*>(e + at - lag));
+      if (half) back = _mm_add_epi32(back, _mm_loadu_si128(reinterpret_cast<const __m128i*>(e + at - lag - 1)));
+      const __m128i v = _mm_add_epi32(_mm_loadu_si128(reinterpret_cast<const __m128i*>(r + i)),
+                                      _mm_sra_epi32(_mm_mullo_epi32(back, gain), shift));
+      _mm_storeu_si128(reinterpret_cast<__m128i*>(e + at), v);
+    }
+    Plain::cycle(r + i, e, from + i, count - i, lag, half, g);
+  }
+
+  // Eight values at a time. What each of the eight takes from the values
+  // before the eight is a dot product of 16-bit values, row j of `mats`
+  // holding the taps value j takes from them; the sums wrap like the plain
+  // kernel's, in whatever order they add. Then the eight one after another,
+  // each with the taps it takes from the ones before it among the eight.
+  // Row j's dot product. The two newest runs of eight come from registers:
+  // a1 the eight values just before the run, a2 the eight before those, at
+  // 16 bits; the values in the run itself read as 0. Older ones come from
+  // memory, stored long enough ago to be there.
+  template <int J>
+  MP_SSE41 static __m128i lpcRow(const LpcRun& c, int b, __m128i a1, __m128i a2) {
+    const int16_t* m = c.mats + J * kLpcMaxOrder;
+    const int last = c.taps - 8;
+    __m128i a = _mm_madd_epi16(_mm_alignr_epi8(_mm_setzero_si128(), a1, 2 * J),
+                               _mm_loadu_si128(reinterpret_cast<const __m128i*>(m + last)));
+    if (last > 0) {
+      a = _mm_add_epi32(a, _mm_madd_epi16(_mm_alignr_epi8(a1, a2, 2 * J),
+                                          _mm_loadu_si128(reinterpret_cast<const __m128i*>(m + last - 8))));
+      const int16_t* w = c.h + b + J - c.taps;
+      for (int t = 0; t < last - 8; t += 8)
+        a = _mm_add_epi32(a, _mm_madd_epi16(_mm_loadu_si128(reinterpret_cast<const __m128i*>(w + t)),
+                                            _mm_loadu_si128(reinterpret_cast<const __m128i*>(m + t))));
+    }
+    return a;
+  }
+
+  MP_SSE41 static void lpcBefore(const LpcRun& c, int b, __m128i a1, __m128i a2, int32_t* pre) {
+    const __m128i r0 = lpcRow<0>(c, b, a1, a2), r1 = lpcRow<1>(c, b, a1, a2);
+    const __m128i r2 = lpcRow<2>(c, b, a1, a2), r3 = lpcRow<3>(c, b, a1, a2);
+    const __m128i r4 = lpcRow<4>(c, b, a1, a2), r5 = lpcRow<5>(c, b, a1, a2);
+    const __m128i r6 = lpcRow<6>(c, b, a1, a2), r7 = lpcRow<7>(c, b, a1, a2);
+    _mm_store_si128(reinterpret_cast<__m128i*>(pre), _mm_hadd_epi32(_mm_hadd_epi32(r0, r1), _mm_hadd_epi32(r2, r3)));
+    _mm_store_si128(reinterpret_cast<__m128i*>(pre + 4), _mm_hadd_epi32(_mm_hadd_epi32(r4, r5), _mm_hadd_epi32(r6, r7)));
+  }
+
+  // The run's values out, and at 16 bits for the runs after it.
+  MP_SSE41 static __m128i lpcStore(const LpcRun& c, int b, const int32_t (&v)[8]) {
+    for (int j = 0; j < 8; ++j) c.x[b + j] = v[j];
+    const __m128i h = _mm_setr_epi16(static_cast<int16_t>(v[0]), static_cast<int16_t>(v[1]),
+                                     static_cast<int16_t>(v[2]), static_cast<int16_t>(v[3]),
+                                     static_cast<int16_t>(v[4]), static_cast<int16_t>(v[5]),
+                                     static_cast<int16_t>(v[6]), static_cast<int16_t>(v[7]));
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(c.h + b), h);
+    return h;
+  }
+
+  // The eight values, each from what the values before the eight give and
+  // the ones before it among the eight, written out so they stay in
+  // registers. The tap on the value just before comes last: the rest is
+  // summed while that value is still on its way.
+  static void lpcEight(const LpcRun& c, int b, const int32_t* pre, int32_t (&out)[8]) {
+    const int16_t* q = c.q;
+    const int32_t* r = c.r + b;
+    const int shift = c.shift;
+    auto put = [&](uint32_t sum, int j) {
+      return static_cast<int32_t>(static_cast<uint32_t>(r[j]) + static_cast<uint32_t>(static_cast<int32_t>(sum) >> shift));
+    };
+    auto tap = [&](int k, int32_t v) { return static_cast<uint32_t>(q[k - 1] * static_cast<int16_t>(v)); };
+    auto p = [&](int j) { return static_cast<uint32_t>(pre[j]); };
+    const int32_t v0 = put(p(0), 0);
+    const int32_t v1 = put(p(1) + tap(1, v0), 1);
+    const int32_t v2 = put(p(2) + tap(2, v0) + tap(1, v1), 2);
+    const int32_t v3 = put(p(3) + tap(3, v0) + tap(2, v1) + tap(1, v2), 3);
+    const int32_t v4 = put(p(4) + tap(4, v0) + tap(3, v1) + tap(2, v2) + tap(1, v3), 4);
+    const int32_t v5 = put(p(5) + tap(5, v0) + tap(4, v1) + tap(3, v2) + tap(2, v3) + tap(1, v4), 5);
+    const int32_t v6 = put(p(6) + tap(6, v0) + tap(5, v1) + tap(4, v2) + tap(3, v3) + tap(2, v4) + tap(1, v5), 6);
+    const int32_t v7 =
+        put(p(7) + tap(7, v0) + tap(6, v1) + tap(5, v2) + tap(4, v3) + tap(3, v4) + tap(2, v5) + tap(1, v6), 7);
+    out[0] = v0;
+    out[1] = v1;
+    out[2] = v2;
+    out[3] = v3;
+    out[4] = v4;
+    out[5] = v5;
+    out[6] = v6;
+    out[7] = v7;
+  }
+
+  MP_SSE41 static __m128i lpcLoad(const int16_t* h) {
+    return _mm_loadu_si128(reinterpret_cast<const __m128i*>(h));
+  }
+
+  MP_SSE41 static void lpc(const LpcRun& c) {
+    alignas(16) int32_t pre[8];
+    int32_t v[8];
+    __m128i a1 = lpcLoad(c.h - 8), a2 = lpcLoad(c.h - 16);
+    for (int b = 0; b < kGroup; b += 8) {
+      lpcBefore(c, b, a1, a2, pre);
+      lpcEight(c, b, pre, v);
+      a2 = a1;
+      a1 = lpcStore(c, b, v);
+    }
+  }
+
+  // Both channels in one pass: each value waits for the one before it, so
+  // the two chains run side by side.
+  MP_SSE41 static void lpc2(const LpcRun& a, const LpcRun& c) {
+    alignas(16) int32_t preA[8], preC[8];
+    int32_t va[8], vc[8];
+    __m128i a1 = lpcLoad(a.h - 8), a2 = lpcLoad(a.h - 16);
+    __m128i c1 = lpcLoad(c.h - 8), c2 = lpcLoad(c.h - 16);
+    for (int b = 0; b < kGroup; b += 8) {
+      lpcBefore(a, b, a1, a2, preA);
+      lpcBefore(c, b, c1, c2, preC);
+      lpcEight(a, b, preA, va);
+      lpcEight(c, b, preC, vc);
+      a2 = a1;
+      a1 = lpcStore(a, b, va);
+      c2 = c1;
+      c1 = lpcStore(c, b, vc);
+    }
+  }
+
+  MP_SSE41 static void range(const int32_t* v, size_t count, int32_t& lo, int32_t& hi) {
+    __m128i l = _mm_set1_epi32(lo), h = _mm_set1_epi32(hi);
+    size_t i = 0;
+    for (; i + 4 <= count; i += 4) {
+      const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(v + i));
+      l = _mm_min_epi32(l, x);
+      h = _mm_max_epi32(h, x);
+    }
+    l = _mm_min_epi32(l, _mm_shuffle_epi32(l, 0x4E));
+    l = _mm_min_epi32(l, _mm_shuffle_epi32(l, 0xB1));
+    h = _mm_max_epi32(h, _mm_shuffle_epi32(h, 0x4E));
+    h = _mm_max_epi32(h, _mm_shuffle_epi32(h, 0xB1));
+    lo = _mm_cvtsi128_si32(l);
+    hi = _mm_cvtsi128_si32(h);
+    Plain::range(v + i, count - i, lo, hi);
+  }
+
   MP_SSE41 static void stereo(int mode, const int32_t* a, const int32_t* b, int32_t* out) {
     const __m128i one = _mm_set1_epi32(1);
     for (int i = 0; i < kGroup; i += 4) {
@@ -370,6 +960,117 @@ struct Vector {
     }
   }
 };
+
+// The AVX2 kernels: the vector ones, with the packed unpack, the cascaded
+// sums and the width check eight values at a time.
+struct Avx2 : Vector {
+  MP_SR_AVX2 static void packed(const uint8_t* low, unsigned w, int32_t* r) {
+    if (w > static_cast<unsigned>(kVectorK)) {
+      Plain::packed(low, w, r);
+      return;
+    }
+    if (w == 0) {
+      std::memset(r, 0, sizeof(int32_t) * kRun);
+      return;
+    }
+    const Tables& T = tables();
+    const __m256i shuffle = _mm256_load_si256(reinterpret_cast<const __m256i*>(T.packedShuffle[w]));
+    const __m256i shift = _mm256_load_si256(reinterpret_cast<const __m256i*>(T.packedShift[w]));
+    const __m256i mask = _mm256_set1_epi32(static_cast<int>((1u << w) - 1));
+    const __m256i one = _mm256_set1_epi32(1);
+    const __m256i zero = _mm256_setzero_si256();
+    const size_t high = T.packedHigh[w];
+    for (int j = 0; j < kRun / 8; ++j) {
+      const uint8_t* s = low + static_cast<size_t>(j) * w;
+      __m256i v = _mm256_inserti128_si256(
+          _mm256_castsi128_si256(_mm_loadu_si128(reinterpret_cast<const __m128i*>(s))),
+          _mm_loadu_si128(reinterpret_cast<const __m128i*>(s + high)), 1);
+      v = _mm256_shuffle_epi8(v, shuffle);
+      v = _mm256_and_si256(_mm256_srlv_epi32(v, shift), mask);
+      v = _mm256_xor_si256(_mm256_srli_epi32(v, 1), _mm256_sub_epi32(zero, _mm256_and_si256(v, one)));
+      _mm256_storeu_si256(reinterpret_cast<__m256i*>(r + 8 * j), v);
+    }
+  }
+
+  template <int P>
+  MP_SR_AVX2 static void prefix(const int32_t* r, int32_t* x, int32_t* carry) {
+    if constexpr (P == 0) {
+      std::memcpy(x, r, sizeof(int32_t) * kGroup);
+    } else {
+      const __m256i last = _mm256_set1_epi32(7);
+      __m256i c[P];
+      for (int m = 0; m < P; ++m) c[m] = _mm256_set1_epi32(carry[m]);
+      for (int i = 0; i < kGroup; i += 8) {
+        __m256i v = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(r + i));
+        for (int m = P - 1; m >= 0; --m) {
+          v = _mm256_add_epi32(v, _mm256_slli_si256(v, 4));
+          v = _mm256_add_epi32(v, _mm256_slli_si256(v, 8));
+          // The low half's sum into every lane of the high half.
+          const __m256i low = _mm256_shuffle_epi32(v, 0xFF);
+          v = _mm256_add_epi32(v, _mm256_permute2x128_si256(low, low, 0x08));
+          v = _mm256_add_epi32(v, c[m]);
+          c[m] = _mm256_permutevar8x32_epi32(v, last);
+        }
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(x + i), v);
+      }
+      for (int m = 0; m < P; ++m) carry[m] = _mm256_cvtsi256_si32(c[m]);
+    }
+  }
+
+  MP_SR_AVX2 static void cycle(const int32_t* r, int32_t* e, int from, int count, int lag, int half,
+                               int g) {
+    int i = std::clamp(lag + half - from, 0, count);
+    std::memcpy(e + from, r, sizeof(int32_t) * static_cast<size_t>(i));
+    const __m256i gain = _mm256_set1_epi32(g);
+    const __m128i shift = _mm_cvtsi32_si128(2 + half);
+    for (; i + 8 <= count; i += 8) {
+      const int at = from + i;
+      __m256i back = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(e + at - lag));
+      if (half)
+        back = _mm256_add_epi32(back, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(e + at - lag - 1)));
+      const __m256i v = _mm256_add_epi32(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(r + i)),
+                                         _mm256_sra_epi32(_mm256_mullo_epi32(back, gain), shift));
+      _mm256_storeu_si256(reinterpret_cast<__m256i*>(e + at), v);
+    }
+    Plain::cycle(r + i, e, from + i, count - i, lag, half, g);
+  }
+
+  MP_SR_AVX2 static void range(const int32_t* v, size_t count, int32_t& lo, int32_t& hi) {
+    __m256i l = _mm256_set1_epi32(lo), h = _mm256_set1_epi32(hi);
+    size_t i = 0;
+    for (; i + 8 <= count; i += 8) {
+      const __m256i x = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(v + i));
+      l = _mm256_min_epi32(l, x);
+      h = _mm256_max_epi32(h, x);
+    }
+    __m128i l4 = _mm_min_epi32(_mm256_castsi256_si128(l), _mm256_extracti128_si256(l, 1));
+    __m128i h4 = _mm_max_epi32(_mm256_castsi256_si128(h), _mm256_extracti128_si256(h, 1));
+    l4 = _mm_min_epi32(l4, _mm_shuffle_epi32(l4, 0x4E));
+    l4 = _mm_min_epi32(l4, _mm_shuffle_epi32(l4, 0xB1));
+    h4 = _mm_max_epi32(h4, _mm_shuffle_epi32(h4, 0x4E));
+    h4 = _mm_max_epi32(h4, _mm_shuffle_epi32(h4, 0xB1));
+    lo = _mm_cvtsi128_si32(l4);
+    hi = _mm_cvtsi128_si32(h4);
+    Plain::range(v + i, count - i, lo, hi);
+  }
+};
+
+bool avx2Present() {
+#if defined(__APPLE__)
+  int v = 0;
+  size_t size = sizeof v;
+  return sysctlbyname("hw.optional.avx2_0", &v, &size, nullptr, 0) == 0 && v != 0;
+#elif defined(_MSC_VER) && !defined(__clang__)
+  int r[4];
+  __cpuid(r, 1);
+  const bool osYmm = (r[2] & (1 << 27)) != 0 && (_xgetbv(0) & 6) == 6;
+  __cpuidex(r, 7, 0);
+  return osYmm && (r[1] & (1 << 5)) != 0;
+#else
+  __builtin_cpu_init();
+  return __builtin_cpu_supports("avx2");
+#endif
+}
 
 bool sse41Present() {
 #if defined(__APPLE__)
@@ -396,7 +1097,21 @@ bool machineHasVector() {
 #endif
 }
 
+bool machineHasAvx2() {
+#if defined(MP_SR_X86)
+  static const bool present = sse41Present() && avx2Present();
+  return present;
+#else
+  return false;
+#endif
+}
+
 std::atomic<bool>& vectorWanted() {
+  static std::atomic<bool> wanted{true};
+  return wanted;
+}
+
+std::atomic<bool>& avx2Wanted() {
   static std::atomic<bool> wanted{true};
   return wanted;
 }
@@ -421,10 +1136,17 @@ void prefixOrder(int order, const int32_t* r, int32_t* x, int32_t* carry) {
 struct Channel {
   int order = 0;
   uint8_t k[kGroupsPerBlock] = {};
+  uint8_t w[kRunsPerBlock] = {};  // packed: each run's width
   const uint8_t* low = nullptr;
   int32_t carry[kMaxOrder] = {};
   int32_t* marks = nullptr;
   int group = 0;
+  int lag = 0, half = 0, gain = 0;  // the cycle stage; gain 0 when the channel has none
+  int32_t* cycle = nullptr;  // with one: the block's residuals so far
+  int lpc = 0, taps = 0, shift = 0;  // the linear predictor's order, rounded up to 8, shift
+  int16_t q[kLpcMaxOrder] = {};      // its coefficients, 0 past its order
+  int16_t* mats = nullptr;           // with one: the vector kernels' rows
+  int16_t* values = nullptr;         // and the block's values at 16 bits, from frame 0
 };
 
 // One block: the bytes [begin, end) of `data`, which runs on for at least
@@ -435,15 +1157,58 @@ CodecError decodeBlockWith(const uint8_t* data, size_t begin, size_t end, int n,
   const uint8_t* p = data + begin;
   const uint8_t* const e = data + end;
   if (p >= e) return CodecError::Truncated;
-  const int mode = *p++;
-  if (mode > 3 || (channels == 1 && mode != 0)) return CodecError::CodecFailed;
+  const int modeByte = *p++;
+  const bool packed = (modeByte & kPackedMode) != 0;
+  const int mode = modeByte & 3;
+  if (modeByte > (kPackedMode | 3) || (channels == 1 && mode != 0)) return CodecError::CodecFailed;
 
   Channel ch[kSplitRiceMaxChannels];
   int32_t hist[kSplitRiceMaxChannels][kMaxOrder] = {};
   for (int c = 0; c < channels; ++c) {
     if (p >= e) return CodecError::Truncated;
-    ch[c].order = *p++;
-    if (ch[c].order > kMaxOrder) return CodecError::CodecFailed;
+    const int predictor = *p++;
+    if ((predictor & kLpcBit) != 0) {
+      Channel& h = ch[c];
+      h.lpc = predictor & 63;
+      if ((predictor & 0x40) != 0 || h.lpc == 0 || h.lpc > kLpcMaxOrder || packed)
+        return CodecError::CodecFailed;
+      if (e - p < 1 + 4 * h.lpc) return CodecError::Truncated;
+      h.shift = *p++;
+      if (h.shift > kLpcMaxShift) return CodecError::CodecFailed;
+      h.taps = (h.lpc + 7) & ~7;
+      int16_t* base = scratch.lpc.data() + static_cast<size_t>(c) * kLpcStride;
+      h.mats = base;
+      h.values = base + kLpcMats + kLpcMaxOrder;
+      for (int k = 0; k < kLpcMaxOrder; ++k) {
+        h.q[k] = k < h.lpc ? static_cast<int16_t>(p[2 * k] | (p[2 * k + 1] << 8)) : 0;
+        const uint8_t* b = p + 2 * (h.lpc + k);
+        h.values[-1 - k] = k < h.lpc ? static_cast<int16_t>(b[0] | (b[1] << 8)) : 0;
+      }
+      p += 4 * h.lpc;
+      // Row j: the taps value j of eight takes from the values before the
+      // eight, oldest first, and 0 past them.
+      for (int j = 0; j < 8; ++j)
+        for (int m = 0; m < kLpcMaxOrder; ++m) {
+          const int k = h.taps - m;
+          h.mats[j * kLpcMaxOrder + m] = m < h.taps && k > j ? h.q[k - 1] : 0;
+        }
+      continue;
+    }
+    ch[c].order = predictor & 15;
+    const int gain = (predictor >> 4) & 3;
+    const int half = (predictor >> 6) & 1;
+    if ((predictor & 0x80) != 0 || ch[c].order > kMaxOrder || (gain != 0 && packed) ||
+        (half != 0 && gain == 0))
+      return CodecError::CodecFailed;
+    if (gain != 0) {
+      if (e - p < 2) return CodecError::Truncated;
+      ch[c].lag = p[0] | (p[1] << 8);
+      ch[c].gain = gain + 1;
+      ch[c].half = half;
+      p += 2;
+      if (ch[c].lag < kMinLag || ch[c].lag >= kBlock) return CodecError::CodecFailed;
+      ch[c].cycle = scratch.cycle.data() + static_cast<size_t>(c) * kBlock;
+    }
     if (e - p < 4 * ch[c].order) return CodecError::Truncated;
     for (int i = 0; i < ch[c].order; ++i) hist[c][i] = static_cast<int32_t>(ld32(p + 4 * i));
     p += 4 * ch[c].order;
@@ -462,9 +1227,25 @@ CodecError decodeBlockWith(const uint8_t* data, size_t begin, size_t end, int n,
   const int padded = (n + kGroup - 1) / kGroup * kGroup;
   const int groups = padded / kGroup;
   const size_t kBytes = (static_cast<size_t>(groups) * 5 + 7) / 8;
+  const int runs = groups * kRunsPerGroup;
+  const size_t wBytes = (static_cast<size_t>(runs) * 5 + 7) / 8;
   for (int c = 0; c < channels; ++c) {
     Channel& h = ch[c];
     const size_t len = length[c];
+    if (packed) {
+      if (len < wBytes) return CodecError::Truncated;
+      size_t body = 0;
+      for (int j = 0; j < runs; ++j) {
+        const unsigned bit = static_cast<unsigned>(j) * 5;
+        h.w[j] = static_cast<uint8_t>((ld32(p + (bit >> 3)) >> (bit & 7)) & 31);
+        body += static_cast<size_t>(h.w[j]) * (kRun / 8);
+      }
+      if (len - wBytes < body) return CodecError::Truncated;
+      h.low = p + wBytes;
+      initCarry(h.order, hist[c], h.carry);
+      p += len;
+      continue;
+    }
     if (len < kBytes) return CodecError::Truncated;
     size_t lowBytes = 0;
     for (int g = 0; g < groups; ++g) {
@@ -480,35 +1261,61 @@ CodecError decodeBlockWith(const uint8_t* data, size_t begin, size_t end, int n,
     p += len;
   }
 
-  int32_t* r = scratch.work.data();
-  int32_t* x0 = r + kGroup;
+  int32_t* r0 = scratch.work.data();
+  int32_t* r1 = r0 + kGroup;
+  int32_t* x0 = r1 + kGroup;
   int32_t* x1 = x0 + kGroup;
-  auto decodeGroup = [&](Channel& h, int32_t* dst) {
-    const unsigned k = h.k[h.group];
-    K::group(h.low, k, h.marks + 1 + static_cast<size_t>(h.group) * kGroup, r);
-    h.low += static_cast<size_t>(k) * (kGroup / 8);
-    ++h.group;
-    prefixOrder<K>(h.order, r, dst, h.carry);
+  // A group's residuals, with the cycle stage undone.
+  auto residuals = [&](Channel& h, int32_t* r) -> const int32_t* {
+    if (packed) {
+      for (int j = 0; j < kRunsPerGroup; ++j) {
+        const unsigned w = h.w[h.group * kRunsPerGroup + j];
+        K::packed(h.low, w, r + j * kRun);
+        h.low += static_cast<size_t>(w) * (kRun / 8);
+      }
+    } else {
+      const unsigned k = h.k[h.group];
+      K::group(h.low, k, h.marks + 1 + static_cast<size_t>(h.group) * kGroup, r);
+      h.low += static_cast<size_t>(k) * (kGroup / 8);
+    }
+    if (h.gain == 0) return r;
+    const int from = h.group * kGroup;
+    K::cycle(r, h.cycle, from, kGroup, h.lag, h.half, h.gain);
+    return h.cycle + from;
+  };
+  auto run = [](Channel& h, const int32_t* e, int32_t* dst) {
+    return LpcRun{e, dst, h.values + h.group * kGroup, h.q, h.mats, h.taps, h.shift};
+  };
+  // The group's values from its residuals.
+  auto values = [&](Channel& h, const int32_t* e, int32_t* dst) {
+    if (h.lpc != 0)
+      K::lpc(run(h, e, dst));
+    else
+      prefixOrder<K>(h.order, e, dst, h.carry);
   };
   for (int g = 0; g < groups; ++g) {
     if (channels == 1) {
-      decodeGroup(ch[0], out + static_cast<size_t>(g) * kGroup);
+      values(ch[0], residuals(ch[0], r0), out + static_cast<size_t>(g) * kGroup);
     } else {
-      decodeGroup(ch[0], x0);
-      decodeGroup(ch[1], x1);
+      const int32_t* e0 = residuals(ch[0], r0);
+      const int32_t* e1 = residuals(ch[1], r1);
+      if (ch[0].lpc != 0 && ch[1].lpc != 0) {
+        K::lpc2(run(ch[0], e0, x0), run(ch[1], e1, x1));
+      } else {
+        values(ch[0], e0, x0);
+        values(ch[1], e1, x1);
+      }
       K::stereo(mode, x0, x1, out + static_cast<size_t>(g) * kGroup * 2);
     }
+    ++ch[0].group;
+    ++ch[1].group;
   }
 
   // Every sample within the width, or the block is not one this codec wrote.
   const int32_t low = static_cast<int32_t>(codecSampleMin(bitDepth));
   const int32_t high = static_cast<int32_t>(codecSampleMax(bitDepth));
   int32_t lo = 0, hi = 0;
-  const size_t count = static_cast<size_t>(n) * static_cast<size_t>(channels);
-  for (size_t i = 0; i < count; ++i) {
-    lo = std::min(lo, out[i]);
-    hi = std::max(hi, out[i]);
-  }
+  K::range(out, static_cast<size_t>(n) * static_cast<size_t>(channels), lo, hi);
   if (lo < low || hi > high) return CodecError::CodecFailed;
   return CodecError::None;
 }
@@ -529,6 +1336,8 @@ CodecError decodeBlockRaw(const uint8_t* data, size_t dataBytes, const uint32_t*
   const int n = static_cast<int>(std::min<uint64_t>(kBlock, frames - first));
   if (machineHasVector() && vectorWanted().load(std::memory_order_relaxed)) {
 #if defined(MP_SR_X86)
+    if (machineHasAvx2() && avx2Wanted().load(std::memory_order_relaxed))
+      return decodeBlockWith<Avx2>(data, begin, end, n, channels, bitDepth, out, scratch);
     return decodeBlockWith<Vector>(data, begin, end, n, channels, bitDepth, out, scratch);
 #endif
   }
@@ -628,15 +1437,37 @@ uint32_t SplitRiceStream::framesInBlock(size_t index) const {
 }
 
 SplitRiceScratch::SplitRiceScratch()
-    : marks(kMarkStride * kSplitRiceMaxChannels, 0), work(static_cast<size_t>(kGroup) * 3, 0) {}
+    : marks(kMarkStride * kSplitRiceMaxChannels, 0),
+      work(static_cast<size_t>(kGroup) * 4, 0),
+      cycle(static_cast<size_t>(kBlock) * kSplitRiceMaxChannels, 0),
+      lpc(kLpcStride * kSplitRiceMaxChannels, 0) {}
 
 uint64_t newSplitRiceSerial() {
   static std::atomic<uint64_t> last{0};
   return last.fetch_add(1, std::memory_order_relaxed) + 1;
 }
 
+namespace {
+constexpr const char* kLevelNames[] = {"light", "medium", "high", "max"};
+}  // namespace
+
+const char* splitRiceLevelName(SplitRiceLevel level) {
+  const auto i = static_cast<size_t>(level);
+  return i < std::size(kLevelNames) ? kLevelNames[i] : "medium";
+}
+
+bool splitRiceLevelFromName(const char* name, SplitRiceLevel& level) {
+  if (name == nullptr) return false;
+  for (size_t i = 0; i < std::size(kLevelNames); ++i)
+    if (std::strcmp(name, kLevelNames[i]) == 0) {
+      level = static_cast<SplitRiceLevel>(i);
+      return true;
+    }
+  return false;
+}
+
 bool encodeSplitRice(const int32_t* samples, uint64_t frames, int channels, int bitDepth,
-                     SplitRiceStream& out, CodecError* error) {
+                     SplitRiceStream& out, CodecError* error, SplitRiceLevel level) {
   auto fail = [&](CodecError why) {
     if (error) *error = why;
     return false;
@@ -650,6 +1481,11 @@ bool encodeSplitRice(const int32_t* samples, uint64_t frames, int channels, int 
   for (size_t i = 0; i < total; ++i)
     if (samples[i] < low || samples[i] > high) return fail(CodecError::BadWidth);
 
+  // High and Max pack 16-bit samples. Above 16 bits, the recording's noise
+  // floor leaves them little to find for their extra work, so those samples
+  // are coded medium.
+  if (level > SplitRiceLevel::Medium && bitDepth > 16) level = SplitRiceLevel::Medium;
+
   out = SplitRiceStream{};  // with a serial of its own: other frames from here on
   out.numFrames = frames;
   out.channels = channels;
@@ -657,57 +1493,104 @@ bool encodeSplitRice(const int32_t* samples, uint64_t frames, int channels, int 
   out.data.reserve(total * 3 / 2);
 
   // The signals a block may be held as: left (or the only channel), right,
-  // and side.
-  const int signals = channels == 1 ? 1 : 3;
-  std::vector<int32_t> sig[3];
-  Candidate cand[3][kEncodeOrder + 1];
+  // side and mid.
+  const int signals = channels == 1 ? 1 : 4;
+  const bool packed = level == SplitRiceLevel::Light;
+  // High: the pipe's period, once for the sample; every block tries the
+  // cycle stage at it.
+  const int period = level >= SplitRiceLevel::High ? samplePeriod(samples, frames, channels) : 0;
+  std::vector<int32_t> sig[4];
+  Candidate cand[4][kEncodeOrder + 1];
+  Candidate cyc[4];
+  Candidate lin[4], linWork;
+  std::vector<int32_t> cycleE, cycleR;
   for (uint64_t f0 = 0; f0 < frames; f0 += kBlock) {
     if (out.data.size() > 0xFFFFFFFFu) return fail(CodecError::NotSupported);
     out.blockOffsets.push_back(static_cast<uint32_t>(out.data.size()));
     const int n = static_cast<int>(std::min<uint64_t>(kBlock, frames - f0));
     const int padded = (n + kGroup - 1) / kGroup * kGroup;
-    for (int s = 0; s < signals; ++s) sig[s].assign(static_cast<size_t>(n + kMaxOrder), 0);
-    for (int f = -kMaxOrder; f < n; ++f) {
+    for (int s = 0; s < signals; ++s) sig[s].assign(static_cast<size_t>(n + kBack), 0);
+    for (int f = -kBack; f < n; ++f) {
       const int64_t fr = static_cast<int64_t>(f0) + f;
       if (fr < 0) continue;
-      const size_t at = static_cast<size_t>(f + kMaxOrder);
+      const size_t at = static_cast<size_t>(f + kBack);
       const int32_t L = samples[static_cast<size_t>(fr) * static_cast<size_t>(channels)];
       sig[0][at] = L;
       if (channels == 2) {
         const int32_t R = samples[static_cast<size_t>(fr) * 2 + 1];
         sig[1][at] = R;
         sig[2][at] = L - R;
+        sig[3][at] = static_cast<int32_t>((static_cast<int64_t>(L) + R) >> 1);
       }
     }
-    int best[3] = {};
+    const Candidate* chosen[4] = {};
     for (int s = 0; s < signals; ++s) {
       uint64_t bits = ~0ull;
-      for (int order = 0; order <= kEncodeOrder; ++order) {
-        analyse(sig[s].data() + kMaxOrder, n, padded, order, cand[s][order]);
+      const int32_t* t = sig[s].data() + kBack;
+      for (int order = 0; order <= (packed ? kLightOrder : kEncodeOrder); ++order) {
+        analyse(t, n, padded, order, packed, cand[s][order]);
         if (cand[s][order].bits < bits) {
           bits = cand[s][order].bits;
-          best[s] = order;
+          chosen[s] = &cand[s][order];
+        }
+      }
+      if (period > 0 && bestCycle(t, n, padded, period, cycleE, cycleR, cyc[s]) && cyc[s].bits < bits) {
+        bits = cyc[s].bits;
+        chosen[s] = &cyc[s];
+      }
+      if (level == SplitRiceLevel::Max && bestLpc(t, n, padded, cycleR, lin[s], linWork) && lin[s].bits < bits)
+        chosen[s] = &lin[s];
+    }
+    // The smallest pair: left and right, left and side, side and right, or
+    // mid and side, the stereo modes in that order.
+    int mode = 0;
+    int pick[2] = {0, 1};
+    if (channels == 2) {
+      static constexpr int kPairs[4][2] = {{0, 1}, {0, 2}, {2, 1}, {3, 2}};
+      uint64_t least = ~0ull;
+      for (int m = 0; m < 4; ++m) {
+        const uint64_t bits = chosen[kPairs[m][0]]->bits + chosen[kPairs[m][1]]->bits;
+        if (bits < least) {
+          least = bits;
+          mode = m;
+          pick[0] = kPairs[m][0];
+          pick[1] = kPairs[m][1];
         }
       }
     }
-    // Left and right, or left and side.
-    int mode = 0;
-    int pick[2] = {0, 1};
-    if (channels == 2 && cand[2][best[2]].bits < cand[1][best[1]].bits) {
-      mode = 1;
-      pick[1] = 2;
-    }
-    out.data.push_back(static_cast<uint8_t>(mode));
+    out.data.push_back(static_cast<uint8_t>(mode | (packed ? kPackedMode : 0)));
     for (int c = 0; c < channels; ++c) {
-      const Candidate& k = cand[pick[c]][best[pick[c]]];
-      out.data.push_back(static_cast<uint8_t>(k.order));
+      const Candidate& k = *chosen[pick[c]];
+      if (k.lpc != 0) {
+        out.data.push_back(static_cast<uint8_t>(kLpcBit | k.lpc));
+        out.data.push_back(static_cast<uint8_t>(k.shift));
+        for (int i = 0; i < k.lpc; ++i) {
+          out.data.push_back(static_cast<uint8_t>(static_cast<uint16_t>(k.q[i])));
+          out.data.push_back(static_cast<uint8_t>(static_cast<uint16_t>(k.q[i]) >> 8));
+        }
+        for (int i = 0; i < k.lpc; ++i) {
+          out.data.push_back(static_cast<uint8_t>(static_cast<uint16_t>(k.back[i])));
+          out.data.push_back(static_cast<uint8_t>(static_cast<uint16_t>(k.back[i]) >> 8));
+        }
+        continue;
+      }
+      // The gain bits: 1, 2 or 3 for a gain of 2, 3 or 4 quarters.
+      const int gainBits = k.gain != 0 ? k.gain - 1 : 0;
+      out.data.push_back(static_cast<uint8_t>(k.order | (gainBits << 4) | (k.half << 6)));
+      if (k.gain != 0) {
+        out.data.push_back(static_cast<uint8_t>(k.lag));
+        out.data.push_back(static_cast<uint8_t>(k.lag >> 8));
+      }
       for (int i = 0; i < k.order; ++i) st32(out.data, static_cast<uint32_t>(k.hist[i]));
     }
     const size_t lengthAt = out.data.size();
     if (channels == 2) st32(out.data, 0);
     const size_t bodyAt = out.data.size();
     for (int c = 0; c < channels; ++c) {
-      writeBody(cand[pick[c]][best[pick[c]]], out.data);
+      if (packed)
+        writePackedBody(*chosen[pick[c]], out.data);
+      else
+        writeBody(*chosen[pick[c]], out.data);
       if (c == 0 && channels == 2) {
         const uint32_t length = static_cast<uint32_t>(out.data.size() - bodyAt);
         for (int i = 0; i < 4; ++i) out.data[lengthAt + static_cast<size_t>(i)] = static_cast<uint8_t>(length >> (8 * i));
@@ -746,6 +1629,54 @@ bool decodeSplitRiceFrames(const SplitRiceStream& stream, uint64_t firstFrame, u
   return why == CodecError::None;
 }
 
+namespace {
+void storeValuesPlain(const int32_t* v, size_t count, bool wide, unsigned char* out, size_t from) {
+  if (wide) {
+    unsigned char* p = out + from * 3;
+    for (size_t i = from; i < count; ++i, p += 3) {
+      const auto x = static_cast<uint32_t>(v[i]);
+      std::memcpy(p, &x, 4);
+    }
+  } else {
+    auto* p = reinterpret_cast<int16_t*>(out);
+    for (size_t i = from; i < count; ++i) {
+      const auto x = static_cast<int16_t>(v[i]);
+      std::memcpy(p + i, &x, 2);
+    }
+  }
+}
+
+#if defined(MP_SR_X86)
+// Four values to twelve bytes with one shuffle; eight to sixteen bytes with
+// one pack, which saturates nothing: every value fits 16 bits.
+MP_SSE41 void storeValuesVector(const int32_t* v, size_t count, bool wide, unsigned char* out) {
+  size_t i = 0;
+  if (wide) {
+    const __m128i pick = _mm_setr_epi8(0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, -1, -1, -1, -1);
+    for (; i + 4 <= count; i += 4)
+      _mm_storeu_si128(reinterpret_cast<__m128i*>(out + i * 3),
+                       _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i*>(v + i)), pick));
+  } else {
+    for (; i + 8 <= count; i += 8)
+      _mm_storeu_si128(reinterpret_cast<__m128i*>(out + i * 2),
+                       _mm_packs_epi32(_mm_loadu_si128(reinterpret_cast<const __m128i*>(v + i)),
+                                       _mm_loadu_si128(reinterpret_cast<const __m128i*>(v + i + 4))));
+  }
+  storeValuesPlain(v, count, wide, out, i);
+}
+#endif
+}  // namespace
+
+void storeSplitRiceValues(const int32_t* values, size_t count, bool wide, unsigned char* out) {
+#if defined(MP_SR_X86)
+  if (machineHasVector() && vectorWanted().load(std::memory_order_relaxed)) {
+    storeValuesVector(values, count, wide, out);
+    return;
+  }
+#endif
+  storeValuesPlain(values, count, wide, out, 0);
+}
+
 std::unique_ptr<SampleCodec> makeSplitRiceCodec() { return std::make_unique<SplitRiceCodec>(); }
 
 bool splitRiceVectorKernels() {
@@ -753,5 +1684,11 @@ bool splitRiceVectorKernels() {
 }
 
 void setSplitRiceVectorKernels(bool on) { vectorWanted().store(on, std::memory_order_relaxed); }
+
+bool splitRiceAvx2Kernels() {
+  return splitRiceVectorKernels() && machineHasAvx2() && avx2Wanted().load(std::memory_order_relaxed);
+}
+
+void setSplitRiceAvx2Kernels(bool on) { avx2Wanted().store(on, std::memory_order_relaxed); }
 
 } // namespace mp

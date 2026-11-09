@@ -61,6 +61,26 @@ struct SampleLoadReport {
   std::vector<std::string> failedFiles;
 };
 
+// A compression level as the organ's settings file and the sample cache
+// number it: 1 medium, which is what compression was before there were
+// levels, 2 light, 3 high, 4 max.
+inline int compressSetting(SplitRiceLevel level) {
+  switch (level) {
+    case SplitRiceLevel::Light: return 2;
+    case SplitRiceLevel::High: return 3;
+    case SplitRiceLevel::Max: return 4;
+    default: return 1;
+  }
+}
+inline SplitRiceLevel levelFromCompressSetting(int setting) {
+  switch (setting) {
+    case 2: return SplitRiceLevel::Light;
+    case 3: return SplitRiceLevel::High;
+    case 4: return SplitRiceLevel::Max;
+    default: return SplitRiceLevel::Medium;
+  }
+}
+
 class SampleLibrary {
 public:
   // Raise the process's limit on open files as far as the system allows, and
@@ -147,6 +167,11 @@ public:
   // bit. The sample cache holds them coded too. Takes effect on the next load.
   void setCodeSamples(bool on) { codeSamples_ = on; }
   bool codeSamples() const { return codeSamples_; }
+  // How hard the samples are packed: Light decodes with the least work and
+  // takes a little more memory, High and Max take less memory and more work.
+  // Read only while the samples are coded.
+  void setCodeLevel(mp::SplitRiceLevel level) { codeLevel_ = level; }
+  mp::SplitRiceLevel codeLevel() const { return codeLevel_; }
   // The samples loaded that are held coded.
   size_t codedCount() const;
 
@@ -476,6 +501,7 @@ private:
   // 24-bit: what the sample sets are. See SampleStorage.
   SampleStorage storage_ = SampleStorage::Int24;
   bool codeSamples_ = false;
+  mp::SplitRiceLevel codeLevel_ = mp::SplitRiceLevel::Medium;
   bool loadMono_ = false;
   // How many notes of a rank are loaded: 1 for every note, 2 for every
   // second, 3 for every third.

@@ -1,0 +1,5 @@
+"Light compression" = "Compressione leggera"
+"Medium compression" = "Compressione media"
+"High compression" = "Compressione alta"
+"Maximum compression" = "Compressione massima"
+"Light compression takes the least processor time per voice. Medium compression holds the samples in about a third of their memory. High and Maximum compression hold 16-bit samples in less memory for more processor time. Changes apply at the next load." = "La compressione leggera richiede il minor tempo di processore per voce. La compressione media tiene i campioni in circa un terzo della loro memoria. Le compressioni alta e massima tengono i campioni a 16 bit in meno memoria con più tempo di processore. Le modifiche si applicano al prossimo caricamento."

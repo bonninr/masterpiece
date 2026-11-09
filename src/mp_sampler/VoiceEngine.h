@@ -272,8 +272,9 @@ struct SampleBuffer {
 
 // The buffer's 16-bit or 24-bit counts, coded split Rice in their place
 // (#447). The counts play back the same to the bit. False, and the buffer
-// left as it was, for any other storage or when the coding fails.
-bool codeSampleBuffer(SampleBuffer& buf);
+// left as it was, for any other storage or when the coding fails. Light
+// packs the blocks for less work at decode.
+bool codeSampleBuffer(SampleBuffer& buf, SplitRiceLevel level = SplitRiceLevel::Medium);
 
 // A 16-bit recording held at 24 bits, moved to 16-bit counts: every value
 // has eight zero bits under it, so the counts shift down by eight and the

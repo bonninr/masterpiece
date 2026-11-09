@@ -112,6 +112,7 @@ private:
   double openReleaseBuffer_ = 0.0;
   bool openMono_ = false;
   bool openCompress_ = false;
+  mp::SplitRiceLevel openLevel_ = mp::SplitRiceLevel::Medium;
   // Whether the program couplers are offered. Off by default.
   bool openProgramCouplers_ = false;
   juce::ToggleButton programCouplers_{TRANS("Extra couplers")};
@@ -226,7 +227,10 @@ private:
   void showPreload(int64_t frames);
   juce::ToggleButton mono_{TRANS("Load in mono (halves memory, gives up the stereo image)")};
   juce::ToggleButton compress_{TRANS("Lossless compression in memory")};
-  // Greys out compression for the resident formats it does not code (#591).
+  // Full or light compression, beside the box.
+  juce::ComboBox compressLevel_;
+  // Greys out compression for the resident formats it does not code (#591),
+  // and the level while compression is off.
   void enableCompress();
   juce::ToggleButton loadTicks_{TRANS("Click at each 10% while loading")};
   juce::ToggleButton reopen_{TRANS("Reopen the last organ when Masterpiece starts")};
