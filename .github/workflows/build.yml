@@ -278,7 +278,9 @@ jobs:
         shell: bash
         # An instrumented MSVC program that cannot find the profiling runtime
         # waits on a message box; the time limit ends the job in that case.
-        timeout-minutes: 40
+        # The ARM builds train under emulation: 24 to 31 minutes on dev before
+        # the compression levels (#1009), over 40 after.
+        timeout-minutes: ${{ matrix.arm && 75 || 40 }}
         env:
           LLVM_PROFILE_FILE: ${{ github.workspace }}/build/${{ matrix.preset }}/pgo/%p-%m.profraw
         run: |
