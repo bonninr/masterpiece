@@ -29,9 +29,9 @@
 //           right, 3 mid and side; 0 for mono
 //           (bit 2 set: the block is packed, below)
 //   per channel: u8 predictor: the order (0 to 8) in bits 0 to 3, the
-//           cycle gain in bits 4 and 5 (below); then, with a gain, u16 the
-//           cycle's lag; then order i32: the samples before the block,
-//           newest first
+//           cycle gain in bits 4 and 5 and its half frame in bit 6 (below);
+//           then, with a gain, u16 the cycle's lag; then order i32: the
+//           samples before the block, newest first
 //   per channel but the last: u32 the bytes of its body
 //   per channel, its body:
 //     the k of each group, 5 bits each, least significant bit first,
@@ -54,10 +54,13 @@
 // every period, so a channel may hold its residuals less a share of the
 // residual one period back, r[i] = e[i] - (e[i - lag] * g >> 2) from frame
 // lag of the block on, with g 2, 3 or 4 (the gain bits 1, 2 or 3) and lag
-// 8 or more. The reference stays inside the block, so every block still
-// decodes alone, and the decoder undoes it eight values at a time. On 41
-// samples of a 24-bit set held at 16 bits, High takes the ratio against the
-// recording from 5.60x to 7.07x and decodes in the same time as Medium:
+// 8 or more. With the half-frame bit the reference is the point between two
+// residuals, ((e[i - lag] + e[i - lag - 1]) * g >> 3) from frame lag + 1
+// on, for a pipe whose period falls between whole frames. The reference
+// stays inside the block, so every block still decodes alone, and the
+// decoder undoes it eight values at a time. On 41 samples of a 24-bit set
+// held at 16 bits, High takes the ratio against the recording from 5.60x
+// to 7.30x and decodes in the same time as Medium:
 // the extra pass costs what the smaller residuals save. The encoder finds
 // the pipe's period once per sample and works about four times as long.
 //

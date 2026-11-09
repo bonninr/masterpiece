@@ -109,7 +109,7 @@ struct Candidate {
   uint8_t w[kRunsPerBlock] = {};  // packed: each run's width
   int groups = 0;
   int32_t hist[kMaxOrder] = {};
-  int lag = 0, gain = 0;  // the cycle stage; gain 0 for none
+  int lag = 0, half = 0, gain = 0;  // the cycle stage; gain 0 for none
 };
 
 // The best k for one group, and its cost in bits.
@@ -145,14 +145,20 @@ void differences(const int32_t* t, int n, int order, int32_t* e) {
   for (int i = 0; i < n; ++i) e[i] = static_cast<int32_t>(tmp[order + i]);
 }
 
-// The residual less a share of the one a period back: r[i] = e[i] -
-// (e[i - lag] * g >> 2) from value lag on, in arithmetic that wraps.
-void cycleResiduals(const int32_t* e, int n, int lag, int g, int32_t* r) {
+// What the cycle stage takes from residual i: (e[i - lag] * g >> 2), or
+// with `half` the point between two residuals, ((e[i - lag] + e[i - lag -
+// 1]) * g >> 3), from value lag + half on; in arithmetic that wraps.
+inline uint32_t cycleShare(const int32_t* e, int i, int lag, int half, int g) {
+  uint32_t back = static_cast<uint32_t>(e[i - lag]);
+  if (half) back += static_cast<uint32_t>(e[i - lag - 1]);
+  return static_cast<uint32_t>(static_cast<int32_t>(back * static_cast<uint32_t>(g)) >> (2 + half));
+}
+
+// The residual less its share a period back: r[i] = e[i] - share.
+void cycleResiduals(const int32_t* e, int n, int lag, int half, int g, int32_t* r) {
   for (int i = 0; i < n; ++i) {
     uint32_t v = static_cast<uint32_t>(e[i]);
-    if (i >= lag)
-      v -= static_cast<uint32_t>(
-          static_cast<int32_t>(static_cast<uint32_t>(e[i - lag]) * static_cast<uint32_t>(g)) >> 2);
+    if (i >= lag + half) v -= cycleShare(e, i, lag, half, g);
     r[i] = static_cast<int32_t>(v);
   }
 }
@@ -182,18 +188,21 @@ void analyse(const int32_t* t, int n, int padded, int order, bool packed, Candid
   differences(t, n, order, e.data());
   c.order = order;
   c.lag = 0;
+  c.half = 0;
   c.gain = 0;
   for (int i = 0; i < kMaxOrder; ++i) c.hist[i] = i < order ? t[-1 - i] : 0;
   costResiduals(e.data(), n, padded, packed, c);
 }
 
 // The same with the cycle stage after the predictor.
-void analyseCycle(const int32_t* t, int n, int padded, int order, int lag, int g, Candidate& c) {
+void analyseCycle(const int32_t* t, int n, int padded, int order, int lag, int half, int g,
+                  Candidate& c) {
   std::vector<int32_t> e(static_cast<size_t>(n)), r(static_cast<size_t>(n));
   differences(t, n, order, e.data());
-  cycleResiduals(e.data(), n, lag, g, r.data());
+  cycleResiduals(e.data(), n, lag, half, g, r.data());
   c.order = order;
   c.lag = lag;
+  c.half = half;
   c.gain = g;
   for (int i = 0; i < kMaxOrder; ++i) c.hist[i] = i < order ? t[-1 - i] : 0;
   costResiduals(r.data(), n, padded, false, c);
@@ -201,33 +210,35 @@ void analyseCycle(const int32_t* t, int n, int padded, int order, int lag, int g
 }
 
 // The cheapest cycle for one signal of a block, coded into c: lags a frame
-// either side of the pipe's period, gains a half, three quarters and one,
-// predictor orders 0 to 3, ranked by estimate. False when the period gives
+// either side of the pipe's period in half frames, gains a half, three
+// quarters and one, predictor orders 0 to 3, ranked by estimate. False when the period gives
 // the block no lag to try.
 bool bestCycle(const int32_t* t, int n, int padded, int period, std::vector<int32_t>& e,
                std::vector<int32_t>& r, Candidate& c) {
   e.resize(static_cast<size_t>(n));
   r.resize(static_cast<size_t>(n));
   uint64_t least = ~0ull;
-  int bestOrder = 0, bestLag = 0, bestGain = 0;
+  int bestOrder = 0, bestLag = 0, bestHalf = 0, bestGain = 0;
   for (int order = 0; order <= kEncodeOrder; ++order) {
     differences(t, n, order, e.data());
-    for (int lag = period - 1; lag <= period + 1; ++lag) {
-      if (lag < kMinLag || lag >= n - kGroup / 4) continue;
+    for (int twice = 2 * period - 2; twice <= 2 * period + 2; ++twice) {
+      const int lag = twice >> 1, half = twice & 1;
+      if (lag < kMinLag || lag + half >= n - kGroup / 4) continue;
       for (int g = 2; g <= 4; ++g) {
-        cycleResiduals(e.data(), n, lag, g, r.data());
+        cycleResiduals(e.data(), n, lag, half, g, r.data());
         const uint64_t bits = estimateBits(r.data(), n) + static_cast<uint64_t>(order) * 32;
         if (bits < least) {
           least = bits;
           bestOrder = order;
           bestLag = lag;
+          bestHalf = half;
           bestGain = g;
         }
       }
     }
   }
   if (bestLag == 0) return false;
-  analyseCycle(t, n, padded, bestOrder, bestLag, bestGain, c);
+  analyseCycle(t, n, padded, bestOrder, bestLag, bestHalf, bestGain, c);
   return true;
 }
 
@@ -481,15 +492,13 @@ struct Plain {
   }
 
   // Undoes the cycle stage over `count` residuals from value `from` of the
-  // block: e[i] = r[i] + (e[i - lag] * g >> 2) from value lag on, in 32-bit
+  // block: e[i] = r[i] + its share a period back (cycleShare), in 32-bit
   // arithmetic that wraps. `e` holds the block's values before `from`.
-  static void cycle(const int32_t* r, int32_t* e, int from, int count, int lag, int g) {
+  static void cycle(const int32_t* r, int32_t* e, int from, int count, int lag, int half, int g) {
     for (int i = 0; i < count; ++i) {
       const int at = from + i;
       uint32_t v = static_cast<uint32_t>(r[i]);
-      if (at >= lag)
-        v += static_cast<uint32_t>(
-            static_cast<int32_t>(static_cast<uint32_t>(e[at - lag]) * static_cast<uint32_t>(g)) >> 2);
+      if (at >= lag + half) v += cycleShare(e, at, lag, half, g);
       e[at] = static_cast<int32_t>(v);
     }
   }
@@ -625,18 +634,21 @@ struct Vector {
 
   // Four at a time: a lag of 8 or more means the four values one lag back
   // are all done.
-  MP_SSE41 static void cycle(const int32_t* r, int32_t* e, int from, int count, int lag, int g) {
-    int i = std::clamp(lag - from, 0, count);
+  MP_SSE41 static void cycle(const int32_t* r, int32_t* e, int from, int count, int lag, int half,
+                             int g) {
+    int i = std::clamp(lag + half - from, 0, count);
     std::memcpy(e + from, r, sizeof(int32_t) * static_cast<size_t>(i));
     const __m128i gain = _mm_set1_epi32(g);
+    const __m128i shift = _mm_cvtsi32_si128(2 + half);
     for (; i + 4 <= count; i += 4) {
       const int at = from + i;
-      const __m128i back = _mm_loadu_si128(reinterpret_cast<const __m128i*>(e + at - lag));
+      __m128i back = _mm_loadu_si128(reinterpret_cast<const __m128i*>(e + at - lag));
+      if (half) back = _mm_add_epi32(back, _mm_loadu_si128(reinterpret_cast<const __m128i*>(e + at - lag - 1)));
       const __m128i v = _mm_add_epi32(_mm_loadu_si128(reinterpret_cast<const __m128i*>(r + i)),
-                                      _mm_srai_epi32(_mm_mullo_epi32(back, gain), 2));
+                                      _mm_sra_epi32(_mm_mullo_epi32(back, gain), shift));
       _mm_storeu_si128(reinterpret_cast<__m128i*>(e + at), v);
     }
-    Plain::cycle(r + i, e, from + i, count - i, lag, g);
+    Plain::cycle(r + i, e, from + i, count - i, lag, half, g);
   }
 
   MP_SSE41 static void range(const int32_t* v, size_t count, int32_t& lo, int32_t& hi) {
@@ -732,18 +744,22 @@ struct Avx2 : Vector {
     }
   }
 
-  MP_SR_AVX2 static void cycle(const int32_t* r, int32_t* e, int from, int count, int lag, int g) {
-    int i = std::clamp(lag - from, 0, count);
+  MP_SR_AVX2 static void cycle(const int32_t* r, int32_t* e, int from, int count, int lag, int half,
+                               int g) {
+    int i = std::clamp(lag + half - from, 0, count);
     std::memcpy(e + from, r, sizeof(int32_t) * static_cast<size_t>(i));
     const __m256i gain = _mm256_set1_epi32(g);
+    const __m128i shift = _mm_cvtsi32_si128(2 + half);
     for (; i + 8 <= count; i += 8) {
       const int at = from + i;
-      const __m256i back = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(e + at - lag));
+      __m256i back = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(e + at - lag));
+      if (half)
+        back = _mm256_add_epi32(back, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(e + at - lag - 1)));
       const __m256i v = _mm256_add_epi32(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(r + i)),
-                                         _mm256_srai_epi32(_mm256_mullo_epi32(back, gain), 2));
+                                         _mm256_sra_epi32(_mm256_mullo_epi32(back, gain), shift));
       _mm256_storeu_si256(reinterpret_cast<__m256i*>(e + at), v);
     }
-    Plain::cycle(r + i, e, from + i, count - i, lag, g);
+    Plain::cycle(r + i, e, from + i, count - i, lag, half, g);
   }
 
   MP_SR_AVX2 static void range(const int32_t* v, size_t count, int32_t& lo, int32_t& hi) {
@@ -852,7 +868,7 @@ struct Channel {
   int32_t carry[kMaxOrder] = {};
   int32_t* marks = nullptr;
   int group = 0;
-  int lag = 0, gain = 0;     // the cycle stage; gain 0 when the channel has none
+  int lag = 0, half = 0, gain = 0;  // the cycle stage; gain 0 when the channel has none
   int32_t* cycle = nullptr;  // with one: the block's residuals so far
 };
 
@@ -876,12 +892,15 @@ CodecError decodeBlockWith(const uint8_t* data, size_t begin, size_t end, int n,
     const int predictor = *p++;
     ch[c].order = predictor & 15;
     const int gain = (predictor >> 4) & 3;
-    if ((predictor & 0xC0) != 0 || ch[c].order > kMaxOrder || (gain != 0 && packed))
+    const int half = (predictor >> 6) & 1;
+    if ((predictor & 0x80) != 0 || ch[c].order > kMaxOrder || (gain != 0 && packed) ||
+        (half != 0 && gain == 0))
       return CodecError::CodecFailed;
     if (gain != 0) {
       if (e - p < 2) return CodecError::Truncated;
       ch[c].lag = p[0] | (p[1] << 8);
       ch[c].gain = gain + 1;
+      ch[c].half = half;
       p += 2;
       if (ch[c].lag < kMinLag || ch[c].lag >= kBlock) return CodecError::CodecFailed;
       ch[c].cycle = scratch.cycle.data() + static_cast<size_t>(c) * kBlock;
@@ -956,7 +975,7 @@ CodecError decodeBlockWith(const uint8_t* data, size_t begin, size_t end, int n,
     const int32_t* e = r;
     if (h.gain != 0) {
       const int from = h.group * kGroup;
-      K::cycle(r, h.cycle, from, kGroup, h.lag, h.gain);
+      K::cycle(r, h.cycle, from, kGroup, h.lag, h.half, h.gain);
       e = h.cycle + from;
     }
     ++h.group;
@@ -1218,7 +1237,7 @@ bool encodeSplitRice(const int32_t* samples, uint64_t frames, int channels, int 
       const Candidate& k = *chosen[pick[c]];
       // The gain bits: 1, 2 or 3 for a gain of 2, 3 or 4 quarters.
       const int gainBits = k.gain != 0 ? k.gain - 1 : 0;
-      out.data.push_back(static_cast<uint8_t>(k.order | (gainBits << 4)));
+      out.data.push_back(static_cast<uint8_t>(k.order | (gainBits << 4) | (k.half << 6)));
       if (k.gain != 0) {
         out.data.push_back(static_cast<uint8_t>(k.lag));
         out.data.push_back(static_cast<uint8_t>(k.lag >> 8));

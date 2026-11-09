@@ -574,27 +574,55 @@ public:
   }
 };
 
-// High on a pipe-like tone at 16 bits: a few harmonics of a 240 Hz pitch, a
-// period of 200 frames, and a little noise. The cycle stage codes it, it comes back exact with
-// every kernel, it takes a tenth less than Medium at the least, and a
-// damaged lag is refused.
+// High on pipe-like tones at 16 bits: a few harmonics and a little noise,
+// at a period of 200 frames and of 200.5. The cycle stage codes them, the
+// half-frame reference the second, they come back exact with every kernel,
+// the first takes a tenth less than Medium at the least, and a damaged lag
+// is refused.
 class SplitRiceHighTest : public mp::test::Test {
 public:
   SplitRiceHighTest() : mp::test::Test("functional.codec.split-rice-high", Category::Functional) {}
 
-  void run() override {
-    const uint64_t frames = 5 * mp::kSplitRiceBlockFrames + 300;
-    std::vector<int32_t> input(frames * 2);
+  static constexpr uint64_t kFrames = 5 * mp::kSplitRiceBlockFrames + 300;
+
+  static std::vector<int32_t> tone(double period) {
+    std::vector<int32_t> input(kFrames * 2);
     std::mt19937 rng(21u);
     std::normal_distribution<double> noise(0.0, 3.0);
-    const double w = 2.0 * 3.14159265358979 * 240.0 / 48000.0;
-    for (uint64_t f = 0; f < frames; ++f) {
+    const double w = 2.0 * 3.14159265358979 / period;
+    for (uint64_t f = 0; f < kFrames; ++f) {
       const double t = static_cast<double>(f);
-      const double tone = 9000.0 * std::sin(w * t) + 4000.0 * std::sin(2 * w * t + 0.3) +
-                          2500.0 * std::sin(3 * w * t + 1.1) + 1200.0 * std::sin(5 * w * t + 2.0);
-      input[2 * f] = static_cast<int32_t>(std::lround(tone + noise(rng)));
-      input[2 * f + 1] = static_cast<int32_t>(std::lround(0.8 * tone + noise(rng)));
+      const double v = 9000.0 * std::sin(w * t) + 4000.0 * std::sin(2 * w * t + 0.3) +
+                       2500.0 * std::sin(3 * w * t + 1.1) + 1200.0 * std::sin(5 * w * t + 2.0);
+      input[2 * f] = static_cast<int32_t>(std::lround(v + noise(rng)));
+      input[2 * f + 1] = static_cast<int32_t>(std::lround(0.8 * v + noise(rng)));
     }
+    return input;
+  }
+
+  // Every block decodes to the input with the plain, SSE4.1 and AVX2 kernels.
+  static bool exact(const mp::SplitRiceStream& s, const std::vector<int32_t>& input) {
+    mp::SplitRiceScratch scratch;
+    std::vector<int32_t> out(mp::kSplitRiceBlockFrames * 2);
+    bool same = true;
+    for (int kernels = 0; kernels < 3; ++kernels) {
+      mp::setSplitRiceVectorKernels(kernels > 0);
+      mp::setSplitRiceAvx2Kernels(kernels > 1);
+      for (size_t b = 0; b < s.blockCount(); ++b) {
+        same = same && mp::decodeSplitRiceBlock(s, b, out.data(), scratch);
+        const size_t n = static_cast<size_t>(s.framesInBlock(b)) * 2;
+        same = same && std::equal(out.begin(), out.begin() + static_cast<std::ptrdiff_t>(n),
+                                  input.begin() + static_cast<std::ptrdiff_t>(b * mp::kSplitRiceBlockFrames * 2));
+      }
+    }
+    mp::setSplitRiceVectorKernels(true);
+    mp::setSplitRiceAvx2Kernels(true);
+    return same;
+  }
+
+  void run() override {
+    const uint64_t frames = kFrames;
+    const auto input = tone(200.0);
     mp::SplitRiceStream medium, high;
     MP_CHECK(mp::encodeSplitRice(input.data(), frames, 2, 16, medium), "medium codes");
     MP_CHECK(mp::encodeSplitRice(input.data(), frames, 2, 16, high, nullptr, mp::SplitRiceLevel::High),
@@ -606,22 +634,21 @@ public:
     const size_t first = high.blockOffsets[1] + 1;
     MP_CHECK(((high.data[first] >> 4) & 3) != 0, "the second block's first channel has a cycle");
 
+    MP_CHECK(exact(high, input), "every block comes back exact with every kernel");
+
+    // Half a frame off a whole period: some block takes the point between two.
+    const auto between = tone(200.5);
+    mp::SplitRiceStream halfway;
+    MP_CHECK(mp::encodeSplitRice(between.data(), frames, 2, 16, halfway, nullptr, mp::SplitRiceLevel::High),
+             "the 200.5-frame tone codes");
+    bool half = false;
+    for (size_t b = 0; b < halfway.blockCount(); ++b)
+      half = half || ((halfway.data[halfway.blockOffsets[b] + 1] >> 6) & 1) != 0;
+    MP_CHECK(half, "a block references half a frame between two");
+    MP_CHECK(exact(halfway, between), "and comes back exact with every kernel");
+
     mp::SplitRiceScratch scratch;
     std::vector<int32_t> out(mp::kSplitRiceBlockFrames * 2);
-    bool exact = true;
-    for (int kernels = 0; kernels < 3; ++kernels) {
-      mp::setSplitRiceVectorKernels(kernels > 0);
-      mp::setSplitRiceAvx2Kernels(kernels > 1);
-      for (size_t b = 0; b < high.blockCount(); ++b) {
-        exact = exact && mp::decodeSplitRiceBlock(high, b, out.data(), scratch);
-        const size_t n = static_cast<size_t>(high.framesInBlock(b)) * 2;
-        exact = exact && std::equal(out.begin(), out.begin() + static_cast<std::ptrdiff_t>(n),
-                                    input.begin() + static_cast<std::ptrdiff_t>(b * mp::kSplitRiceBlockFrames * 2));
-      }
-    }
-    mp::setSplitRiceVectorKernels(true);
-    mp::setSplitRiceAvx2Kernels(true);
-    MP_CHECK(exact, "every block comes back exact with every kernel");
 
     // A lag under eight is no block this codec writes.
     auto damaged = high;
