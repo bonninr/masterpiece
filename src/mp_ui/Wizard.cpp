@@ -92,7 +92,7 @@ WizardPanel::WizardPanel(MasterpieceProcessor& proc,
   // 0 inputs, 2 outputs: an organ plays, it does not record, and offering an
   // input channel list here would be three more choices that change nothing.
   audio_ = std::make_unique<juce::AudioDeviceSelectorComponent>(
-      devices_, 0, 0, 1, 8, /*showMidiInputOptions*/ false,
+      devices_, 0, 0, 1, MasterpieceProcessor::kMaxOutputChannels, /*showMidiInputOptions*/ false,
       /*showMidiOutputSelector*/ false, /*showChannelsAsStereoPairs*/ true,
       /*hideAdvancedOptions*/ false);
   addChildComponent(*audio_);

@@ -3935,7 +3935,7 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(busesLabel_);
   styleLabel(busesLabel_, TRANS("Output pairs"));
   addAndMakeVisible(busCount_);
-  for (int i = 1; i <= 8; ++i)
+  for (int i = 1; i <= MasterpieceProcessor::kMaxOutputPairs; ++i)
     busCount_.addItem(i == 1 ? TRANS("1 (stereo)") : TRANS("%1 pairs").replace("%1", juce::String(i)), i);
   busCount_.setSelectedId(juce::jmax(1, proc_.mixBusCount()),
                           juce::dontSendNotification);
@@ -4185,24 +4185,52 @@ void MixerPanel::pushRouting() {
 void MixerPanel::showOutputs() {
   // Each pair's device channels, counted from 1 as a device's own panel
   // counts them, and what the device gives the program.
+  // A run of pairs on consecutive channels is one entry, "Pairs 1-24: 1-48",
+  // so that a 24-pair interface fits on the line (#1007).
   const int outs = proc_.getTotalNumOutputChannels();
   juce::StringArray pairs;
   bool beyond = false;
+  int runFirst = 0, runLast = 0, runFrom = 0, runTo = 0;
+  const auto endRun = [&] {
+    if (runFirst == 0) return;
+    pairs.add(runLast == runFirst ? TRANS("Pair %1: %2-%3")
+                                        .replace("%1", juce::String(runFirst))
+                                        .replace("%2", juce::String(runFrom + 1))
+                                        .replace("%3", juce::String(runTo + 1))
+                                  : TRANS("Pairs %1-%2: %3-%4")
+                                        .replace("%1", juce::String(runFirst))
+                                        .replace("%2", juce::String(runLast))
+                                        .replace("%3", juce::String(runFrom + 1))
+                                        .replace("%4", juce::String(runTo + 1)));
+    runFirst = 0;
+  };
   for (const auto& b : proc_.mixer().buses) {
     if (b.deviceChannels.empty()) continue;
     const int left = b.deviceChannels[0];
     const int right = b.deviceChannels.size() > 1 ? b.deviceChannels[1] : left;
-    juce::String pair = TRANS("Pair %1: %2-%3")
-                            .replace("%1", juce::String(b.id.value))
-                            .replace("%2", juce::String(left + 1))
-                            .replace("%3", juce::String(right + 1));
-    if (const auto* bass = proc_.mixer().bassFor(b.id); bass != nullptr && bass->active()) {
-      pair += " (" + TRANS("bass to %1").replace("%1", juce::String(bass->subChannel + 1)) + ")";
-      if (bass->subChannel >= outs) beyond = true;
-    }
-    pairs.add(pair);
     if (left >= outs || right >= outs) beyond = true;
+    if (const auto* bass = proc_.mixer().bassFor(b.id); bass != nullptr && bass->active()) {
+      endRun();
+      pairs.add(TRANS("Pair %1: %2-%3")
+                    .replace("%1", juce::String(b.id.value))
+                    .replace("%2", juce::String(left + 1))
+                    .replace("%3", juce::String(right + 1)) +
+                " (" + TRANS("bass to %1").replace("%1", juce::String(bass->subChannel + 1)) + ")");
+      if (bass->subChannel >= outs) beyond = true;
+      continue;
+    }
+    if (runFirst != 0 && b.id.value == runLast + 1 && left == runTo + 1 && right == left + 1 &&
+        runTo - runFrom == 2 * (runLast - runFirst) + 1) {
+      runLast = b.id.value;
+      runTo = right;
+      continue;
+    }
+    endRun();
+    runFirst = runLast = b.id.value;
+    runFrom = left;
+    runTo = right;
   }
+  endRun();
   juce::String text = pairs.joinIntoString(", ");
   if (beyond)
     text += "  -  " + TRANS("the device gives %1 outputs: the pairs past them play on 1-2")

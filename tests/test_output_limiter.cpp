@@ -495,6 +495,15 @@ public:
     MP_CHECK(wide[2] == summed[0] && wide[3] == summed[1],
              "the pair's own channels carry exactly what the first pair carries in stereo");
 
+    // A 24-pair interface (#1007): the rank on the last pair plays on channels
+    // 47 and 48, and they carry what the stereo output carries.
+    const auto widest = renderPairs(organ.odf, 48, 24, 24);
+    MP_CHECK(widest[46] == summed[0] && widest[47] == summed[1],
+             "pair 24 plays on channels 47 and 48, its peak is " + std::to_string(peakOfChannel(widest[46])));
+    for (int ch = 0; ch < 46; ++ch)
+      MP_CHECK(peakOfChannel(widest[static_cast<size_t>(ch)]) == 0.0f,
+               "and channel " + std::to_string(ch + 1) + " is silent");
+
     // What the standalone asks the device for.
     mp::MasterpieceProcessor p;
     MP_CHECK(p.outputChannelsWanted() == 2, "one pair wants two channels");
@@ -505,9 +514,11 @@ public:
       p.mixer().buses.push_back(b);
     }
     MP_CHECK(p.outputChannelsWanted() == 8, "pairs up to channels 7 and 8 want eight");
-    juce::AudioProcessor::BusesLayout l33;
-    l33.outputBuses.add(juce::AudioChannelSet::discreteChannels(33));
-    MP_CHECK(!p.checkBusesLayoutSupported(l33), "33 outputs are more than the engine takes");
+    juce::AudioProcessor::BusesLayout l48, l49;
+    l48.outputBuses.add(juce::AudioChannelSet::discreteChannels(48));
+    l49.outputBuses.add(juce::AudioChannelSet::discreteChannels(49));
+    MP_CHECK(p.checkBusesLayoutSupported(l48), "the engine takes 48 outputs, 24 pairs");
+    MP_CHECK(!p.checkBusesLayoutSupported(l49), "49 outputs are more than the engine takes");
 
     organ.root.deleteRecursively();
   }

@@ -49,7 +49,7 @@ struct ShelfEq {
 class RankEq {
 public:
   static constexpr int kMaxGroups = 16;    // buses at once
-  static constexpr int kMaxPairs = 8;      // output pairs, each its own filter memory
+  static constexpr int kMaxPairs = 24;     // output pairs, each its own filter memory
   static constexpr int kMaxChannels = 8;   // channels of a bus filtered
   static constexpr double kBassHz = 200.0;
   static constexpr double kBrightHz = 3000.0;
