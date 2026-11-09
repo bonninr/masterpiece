@@ -109,9 +109,11 @@ public:
   // on a loaded Linux machine the heap was corrupted (#267).
   void releaseResources() override;
   void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
-  // Any number of discrete outputs up to 32, and no input: a mixer pair with
-  // device channels of its own plays on them when the output has them.
-  static constexpr int kMaxOutputChannels = 32;
+  // Any number of discrete outputs up to 48, and no input: a mixer pair with
+  // device channels of its own plays on them when the output has them. 48 is
+  // a 24-pair interface (#1007).
+  static constexpr int kMaxOutputChannels = 48;
+  static constexpr int kMaxOutputPairs = kMaxOutputChannels / 2;
   bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
   // The output channels the mixer asks for: one past the highest device
   // channel a bus names, and two at the least.

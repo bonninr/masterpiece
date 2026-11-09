@@ -715,7 +715,7 @@ AudioSettingsPanel::AudioSettingsPanel(juce::AudioDeviceManager& devices,
                                        MasterpieceProcessor& p)
     // The audio device only: MIDI inputs, the MIDI output and Bluetooth
     // pairing are on the MIDI tab (#680).
-    : proc_(p), devices_(devices), selector_(devices, 0, 0, 1, 8, false, false, true, false) {
+    : proc_(p), devices_(devices), selector_(devices, 0, 0, 1, MasterpieceProcessor::kMaxOutputChannels, false, false, true, false) {
   addAndMakeVisible(selector_);
   addAndMakeVisible(latency_);
   latency_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);

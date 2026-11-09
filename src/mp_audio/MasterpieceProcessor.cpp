@@ -28,6 +28,13 @@
 #endif
 
 namespace mp {
+// Every stage after the mixer holds a state per output pair: each covers them all.
+static_assert(OutputLimiter::kMaxPairs >= MasterpieceProcessor::kMaxOutputPairs);
+static_assert(OutputCompressor::kMaxPairs >= MasterpieceProcessor::kMaxOutputPairs);
+static_assert(RankEq::kMaxPairs >= MasterpieceProcessor::kMaxOutputPairs);
+static_assert(LiveLevels::kMaxPairs >= MasterpieceProcessor::kMaxOutputPairs);
+static_assert(VoicingEq::kMaxChannels >= MasterpieceProcessor::kMaxOutputChannels);
+
 namespace {
 // A switch's DefaultInputOutputSwitchAsgnCode for a function of the player's
 // own, for a console button with no combination behind it.

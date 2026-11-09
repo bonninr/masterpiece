@@ -75,6 +75,25 @@ public:
     MP_CHECK(std::fabs(level({12.0f, 0.0f}, 8000.0) - level({}, 8000.0)) < level({}, 8000.0) * 0.05,
              "and leaves 8 kHz alone");
     MP_CHECK(level({0.0f, 12.0f}, 8000.0) > level({}, 8000.0) * 3.0, "+12 dB of brightness lifts 8 kHz");
+
+    // Each output pair keeps its own filter memory, up to the 24th (#1007):
+    // the same tone through pairs 23 and 24, one after the other, comes out
+    // the same from each.
+    {
+      RankEq f;
+      f.configure({-1}, 0, 1, 48000.0);
+      f.setParams({ShelfEq{12.0f, 0.0f}}, {});
+      const int bus = f.busFor(0, 0);
+      MP_CHECK(bus > 0, "the shelf makes a group");
+      std::vector<float> a(4800);
+      for (size_t i = 0; i < a.size(); ++i) a[i] = static_cast<float>(0.25 * std::sin(2.0 * 3.141592653589793 * 60.0 * i / 48000.0));
+      std::vector<float> b = a;
+      float* pa[1] = {a.data()};
+      float* pb[1] = {b.data()};
+      f.process(bus - 1, 22, pa, 1, static_cast<int>(a.size()));
+      f.process(bus - 1, 23, pb, 1, static_cast<int>(b.size()));
+      MP_CHECK(a == b, "pair 24 starts from its own filter memory");
+    }
   }
 };
 static RankEqGroupsTest g_groups;

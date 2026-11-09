@@ -23,7 +23,7 @@ class OutputLimiter {
 public:
   // The most pairs the limiter handles: sixteen, which is as many output
   // channels as the bus can have.
-  static constexpr int kMaxPairs = 16;
+  static constexpr int kMaxPairs = 24;
 
   // The width of the soft knee, in dB. The limiting begins this far below
   // the ceiling and grows out of nothing to the full amount over it.
