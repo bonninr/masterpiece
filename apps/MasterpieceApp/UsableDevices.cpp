@@ -122,6 +122,22 @@ void UsableDeviceManager::createAudioDeviceTypes(juce::OwnedArray<juce::AudioIOD
     }
 }
 
+#elif JUCE_WINDOWS
+
+ #include "../../src/mp_audio/PatientDevice.h"
+
+// ASIO devices open with patience: a driver still locking its clock after a
+// rate change gets more attempts (#1007).
+void UsableDeviceManager::createAudioDeviceTypes(juce::OwnedArray<juce::AudioIODeviceType>& types) {
+  juce::AudioDeviceManager::createAudioDeviceTypes(types);
+  for (int i = 0; i < types.size(); ++i)
+    if (types[i]->getTypeName() == "ASIO") {
+      std::unique_ptr<juce::AudioIODeviceType> inner(types.removeAndReturn(i));
+      types.insert(i, new mp::PatientDeviceType(std::move(inner), mp::PatientDevice::defaultWaits()));
+      break;
+    }
+}
+
 #else
 
 void UsableDeviceManager::createAudioDeviceTypes(juce::OwnedArray<juce::AudioIODeviceType>& types) {
