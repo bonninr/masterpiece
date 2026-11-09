@@ -92,7 +92,7 @@ mp::SampleBuffer plainBuffer(Width width, int frames, int channels, double hz, u
 }
 
 mp::SampleBuffer codedCopy(const mp::SampleBuffer& plain,
-                           mp::SplitRiceLevel level = mp::SplitRiceLevel::Full) {
+                           mp::SplitRiceLevel level = mp::SplitRiceLevel::Medium) {
   mp::SampleBuffer b = plain;
   const bool ok = mp::codeSampleBuffer(b, level);
   MP_CHECK(ok, "the buffer codes");
@@ -258,7 +258,7 @@ public:
   CodedBufferTest() : Test("functional.samples.coded-buffer", Category::Functional) {}
 
   void run() override {
-    for (const auto level : {mp::SplitRiceLevel::Full, mp::SplitRiceLevel::Light})
+    for (const auto level : {mp::SplitRiceLevel::Medium, mp::SplitRiceLevel::Light})
     for (const Width width : {Width::Int16, Width::Int24, Width::Int16In24})
       for (const int channels : {1, 2}) {
         const std::string label = std::string(level == mp::SplitRiceLevel::Light ? "light, " : "") +

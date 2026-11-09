@@ -112,7 +112,7 @@ private:
   double openReleaseBuffer_ = 0.0;
   bool openMono_ = false;
   bool openCompress_ = false;
-  bool openLight_ = false;
+  mp::SplitRiceLevel openLevel_ = mp::SplitRiceLevel::Medium;
   // Whether the program couplers are offered. Off by default.
   bool openProgramCouplers_ = false;
   juce::ToggleButton programCouplers_{TRANS("Extra couplers")};

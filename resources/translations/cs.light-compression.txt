@@ -1,3 +1,5 @@
-"Full compression" = "Plná komprese"
 "Light compression" = "Lehká komprese"
-"Full compression holds the samples in the least memory. Light compression takes a little more memory and less processor time per voice. Applies at the next load." = "Plná komprese drží vzorky v nejmenší paměti. Lehká komprese zabere o něco více paměti a méně času procesoru na hlas. Platí od dalšího načtení."
+"Medium compression" = "Střední komprese"
+"High compression" = "Vysoká komprese"
+"Maximum compression" = "Maximální komprese"
+"Light compression takes the least processor time per voice. Medium compression holds the samples in about a third of their memory. High and Maximum compression hold 16-bit samples in less memory for more processor time. Changes apply at the next load." = "Lehká komprese zabírá nejméně času procesoru na hlas. Střední komprese drží samply asi v třetině jejich paměti. Vysoká a maximální komprese drží 16bitové samply v menší paměti za více času procesoru. Změny platí od příštího načtení."

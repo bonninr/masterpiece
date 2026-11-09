@@ -1,3 +1,5 @@
-"Full compression" = "Compression complète"
 "Light compression" = "Compression légère"
-"Full compression holds the samples in the least memory. Light compression takes a little more memory and less processor time per voice. Applies at the next load." = "La compression complète garde les échantillons dans le moins de mémoire. La compression légère prend un peu plus de mémoire et moins de temps processeur par voix. S'applique au prochain chargement."
+"Medium compression" = "Compression moyenne"
+"High compression" = "Compression élevée"
+"Maximum compression" = "Compression maximale"
+"Light compression takes the least processor time per voice. Medium compression holds the samples in about a third of their memory. High and Maximum compression hold 16-bit samples in less memory for more processor time. Changes apply at the next load." = "La compression légère demande le moins de temps processeur par voix. La compression moyenne garde les échantillons dans environ un tiers de leur mémoire. Les compressions élevée et maximale gardent les échantillons 16 bits dans moins de mémoire pour plus de temps processeur. Les changements s'appliquent au prochain chargement."

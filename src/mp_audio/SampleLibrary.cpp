@@ -984,11 +984,11 @@ int64_t SampleLibrary::residentBytes(const SampleShape& shape) const {
       (loadRate_ <= 0.0 || shape.rate <= 0.0 || std::abs(loadRate_ - shape.rate) <= 1.0))
     storeBytes = 2.0;
   // Coded, a sample takes a third to a half of its plain size, light a
-  // little more: the upper end is the estimate, so a set that fits by it
-  // fits.
+  // little more, high and max less: the upper end is the estimate, so a set
+  // that fits by it fits.
   if (codeSamples_ && (storage_ == SampleStorage::Int16 || storage_ == SampleStorage::Int24 ||
                        (storage_ == SampleStorage::Int20 && storeBytes == 2.0)))
-    storeBytes *= codeLight_ ? 0.6 : 0.5;
+    storeBytes *= codeLevel_ == mp::SplitRiceLevel::Light ? 0.6 : 0.5;
   int64_t frames = shape.frames;
   if (loadRate_ > 0.0 && shape.rate > 0.0)
     frames = static_cast<int64_t>(static_cast<double>(frames) * loadRate_ / shape.rate);
@@ -1431,7 +1431,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       // A 16-bit file read at 24 bits is held at the 16 it has (#676), then
       // compressed, when asked: both here, on the reading thread.
       if (ok) narrowSampleBuffer(*buffer);
-      if (ok && codeSamples_) codeSampleBuffer(*buffer, codeLight_ ? mp::SplitRiceLevel::Light : mp::SplitRiceLevel::Full);
+      if (ok && codeSamples_) codeSampleBuffer(*buffer, codeLevel_);
 
       // Against the memory ceiling, before it is kept: the sample that would
       // take the load past it is not added, and the load stops here.
@@ -1586,7 +1586,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
                           readInto(*reader, *buffer, maxFramesPerSample, loopSelection, storage_,
                                    loadMono_, loadRate_, releaseIds.count(id) != 0, releaseMaxMs_);
           if (ok) narrowSampleBuffer(*buffer);
-          if (ok && codeSamples_) codeSampleBuffer(*buffer, codeLight_ ? mp::SplitRiceLevel::Light : mp::SplitRiceLevel::Full);
+          if (ok && codeSamples_) codeSampleBuffer(*buffer, codeLevel_);
           if (ok && progress != nullptr && !progress->charge(buffer->residentBytes())) {
             std::lock_guard<std::mutex> lock(queueMutex);
             stop = true;
@@ -2153,8 +2153,9 @@ std::string SampleLibrary::cacheFingerprint(const std::unordered_set<Id>* onlyRa
   for (const auto& package : packagesFromElsewhere_) s += "|k" + package;
   // Samples held coded are cached coded. Only when they are, so every cache
   // written with plain storage stays as good as it was, and a program that
-  // cannot read a coded one never takes one for its own.
-  if (codeSamples_) s += codeLight_ ? "|z2" : "|z1";
+  // cannot read a coded one never takes one for its own. Medium keeps the
+  // tag it had before there were levels.
+  if (codeSamples_) s += "|z" + std::to_string(compressSetting(codeLevel_));
   // A partial load holds a different set of samples from a full one, and the
   // two must never be mistaken for each other: a cache written by
   // --preload-drawn would otherwise come back as a whole organ with most of

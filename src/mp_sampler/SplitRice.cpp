@@ -15,8 +15,10 @@
 #if defined(_MSC_VER) && !defined(__clang__)
 #include <intrin.h>
 #define MP_SSE41
+#define MP_SR_AVX2
 #else
 #define MP_SSE41 __attribute__((target("sse4.1")))
+#define MP_SR_AVX2 __attribute__((target("avx2")))
 #endif
 #endif
 
@@ -226,8 +228,25 @@ struct Tables {
   uint16_t start[kVectorK + 1][8];
   alignas(16) uint8_t markPos[256][8];
   uint8_t markCount[256];
+  // The AVX2 unpack of a packed run: eight values of w bits are w bytes, so
+  // every eight start on a byte. The low half's four values start at its
+  // first byte, the high half's at byte packedHigh; each lane takes the four
+  // bytes its value starts in and shifts right by packedShift.
+  alignas(32) uint8_t packedShuffle[kVectorK + 1][32];
+  alignas(32) uint32_t packedShift[kVectorK + 1][8];
+  uint8_t packedHigh[kVectorK + 1];
   Tables() {
     std::memset(this, 0, sizeof *this);
+    for (int w = 0; w <= kVectorK; ++w) {
+      packedHigh[w] = static_cast<uint8_t>((4 * w) >> 3);
+      for (int l = 0; l < 8; ++l) {
+        const int bit = l * w;
+        const int base = l < 4 ? 0 : 8 * packedHigh[w];
+        const int off = (bit - base) >> 3;
+        for (int b = 0; b < 4; ++b) packedShuffle[w][4 * l + b] = static_cast<uint8_t>(off + b);
+        packedShift[w][l] = static_cast<uint32_t>((bit - base) & 7);
+      }
+    }
     for (int b = 0; b < 256; ++b) {
       int c = 0;
       for (int i = 0; i < 8; ++i)
@@ -474,6 +493,99 @@ struct Vector {
   }
 };
 
+// The AVX2 kernels: the vector ones, with the packed unpack, the cascaded
+// sums and the width check eight values at a time.
+struct Avx2 : Vector {
+  MP_SR_AVX2 static void packed(const uint8_t* low, unsigned w, int32_t* r) {
+    if (w > static_cast<unsigned>(kVectorK)) {
+      Plain::packed(low, w, r);
+      return;
+    }
+    if (w == 0) {
+      std::memset(r, 0, sizeof(int32_t) * kRun);
+      return;
+    }
+    const Tables& T = tables();
+    const __m256i shuffle = _mm256_load_si256(reinterpret_cast<const __m256i*>(T.packedShuffle[w]));
+    const __m256i shift = _mm256_load_si256(reinterpret_cast<const __m256i*>(T.packedShift[w]));
+    const __m256i mask = _mm256_set1_epi32(static_cast<int>((1u << w) - 1));
+    const __m256i one = _mm256_set1_epi32(1);
+    const __m256i zero = _mm256_setzero_si256();
+    const size_t high = T.packedHigh[w];
+    for (int j = 0; j < kRun / 8; ++j) {
+      const uint8_t* s = low + static_cast<size_t>(j) * w;
+      __m256i v = _mm256_inserti128_si256(
+          _mm256_castsi128_si256(_mm_loadu_si128(reinterpret_cast<const __m128i*>(s))),
+          _mm_loadu_si128(reinterpret_cast<const __m128i*>(s + high)), 1);
+      v = _mm256_shuffle_epi8(v, shuffle);
+      v = _mm256_and_si256(_mm256_srlv_epi32(v, shift), mask);
+      v = _mm256_xor_si256(_mm256_srli_epi32(v, 1), _mm256_sub_epi32(zero, _mm256_and_si256(v, one)));
+      _mm256_storeu_si256(reinterpret_cast<__m256i*>(r + 8 * j), v);
+    }
+  }
+
+  template <int P>
+  MP_SR_AVX2 static void prefix(const int32_t* r, int32_t* x, int32_t* carry) {
+    if constexpr (P == 0) {
+      std::memcpy(x, r, sizeof(int32_t) * kGroup);
+    } else {
+      const __m256i last = _mm256_set1_epi32(7);
+      __m256i c[P];
+      for (int m = 0; m < P; ++m) c[m] = _mm256_set1_epi32(carry[m]);
+      for (int i = 0; i < kGroup; i += 8) {
+        __m256i v = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(r + i));
+        for (int m = P - 1; m >= 0; --m) {
+          v = _mm256_add_epi32(v, _mm256_slli_si256(v, 4));
+          v = _mm256_add_epi32(v, _mm256_slli_si256(v, 8));
+          // The low half's sum into every lane of the high half.
+          const __m256i low = _mm256_shuffle_epi32(v, 0xFF);
+          v = _mm256_add_epi32(v, _mm256_permute2x128_si256(low, low, 0x08));
+          v = _mm256_add_epi32(v, c[m]);
+          c[m] = _mm256_permutevar8x32_epi32(v, last);
+        }
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(x + i), v);
+      }
+      for (int m = 0; m < P; ++m) carry[m] = _mm256_cvtsi256_si32(c[m]);
+    }
+  }
+
+  MP_SR_AVX2 static void range(const int32_t* v, size_t count, int32_t& lo, int32_t& hi) {
+    __m256i l = _mm256_set1_epi32(lo), h = _mm256_set1_epi32(hi);
+    size_t i = 0;
+    for (; i + 8 <= count; i += 8) {
+      const __m256i x = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(v + i));
+      l = _mm256_min_epi32(l, x);
+      h = _mm256_max_epi32(h, x);
+    }
+    __m128i l4 = _mm_min_epi32(_mm256_castsi256_si128(l), _mm256_extracti128_si256(l, 1));
+    __m128i h4 = _mm_max_epi32(_mm256_castsi256_si128(h), _mm256_extracti128_si256(h, 1));
+    l4 = _mm_min_epi32(l4, _mm_shuffle_epi32(l4, 0x4E));
+    l4 = _mm_min_epi32(l4, _mm_shuffle_epi32(l4, 0xB1));
+    h4 = _mm_max_epi32(h4, _mm_shuffle_epi32(h4, 0x4E));
+    h4 = _mm_max_epi32(h4, _mm_shuffle_epi32(h4, 0xB1));
+    lo = _mm_cvtsi128_si32(l4);
+    hi = _mm_cvtsi128_si32(h4);
+    Plain::range(v + i, count - i, lo, hi);
+  }
+};
+
+bool avx2Present() {
+#if defined(__APPLE__)
+  int v = 0;
+  size_t size = sizeof v;
+  return sysctlbyname("hw.optional.avx2_0", &v, &size, nullptr, 0) == 0 && v != 0;
+#elif defined(_MSC_VER) && !defined(__clang__)
+  int r[4];
+  __cpuid(r, 1);
+  const bool osYmm = (r[2] & (1 << 27)) != 0 && (_xgetbv(0) & 6) == 6;
+  __cpuidex(r, 7, 0);
+  return osYmm && (r[1] & (1 << 5)) != 0;
+#else
+  __builtin_cpu_init();
+  return __builtin_cpu_supports("avx2");
+#endif
+}
+
 bool sse41Present() {
 #if defined(__APPLE__)
   int v = 0;
@@ -499,7 +611,21 @@ bool machineHasVector() {
 #endif
 }
 
+bool machineHasAvx2() {
+#if defined(MP_SR_X86)
+  static const bool present = sse41Present() && avx2Present();
+  return present;
+#else
+  return false;
+#endif
+}
+
 std::atomic<bool>& vectorWanted() {
+  static std::atomic<bool> wanted{true};
+  return wanted;
+}
+
+std::atomic<bool>& avx2Wanted() {
   static std::atomic<bool> wanted{true};
   return wanted;
 }
@@ -655,6 +781,8 @@ CodecError decodeBlockRaw(const uint8_t* data, size_t dataBytes, const uint32_t*
   const int n = static_cast<int>(std::min<uint64_t>(kBlock, frames - first));
   if (machineHasVector() && vectorWanted().load(std::memory_order_relaxed)) {
 #if defined(MP_SR_X86)
+    if (machineHasAvx2() && avx2Wanted().load(std::memory_order_relaxed))
+      return decodeBlockWith<Avx2>(data, begin, end, n, channels, bitDepth, out, scratch);
     return decodeBlockWith<Vector>(data, begin, end, n, channels, bitDepth, out, scratch);
 #endif
   }
@@ -761,6 +889,25 @@ uint64_t newSplitRiceSerial() {
   return last.fetch_add(1, std::memory_order_relaxed) + 1;
 }
 
+namespace {
+constexpr const char* kLevelNames[] = {"light", "medium", "high", "max"};
+}  // namespace
+
+const char* splitRiceLevelName(SplitRiceLevel level) {
+  const auto i = static_cast<size_t>(level);
+  return i < std::size(kLevelNames) ? kLevelNames[i] : "medium";
+}
+
+bool splitRiceLevelFromName(const char* name, SplitRiceLevel& level) {
+  if (name == nullptr) return false;
+  for (size_t i = 0; i < std::size(kLevelNames); ++i)
+    if (std::strcmp(name, kLevelNames[i]) == 0) {
+      level = static_cast<SplitRiceLevel>(i);
+      return true;
+    }
+  return false;
+}
+
 bool encodeSplitRice(const int32_t* samples, uint64_t frames, int channels, int bitDepth,
                      SplitRiceStream& out, CodecError* error, SplitRiceLevel level) {
   auto fail = [&](CodecError why) {
@@ -776,6 +923,11 @@ bool encodeSplitRice(const int32_t* samples, uint64_t frames, int channels, int 
   for (size_t i = 0; i < total; ++i)
     if (samples[i] < low || samples[i] > high) return fail(CodecError::BadWidth);
 
+  // High and Max pack 16-bit samples. Above 16 bits, the recording's noise
+  // floor leaves them little to find for their extra work, so those samples
+  // are coded medium.
+  if (level > SplitRiceLevel::Medium && bitDepth > 16) level = SplitRiceLevel::Medium;
+
   out = SplitRiceStream{};  // with a serial of its own: other frames from here on
   out.numFrames = frames;
   out.channels = channels;
@@ -783,11 +935,11 @@ bool encodeSplitRice(const int32_t* samples, uint64_t frames, int channels, int 
   out.data.reserve(total * 3 / 2);
 
   // The signals a block may be held as: left (or the only channel), right,
-  // and side.
-  const int signals = channels == 1 ? 1 : 3;
+  // side and mid.
+  const int signals = channels == 1 ? 1 : 4;
   const bool packed = level == SplitRiceLevel::Light;
-  std::vector<int32_t> sig[3];
-  Candidate cand[3][kEncodeOrder + 1];
+  std::vector<int32_t> sig[4];
+  Candidate cand[4][kEncodeOrder + 1];
   for (uint64_t f0 = 0; f0 < frames; f0 += kBlock) {
     if (out.data.size() > 0xFFFFFFFFu) return fail(CodecError::NotSupported);
     out.blockOffsets.push_back(static_cast<uint32_t>(out.data.size()));
@@ -804,9 +956,10 @@ bool encodeSplitRice(const int32_t* samples, uint64_t frames, int channels, int 
         const int32_t R = samples[static_cast<size_t>(fr) * 2 + 1];
         sig[1][at] = R;
         sig[2][at] = L - R;
+        sig[3][at] = static_cast<int32_t>((static_cast<int64_t>(L) + R) >> 1);
       }
     }
-    int best[3] = {};
+    int best[4] = {};
     for (int s = 0; s < signals; ++s) {
       uint64_t bits = ~0ull;
       for (int order = 0; order <= (packed ? kLightOrder : kEncodeOrder); ++order) {
@@ -817,12 +970,23 @@ bool encodeSplitRice(const int32_t* samples, uint64_t frames, int channels, int 
         }
       }
     }
-    // Left and right, or left and side.
+    // The smallest pair: left and right, left and side, side and right, or
+    // mid and side, the stereo modes in that order.
     int mode = 0;
     int pick[2] = {0, 1};
-    if (channels == 2 && cand[2][best[2]].bits < cand[1][best[1]].bits) {
-      mode = 1;
-      pick[1] = 2;
+    if (channels == 2) {
+      static constexpr int kPairs[4][2] = {{0, 1}, {0, 2}, {2, 1}, {3, 2}};
+      uint64_t least = ~0ull;
+      for (int m = 0; m < 4; ++m) {
+        const uint64_t bits = cand[kPairs[m][0]][best[kPairs[m][0]]].bits +
+                              cand[kPairs[m][1]][best[kPairs[m][1]]].bits;
+        if (bits < least) {
+          least = bits;
+          mode = m;
+          pick[0] = kPairs[m][0];
+          pick[1] = kPairs[m][1];
+        }
+      }
     }
     out.data.push_back(static_cast<uint8_t>(mode | (packed ? kPackedMode : 0)));
     for (int c = 0; c < channels; ++c) {
@@ -876,6 +1040,54 @@ bool decodeSplitRiceFrames(const SplitRiceStream& stream, uint64_t firstFrame, u
   return why == CodecError::None;
 }
 
+namespace {
+void storeValuesPlain(const int32_t* v, size_t count, bool wide, unsigned char* out, size_t from) {
+  if (wide) {
+    unsigned char* p = out + from * 3;
+    for (size_t i = from; i < count; ++i, p += 3) {
+      const auto x = static_cast<uint32_t>(v[i]);
+      std::memcpy(p, &x, 4);
+    }
+  } else {
+    auto* p = reinterpret_cast<int16_t*>(out);
+    for (size_t i = from; i < count; ++i) {
+      const auto x = static_cast<int16_t>(v[i]);
+      std::memcpy(p + i, &x, 2);
+    }
+  }
+}
+
+#if defined(MP_SR_X86)
+// Four values to twelve bytes with one shuffle; eight to sixteen bytes with
+// one pack, which saturates nothing: every value fits 16 bits.
+MP_SSE41 void storeValuesVector(const int32_t* v, size_t count, bool wide, unsigned char* out) {
+  size_t i = 0;
+  if (wide) {
+    const __m128i pick = _mm_setr_epi8(0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, -1, -1, -1, -1);
+    for (; i + 4 <= count; i += 4)
+      _mm_storeu_si128(reinterpret_cast<__m128i*>(out + i * 3),
+                       _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i*>(v + i)), pick));
+  } else {
+    for (; i + 8 <= count; i += 8)
+      _mm_storeu_si128(reinterpret_cast<__m128i*>(out + i * 2),
+                       _mm_packs_epi32(_mm_loadu_si128(reinterpret_cast<const __m128i*>(v + i)),
+                                       _mm_loadu_si128(reinterpret_cast<const __m128i*>(v + i + 4))));
+  }
+  storeValuesPlain(v, count, wide, out, i);
+}
+#endif
+}  // namespace
+
+void storeSplitRiceValues(const int32_t* values, size_t count, bool wide, unsigned char* out) {
+#if defined(MP_SR_X86)
+  if (machineHasVector() && vectorWanted().load(std::memory_order_relaxed)) {
+    storeValuesVector(values, count, wide, out);
+    return;
+  }
+#endif
+  storeValuesPlain(values, count, wide, out, 0);
+}
+
 std::unique_ptr<SampleCodec> makeSplitRiceCodec() { return std::make_unique<SplitRiceCodec>(); }
 
 bool splitRiceVectorKernels() {
@@ -883,5 +1095,11 @@ bool splitRiceVectorKernels() {
 }
 
 void setSplitRiceVectorKernels(bool on) { vectorWanted().store(on, std::memory_order_relaxed); }
+
+bool splitRiceAvx2Kernels() {
+  return splitRiceVectorKernels() && machineHasAvx2() && avx2Wanted().load(std::memory_order_relaxed);
+}
+
+void setSplitRiceAvx2Kernels(bool on) { avx2Wanted().store(on, std::memory_order_relaxed); }
 
 } // namespace mp

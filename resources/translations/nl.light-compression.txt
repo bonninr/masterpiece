@@ -1,3 +1,5 @@
-"Full compression" = "Volledige compressie"
 "Light compression" = "Lichte compressie"
-"Full compression holds the samples in the least memory. Light compression takes a little more memory and less processor time per voice. Applies at the next load." = "Volledige compressie houdt de samples in het minste geheugen. Lichte compressie neemt iets meer geheugen en minder processortijd per stem. Geldt vanaf de volgende keer laden."
+"Medium compression" = "Gemiddelde compressie"
+"High compression" = "Hoge compressie"
+"Maximum compression" = "Maximale compressie"
+"Light compression takes the least processor time per voice. Medium compression holds the samples in about a third of their memory. High and Maximum compression hold 16-bit samples in less memory for more processor time. Changes apply at the next load." = "Lichte compressie vraagt de minste processortijd per stem. Gemiddelde compressie houdt de samples in ongeveer een derde van hun geheugen. Hoge en maximale compressie houden 16-bit-samples in minder geheugen voor meer processortijd. Wijzigingen gelden vanaf de volgende keer laden."

@@ -464,7 +464,7 @@ public:
     const bool had = mp::splitRiceVectorKernels();
     std::printf("    split Rice: vector kernels %s on this machine\n", had ? "present" : "absent");
     mp::SplitRiceScratch scratch;
-    for (auto level : {mp::SplitRiceLevel::Full, mp::SplitRiceLevel::Light})
+    for (auto level : {mp::SplitRiceLevel::Medium, mp::SplitRiceLevel::Light})
     for (int width : {8, 16, 20, 24})
       for (int channels : {1, 2})
         for (Signal signal : {Signal::Noise, Signal::Silence, Signal::Square, Signal::Sine}) {
@@ -474,22 +474,103 @@ public:
           mp::CodecError error = mp::CodecError::None;
           MP_CHECK(mp::encodeSplitRice(input.data(), frames, channels, width, stream, &error, level), "encode");
           std::vector<int32_t> plain(mp::kSplitRiceBlockFrames * static_cast<size_t>(channels));
-          std::vector<int32_t> fast(plain.size());
+          std::vector<int32_t> fast(plain.size()), wide(plain.size());
           for (size_t b = 0; b < stream.blockCount(); ++b) {
             mp::setSplitRiceVectorKernels(false);
             MP_CHECK(mp::decodeSplitRiceBlock(stream, b, plain.data(), scratch, &error), "plain decode");
             mp::setSplitRiceVectorKernels(true);
+            mp::setSplitRiceAvx2Kernels(false);
             MP_CHECK(mp::decodeSplitRiceBlock(stream, b, fast.data(), scratch, &error), "vector decode");
+            mp::setSplitRiceAvx2Kernels(true);
+            MP_CHECK(mp::decodeSplitRiceBlock(stream, b, wide.data(), scratch, &error), "AVX2 decode");
             const size_t n = static_cast<size_t>(stream.framesInBlock(b)) * static_cast<size_t>(channels);
             const size_t at = b * mp::kSplitRiceBlockFrames * static_cast<size_t>(channels);
             MP_CHECK(std::equal(plain.begin(), plain.begin() + static_cast<std::ptrdiff_t>(n), fast.begin()),
                      "the two kernels agree, block " + std::to_string(b) + " at " + std::to_string(width) + " bits");
+            MP_CHECK(std::equal(plain.begin(), plain.begin() + static_cast<std::ptrdiff_t>(n), wide.begin()),
+                     "and the AVX2 ones, block " + std::to_string(b) + " at " + std::to_string(width) + " bits");
             MP_CHECK(std::equal(plain.begin(), plain.begin() + static_cast<std::ptrdiff_t>(n),
                                 input.begin() + static_cast<std::ptrdiff_t>(at)),
                      "and give the input back");
           }
         }
     mp::setSplitRiceVectorKernels(true);
+    mp::setSplitRiceAvx2Kernels(true);
+  }
+};
+
+// The values go into a voice's storage the same with the vector store and
+// the plain one: three bytes each or 16-bit counts, for any count.
+class SplitRiceStoreTest : public mp::test::Test {
+public:
+  SplitRiceStoreTest() : mp::test::Test("functional.codec.split-rice-store", Category::Functional) {}
+
+  void run() override {
+    std::mt19937 rng(5u);
+    for (bool wide : {false, true})
+      for (size_t count : {size_t{0}, size_t{1}, size_t{7}, size_t{8}, size_t{13}, size_t{8192}}) {
+        std::uniform_int_distribution<int32_t> d(wide ? -8388608 : -32768, wide ? 8388607 : 32767);
+        std::vector<int32_t> v(count);
+        for (auto& x : v) x = d(rng);
+        const size_t bytes = count * (wide ? 3 : 2);
+        std::vector<unsigned char> plain(bytes + 16, 0xAA), fast(bytes + 16, 0xAA);
+        mp::setSplitRiceVectorKernels(false);
+        mp::storeSplitRiceValues(v.data(), count, wide, plain.data());
+        mp::setSplitRiceVectorKernels(true);
+        mp::storeSplitRiceValues(v.data(), count, wide, fast.data());
+        const std::string label = std::to_string(count) + (wide ? " wide" : " narrow");
+        MP_CHECK(std::equal(plain.begin(), plain.begin() + static_cast<std::ptrdiff_t>(bytes), fast.begin()),
+                 label + ": the two stores agree");
+        bool back = true;
+        for (size_t i = 0; i < count && back; ++i) {
+          int32_t x;
+          if (wide) {
+            x = plain[3 * i] | (plain[3 * i + 1] << 8) | (plain[3 * i + 2] << 16);
+            if (x & 0x800000) x -= 0x1000000;
+          } else {
+            x = static_cast<int16_t>(plain[2 * i] | (plain[2 * i + 1] << 8));
+          }
+          back = x == v[i];
+        }
+        MP_CHECK(back, label + ": every value reads back");
+      }
+    mp::setSplitRiceVectorKernels(true);
+  }
+};
+
+// The levels by name, as settings and the command line give them, and a
+// 24-bit sample asked for at High or Max coded as Medium codes it.
+class SplitRiceLevelsTest : public mp::test::Test {
+public:
+  SplitRiceLevelsTest() : mp::test::Test("functional.codec.split-rice-levels", Category::Functional) {}
+
+  void run() override {
+    for (auto level : {mp::SplitRiceLevel::Light, mp::SplitRiceLevel::Medium, mp::SplitRiceLevel::High,
+                       mp::SplitRiceLevel::Max}) {
+      mp::SplitRiceLevel back = mp::SplitRiceLevel::Light;
+      const char* name = mp::splitRiceLevelName(level);
+      MP_CHECK(mp::splitRiceLevelFromName(name, back) && back == level, std::string(name) + " reads back");
+    }
+    mp::SplitRiceLevel none = mp::SplitRiceLevel::Medium;
+    MP_CHECK(!mp::splitRiceLevelFromName("full", none) && !mp::splitRiceLevelFromName(nullptr, none),
+             "a name that is no level is refused");
+
+    const uint64_t frames = 3 * mp::kSplitRiceBlockFrames + 100;
+    std::vector<int32_t> input(frames * 2);
+    std::mt19937 rng(9u);
+    std::uniform_int_distribution<int32_t> noise(-300, 300);
+    for (uint64_t f = 0; f < frames; ++f) {
+      const int32_t tone = static_cast<int32_t>(2000000.0 * std::sin(0.013 * static_cast<double>(f)));
+      input[2 * f] = tone + noise(rng);
+      input[2 * f + 1] = tone / 2 + noise(rng);
+    }
+    mp::SplitRiceStream medium;
+    MP_CHECK(mp::encodeSplitRice(input.data(), frames, 2, 24, medium), "medium codes");
+    for (auto level : {mp::SplitRiceLevel::High, mp::SplitRiceLevel::Max}) {
+      mp::SplitRiceStream s;
+      MP_CHECK(mp::encodeSplitRice(input.data(), frames, 2, 24, s, nullptr, level), "24-bit codes");
+      MP_CHECK(s.data == medium.data, std::string(mp::splitRiceLevelName(level)) + " at 24 bits is medium");
+    }
   }
 };
 
@@ -596,6 +677,8 @@ static DeltaRatioTest g_deltaRatio;
 static SplitRiceBytesTest g_splitRiceBytes;
 static SplitRiceLightBytesTest g_splitRiceLightBytes;
 static SplitRiceKernelsTest g_splitRiceKernels;
+static SplitRiceStoreTest g_splitRiceStore;
+static SplitRiceLevelsTest g_splitRiceLevels;
 static SplitRiceRatioTest g_splitRiceRatio;
 static SplitRiceSpeedTest g_splitRiceSpeed;
 

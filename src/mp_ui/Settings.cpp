@@ -19,6 +19,9 @@
 namespace mp::ui {
 namespace {
 
+// A compression level's item in the level list.
+int levelItem(SplitRiceLevel level) { return static_cast<int>(level) + 1; }
+
 // The sample cache's files in a folder: one per organ or a single one, and
 // the part file of a write that stopped.
 juce::Array<juce::File> sampleCacheFiles(const juce::File& dir) {
@@ -137,7 +140,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
   openReleaseBuffer_ = proc_.releaseBufferSeconds();
   openMono_ = proc_.loadMono();
   openCompress_ = proc_.codeSamples();
-  openLight_ = proc_.codeLight();
+  openLevel_ = proc_.codeLevel();
   openProgramCouplers_ = proc_.programCouplers();
   addAndMakeVisible(programCouplers_);
   programCouplers_.setToggleState(openProgramCouplers_, juce::dontSendNotification);
@@ -562,16 +565,23 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
     enableCompress();
     syncProfile();
   };
-  // Light holds a little more in memory and decodes with less work, for a
-  // computer that runs short of time at full compression.
+  // Light holds a little more in memory and decodes with the least work, for
+  // a computer that runs short of time at medium. High and Max hold 16-bit
+  // samples in less memory for more work; a 24-bit sample is coded medium.
   addAndMakeVisible(compressLevel_);
-  compressLevel_.addItem(TRANS("Full compression"), 1);
-  compressLevel_.addItem(TRANS("Light compression"), 2);
-  compressLevel_.setSelectedId(proc_.codeLight() ? 2 : 1, juce::dontSendNotification);
+  compressLevel_.addItem(TRANS("Light compression"), levelItem(mp::SplitRiceLevel::Light));
+  compressLevel_.addItem(TRANS("Medium compression"), levelItem(mp::SplitRiceLevel::Medium));
+  compressLevel_.addItem(TRANS("High compression"), levelItem(mp::SplitRiceLevel::High));
+  compressLevel_.addItem(TRANS("Maximum compression"), levelItem(mp::SplitRiceLevel::Max));
+  compressLevel_.setSelectedId(levelItem(proc_.codeLevel()), juce::dontSendNotification);
   compressLevel_.setTooltip(
-      TRANS("Full compression holds the samples in the least memory. Light compression takes "
-            "a little more memory and less processor time per voice. Applies at the next load."));
-  compressLevel_.onChange = [this] { proc_.setCodeLight(compressLevel_.getSelectedId() == 2); };
+      TRANS("Light compression takes the least processor time per voice. Medium compression "
+            "holds the samples in about a third of their memory. High and Maximum compression "
+            "hold 16-bit samples in less memory for more processor time. Changes apply at the "
+            "next load."));
+  compressLevel_.onChange = [this] {
+    proc_.setCodeLevel(static_cast<mp::SplitRiceLevel>(compressLevel_.getSelectedId() - 1));
+  };
   enableCompress();
 
   // Audible load progress for large organs. General config: written to the
@@ -796,8 +806,8 @@ void EnginePanel::revert() {
   mono_.setToggleState(openMono_, juce::dontSendNotification);
   proc_.setCodeSamples(openCompress_);
   compress_.setToggleState(openCompress_, juce::dontSendNotification);
-  proc_.setCodeLight(openLight_);
-  compressLevel_.setSelectedId(openLight_ ? 2 : 1, juce::dontSendNotification);
+  proc_.setCodeLevel(openLevel_);
+  compressLevel_.setSelectedId(levelItem(openLevel_), juce::dontSendNotification);
   proc_.setProgramCouplers(openProgramCouplers_);
   programCouplers_.setToggleState(openProgramCouplers_, juce::dontSendNotification);
   proc_.setGrandOrgueTremulantPitch(openGoTremulantPitch_);
@@ -933,7 +943,7 @@ bool EnginePanel::loadingChanged() const {
          proc_.streamHeadPercent() != openStreamPercent_ ||
          proc_.releaseBufferSeconds() != openReleaseBuffer_ ||
          proc_.loadMono() != openMono_ || proc_.loadSampleRate() != openRate_ ||
-         proc_.codeSamples() != openCompress_ || proc_.codeLight() != openLight_ ||
+         proc_.codeSamples() != openCompress_ || proc_.codeLevel() != openLevel_ ||
          proc_.programCouplers() != openProgramCouplers_ ||
          proc_.grandOrgueTremulantPitch() != openGoTremulantPitch_ ||
          proc_.grandOrgueSwellFilter() != openGoSwellFilter_ ||
@@ -1112,6 +1122,10 @@ void EnginePanel::enableCompress() {
   const bool coded = st == SampleStorage::Int16 || st == SampleStorage::Int24;
   compress_.setEnabled(coded);
   compressLevel_.setEnabled(coded && proc_.codeSamples());
+  // High and Max pack 16-bit samples; a 24-bit one would come out medium.
+  const bool narrow = st == SampleStorage::Int16;
+  compressLevel_.setItemEnabled(levelItem(SplitRiceLevel::High), narrow);
+  compressLevel_.setItemEnabled(levelItem(SplitRiceLevel::Max), narrow);
 }
 
 void EnginePanel::syncProfile() {

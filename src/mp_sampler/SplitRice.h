@@ -101,21 +101,32 @@ struct SplitRiceScratch {
   std::vector<int32_t> work;   // the residuals and each channel's values
 };
 
-// How hard the encoder packs: Full codes every block split Rice, Light packs
-// every block at a fixed width per run, for less work at decode.
-enum class SplitRiceLevel : uint8_t { Full, Light };
+// How hard the encoder packs. Light packs every block at a fixed width per
+// run, for the least work at decode; Medium codes every block split Rice.
+enum class SplitRiceLevel : uint8_t { Light, Medium, High, Max };
+
+// The level's name in settings and on the command line: "light", "medium",
+// "high", "max".
+const char* splitRiceLevelName(SplitRiceLevel level);
+// The level a name gives; false for a name that is none of them.
+bool splitRiceLevelFromName(const char* name, SplitRiceLevel& level);
 
 // Codes interleaved samples (frames * channels values, frame-major). One or
 // two channels, 8 to 24 bits; every sample has to fit the width.
 bool encodeSplitRice(const int32_t* samples, uint64_t frames, int channels, int bitDepth,
                      SplitRiceStream& out, CodecError* error = nullptr,
-                     SplitRiceLevel level = SplitRiceLevel::Full);
+                     SplitRiceLevel level = SplitRiceLevel::Medium);
 
 // Decodes block `index`. `out` holds kSplitRiceBlockFrames * channels
 // values: the block's frames come back interleaved, and a short last block
 // leaves the rest as working space.
 bool decodeSplitRiceBlock(const SplitRiceStream& stream, size_t index, int32_t* out,
                           SplitRiceScratch& scratch, CodecError* error = nullptr);
+
+// Stores `count` decoded values in a voice's storage: three bytes each,
+// least significant first, when `wide`, otherwise 16-bit counts. A wide store
+// writes up to four bytes past the last value.
+void storeSplitRiceValues(const int32_t* values, size_t count, bool wide, unsigned char* out);
 
 // Decodes `count` frames from `firstFrame`, the blocks that hold them only.
 bool decodeSplitRiceFrames(const SplitRiceStream& stream, uint64_t firstFrame, uint64_t count,
@@ -130,5 +141,9 @@ std::unique_ptr<SampleCodec> makeSplitRiceCodec();
 // machine has none.
 bool splitRiceVectorKernels();
 void setSplitRiceVectorKernels(bool on);
+// Whether the vector kernels run eight values at a time, where the machine
+// has AVX2. Off, they run four at a time.
+bool splitRiceAvx2Kernels();
+void setSplitRiceAvx2Kernels(bool on);
 
 } // namespace mp
