@@ -1,0 +1,3 @@
+"Full compression" = "Compression complète"
+"Light compression" = "Compression légère"
+"Full compression holds the samples in the least memory. Light compression takes a little more memory and less processor time per voice. Applies at the next load." = "La compression complète garde les échantillons dans le moins de mémoire. La compression légère prend un peu plus de mémoire et moins de temps processeur par voix. S'applique au prochain chargement."

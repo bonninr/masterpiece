@@ -137,7 +137,7 @@ public:
           "  --console-page <n>       show this console page once the organ is up (from 1)\n"
           "  --storage <format>       int16, int20, int24 or float32 samples in memory\n"
           "  --load-mono <on|off>     load samples as mono\n"
-          "  --compress-samples <on|off>  hold samples compressed, lossless\n"
+          "  --compress-samples <on|light|off>  hold samples compressed, lossless\n"
           "  --stream-releases <on|off>  stream release tails from disk\n"
           "  --preload-head <frames>  minimum head of every sample (0 = whole file)\n"
           "  --load-rate <Hz>         convert samples to this rate as they load\n"
@@ -730,7 +730,9 @@ public:
         proc_->overrideSetting("mono");
       } else if (args[i] == "--compress-samples" && i + 1 < args.size()) {
         const auto v = args[++i].unquoted().trim().toLowerCase();
-        proc_->setCodeSamples(v == "on" || v == "1" || v == "true" || v == "yes");
+        proc_->setCodeSamples(v == "on" || v == "1" || v == "true" || v == "yes" || v == "light" ||
+                              v == "2");
+        proc_->setCodeLight(v == "light" || v == "2");
         proc_->overrideSetting("compress");
       } else if (args[i] == "--cache" && i + 1 < args.size()) {
         const auto v = args[++i].unquoted().trim().toLowerCase();
@@ -756,7 +758,7 @@ public:
          : proc_->sampleStorage() == mp::SampleStorage::Int24 ? "int24"
                                                               : "float32") +
         ", mono=" + (proc_->loadMono() ? "on" : "off") +
-        ", compressed=" + (proc_->codeSamples() ? "on" : "off") +
+        ", compressed=" + (!proc_->codeSamples() ? "off" : proc_->codeLight() ? "light" : "on") +
         ", rate=" + (proc_->loadSampleRate() > 0.0
                          ? juce::String(proc_->loadSampleRate(), 0)
                          : juce::String("as recorded")) +

@@ -137,6 +137,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
   openReleaseBuffer_ = proc_.releaseBufferSeconds();
   openMono_ = proc_.loadMono();
   openCompress_ = proc_.codeSamples();
+  openLight_ = proc_.codeLight();
   openProgramCouplers_ = proc_.programCouplers();
   addAndMakeVisible(programCouplers_);
   programCouplers_.setToggleState(openProgramCouplers_, juce::dontSendNotification);
@@ -558,8 +559,19 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
             "they play. The sound is identical; memory use is lower. Applies at the next load."));
   compress_.onClick = [this] {
     proc_.setCodeSamples(compress_.getToggleState());
+    enableCompress();
     syncProfile();
   };
+  // Light holds a little more in memory and decodes with less work, for a
+  // computer that runs short of time at full compression.
+  addAndMakeVisible(compressLevel_);
+  compressLevel_.addItem(TRANS("Full compression"), 1);
+  compressLevel_.addItem(TRANS("Light compression"), 2);
+  compressLevel_.setSelectedId(proc_.codeLight() ? 2 : 1, juce::dontSendNotification);
+  compressLevel_.setTooltip(
+      TRANS("Full compression holds the samples in the least memory. Light compression takes "
+            "a little more memory and less processor time per voice. Applies at the next load."));
+  compressLevel_.onChange = [this] { proc_.setCodeLight(compressLevel_.getSelectedId() == 2); };
   enableCompress();
 
   // Audible load progress for large organs. General config: written to the
@@ -784,6 +796,8 @@ void EnginePanel::revert() {
   mono_.setToggleState(openMono_, juce::dontSendNotification);
   proc_.setCodeSamples(openCompress_);
   compress_.setToggleState(openCompress_, juce::dontSendNotification);
+  proc_.setCodeLight(openLight_);
+  compressLevel_.setSelectedId(openLight_ ? 2 : 1, juce::dontSendNotification);
   proc_.setProgramCouplers(openProgramCouplers_);
   programCouplers_.setToggleState(openProgramCouplers_, juce::dontSendNotification);
   proc_.setGrandOrgueTremulantPitch(openGoTremulantPitch_);
@@ -919,7 +933,7 @@ bool EnginePanel::loadingChanged() const {
          proc_.streamHeadPercent() != openStreamPercent_ ||
          proc_.releaseBufferSeconds() != openReleaseBuffer_ ||
          proc_.loadMono() != openMono_ || proc_.loadSampleRate() != openRate_ ||
-         proc_.codeSamples() != openCompress_ ||
+         proc_.codeSamples() != openCompress_ || proc_.codeLight() != openLight_ ||
          proc_.programCouplers() != openProgramCouplers_ ||
          proc_.grandOrgueTremulantPitch() != openGoTremulantPitch_ ||
          proc_.grandOrgueSwellFilter() != openGoSwellFilter_ ||
@@ -1095,7 +1109,9 @@ void EnginePanel::syncPerformance() {
 // player's choice where it was.
 void EnginePanel::enableCompress() {
   const auto st = proc_.sampleStorage();
-  compress_.setEnabled(st == SampleStorage::Int16 || st == SampleStorage::Int24);
+  const bool coded = st == SampleStorage::Int16 || st == SampleStorage::Int24;
+  compress_.setEnabled(coded);
+  compressLevel_.setEnabled(coded && proc_.codeSamples());
 }
 
 void EnginePanel::syncProfile() {
@@ -1226,7 +1242,7 @@ void EnginePanel::applyPart() {
                    &rateLabel_, &rate_, &sparseLabel_, &sparse_, &releasesLabel_, &releases_,
                    &releaseLengthLabel_, &releaseLength_, &releaseShortLabel_, &releaseShort_, &releaseCutoffLabel_, &releaseCutoff_,
                    &stream_, &streamHead_, &releaseBufferLabel_, &releaseBuffer_, &mono_, &compress_,
-                   &programCouplers_, &goTremulantPitch_, &goSwellFilter_, &portable_, &organRootLabel_, &organRootValue_, &organRootChoose_,
+                   &compressLevel_, &programCouplers_, &goTremulantPitch_, &goSwellFilter_, &portable_, &organRootLabel_, &organRootValue_, &organRootChoose_,
                    &organRootDefault_, &memory_, &revert_, &keep_, &saveOrgan_, &saveGlobal_};
   const List organSimple{&profileLabel_, &profile_, &memory_, &revert_, &keep_, &saveOrgan_, &saveGlobal_};
   const List performance{&performanceLabel_, &performance_, &faster_, &realtime_, &everyProcessor_,
@@ -1343,7 +1359,12 @@ void EnginePanel::resized() {
     r.removeFromTop(2);
   }
   line(mono_, kIndent);
-  line(compress_, kIndent);
+  if (compress_.isVisible()) {
+    auto compressRow = r.removeFromTop(kRow).withTrimmedLeft(kIndent);
+    compressLevel_.setBounds(compressRow.removeFromRight(230).reduced(0, 2));
+    compress_.setBounds(compressRow);
+    r.removeFromTop(2);
+  }
   if (profile_.isVisible()) r.removeFromTop(kGap);
   pair(rateLabel_, rate_, 260);
   pair(sparseLabel_, sparse_, 300);

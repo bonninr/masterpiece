@@ -2018,7 +2018,8 @@ juce::String MasterpieceProcessor::settingsBody() const {
                                                         : 32)
        << "\n";
   text << "mono " << (samples_.loadMono() ? 1 : 0) << "\n";
-  text << "compress " << (samples_.codeSamples() ? 1 : 0) << "\n";
+  // 1 split Rice, 2 light.
+  text << "compress " << (!samples_.codeSamples() ? 0 : samples_.codeLight() ? 2 : 1) << "\n";
   text << "programcouplers " << (programCouplers_ ? 1 : 0) << "\n";
   if (pedalManual_.load() != 0) text << "pedalmanual " << pedalManual_.load() << "\n";
   text << "releases " << static_cast<int>(samples_.releaseChoice()) << "\n";
@@ -2114,7 +2115,10 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
                         : val.getIntValue() == 32 ? SampleStorage::Float32
                                                   : SampleStorage::Int24);
   else if (key == "mono") samples_.setLoadMono(on);
-  else if (key == "compress") samples_.setCodeSamples(on);
+  else if (key == "compress") {
+    samples_.setCodeSamples(on);
+    samples_.setCodeLight(val.getIntValue() == 2);
+  }
   else if (key == "programcouplers") programCouplers_ = on;
   else if (key == "pedalmanual") pedalManual_.store(val.getIntValue());
   else if (key == "releases")
@@ -5337,7 +5341,8 @@ std::string MasterpieceProcessor::cacheChoices() const {
          std::to_string(static_cast<int>(samples_.cacheMode())) + "/" +
          std::to_string(static_cast<int>(samples_.releaseChoice())) + "/" +
          std::to_string(samples_.releaseMaxMs()) + "/" +
-         std::to_string(sparseEvery_) + (samples_.codeSamples() ? "/z" : "");
+         std::to_string(sparseEvery_) +
+         (!samples_.codeSamples() ? "" : samples_.codeLight() ? "/zl" : "/z");
 }
 
 void MasterpieceProcessor::keepLoadingChoiceForSession() {
@@ -5347,6 +5352,7 @@ void MasterpieceProcessor::keepLoadingChoiceForSession() {
   c.storage = samples_.storage();
   c.mono = samples_.loadMono();
   c.code = samples_.codeSamples();
+  c.light = samples_.codeLight();
   c.stream = samples_.streamReleases();
   c.streamHead = samples_.streamHeadFrames();
   c.streamHeadPercent = samples_.streamHeadPercent();
@@ -8029,6 +8035,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     samples_.setStorage(c.storage);
     samples_.setLoadMono(c.mono);
     samples_.setCodeSamples(c.code);
+    samples_.setCodeLight(c.light);
     samples_.setStreamReleases(c.stream);
     samples_.setStreamHeadFrames(c.streamHead);
     samples_.setStreamHeadPercent(c.streamHeadPercent);
@@ -9167,7 +9174,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
          : samples_.storage() == SampleStorage::Int24 ? "int24"
                                                       : "float32") +
         ", mono=" + (samples_.loadMono() ? "on" : "off") +
-        ", compressed=" + (samples_.codeSamples() ? "on" : "off") +
+        ", compressed=" + (!samples_.codeSamples() ? "off" : samples_.codeLight() ? "light" : "on") +
         ", rate=" + (samples_.loadSampleRate() > 0.0
                          ? juce::String(samples_.loadSampleRate(), 0)
                          : juce::String("as recorded")) +

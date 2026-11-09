@@ -31,6 +31,12 @@ constexpr int kMaxK = 31;
 constexpr int kVectorK = 25;                   // the widest k the vector unpack takes
 constexpr int kMaxOrder = 8;                   // what the decoder takes
 constexpr int kEncodeOrder = 3;                // what the encoder tries
+constexpr int kLightOrder = 2;                 // what it tries for a packed block: order 3
+                                               // costs a sixth more decode for 1.5 % of size
+constexpr int kRun = 64;                       // values that share a width, packed
+constexpr int kRunsPerGroup = kGroup / kRun;
+constexpr int kRunsPerBlock = kBlock / kRun;
+constexpr int kPackedMode = 4;                 // the mode bit of a packed block
 // One channel's positions of the unary stream's ones: the -1 before the
 // first, one per value, and room for the eight a byte may add past the end.
 constexpr size_t kMarkStride = 1 + kBlock + 128;
@@ -94,6 +100,7 @@ struct Candidate {
   int order = 0;
   std::vector<uint32_t> u;  // the residuals, zigzagged, padded to whole groups
   uint8_t k[kGroupsPerBlock] = {};
+  uint8_t w[kRunsPerBlock] = {};  // packed: each run's width
   int groups = 0;
   int32_t hist[kMaxOrder] = {};
 };
@@ -120,7 +127,9 @@ int pickK(const uint32_t* u, uint64_t& bits) {
 }
 
 // `t` is frame 0 of the block; t[-1] to t[-kMaxOrder] are the frames before.
-void analyse(const int32_t* t, int n, int padded, int order, Candidate& c) {
+// Packed, a run costs its width in every value; otherwise a group costs its
+// Rice code.
+void analyse(const int32_t* t, int n, int padded, int order, bool packed, Candidate& c) {
   std::vector<uint32_t> tmp(static_cast<size_t>(order + n));
   for (int i = 0; i < order; ++i) tmp[static_cast<size_t>(i)] = static_cast<uint32_t>(t[i - order]);
   for (int i = 0; i < n; ++i) tmp[static_cast<size_t>(order + i)] = static_cast<uint32_t>(t[i]);
@@ -132,6 +141,21 @@ void analyse(const int32_t* t, int n, int padded, int order, Candidate& c) {
     c.u[static_cast<size_t>(i)] = zigzag(static_cast<int32_t>(tmp[static_cast<size_t>(order + i)]));
   for (int i = 0; i < kMaxOrder; ++i) c.hist[i] = i < order ? t[-1 - i] : 0;
   c.groups = padded / kGroup;
+  if (packed) {
+    const int runs = padded / kRun;
+    uint64_t total = static_cast<uint64_t>(order) * 32 + static_cast<uint64_t>(runs) * 5;
+    for (int j = 0; j < runs; ++j) {
+      uint32_t all = 0;  // or'ed: the same bit length as the largest
+      for (int i = 0; i < kRun; ++i) all |= c.u[static_cast<size_t>(j) * kRun + static_cast<size_t>(i)];
+      const int w = bitLength(all);
+      c.w[j] = static_cast<uint8_t>(w);
+      total += static_cast<uint64_t>(kRun) * static_cast<uint64_t>(w);
+      if (w > kMaxK) total = ~0ull;  // wider than a run's width can say
+      if (total == ~0ull) break;
+    }
+    c.bits = total;
+    return;
+  }
   uint64_t total = static_cast<uint64_t>(order) * 32 + static_cast<uint64_t>(c.groups) * 5;
   for (int g = 0; g < c.groups; ++g) {
     uint64_t b = 0;
@@ -174,6 +198,23 @@ void writeBody(const Candidate& c, std::vector<uint8_t>& out) {
     w.flush();
   }
   while ((out.size() - start) % 8) out.push_back(0);
+}
+
+// A run of 64 values at width w is 8 * w bytes, so the runs stay whole bytes.
+void writePackedBody(const Candidate& c, std::vector<uint8_t>& out) {
+  const int runs = c.groups * kRunsPerGroup;
+  {
+    BitWriter w(out);
+    for (int j = 0; j < runs; ++j) w.put(c.w[j], 5);
+    w.flush();
+  }
+  BitWriter w(out);
+  for (int j = 0; j < runs; ++j) {
+    const int width = c.w[j];
+    if (width == 0) continue;
+    for (int i = 0; i < kRun; ++i) w.put(c.u[static_cast<size_t>(j) * kRun + static_cast<size_t>(i)], width);
+  }
+  w.flush();
 }
 
 // ------------------------------------------------------------------ kernels
@@ -245,6 +286,16 @@ struct Plain {
     }
   }
 
+  // One packed run: kRun values of w bits each.
+  static void packed(const uint8_t* low, unsigned w, int32_t* r) {
+    const uint32_t mask = w >= 32 ? ~0u : (1u << w) - 1;
+    for (int i = 0; i < kRun; ++i) {
+      const uint64_t bit = static_cast<uint64_t>(i) * w;
+      const uint32_t v = w ? static_cast<uint32_t>(ld64(low + (bit >> 3)) >> (bit & 7)) & mask : 0;
+      r[i] = static_cast<int32_t>((v >> 1) ^ (0u - (v & 1u)));
+    }
+  }
+
   template <int P>
   static void prefix(const int32_t* r, int32_t* x, int32_t* carry) {
     for (int i = 0; i < kGroup; ++i) {
@@ -254,6 +305,14 @@ struct Plain {
         carry[m] = static_cast<int32_t>(v);
       }
       x[i] = static_cast<int32_t>(v);
+    }
+  }
+
+  // The smallest and largest of `count` values, folded into lo and hi.
+  static void range(const int32_t* v, size_t count, int32_t& lo, int32_t& hi) {
+    for (size_t i = 0; i < count; ++i) {
+      lo = std::min(lo, v[i]);
+      hi = std::max(hi, v[i]);
     }
   }
 
@@ -330,6 +389,33 @@ struct Vector {
     }
   }
 
+  MP_SSE41 static void packed(const uint8_t* low, unsigned w, int32_t* r) {
+    if (w > static_cast<unsigned>(kVectorK)) {
+      Plain::packed(low, w, r);
+      return;
+    }
+    if (w == 0) {
+      std::memset(r, 0, sizeof(int32_t) * kRun);
+      return;
+    }
+    const Tables& T = tables();
+    const __m128i one = _mm_set1_epi32(1);
+    const __m128i zero = _mm_setzero_si128();
+    const __m128i mask = _mm_set1_epi32(static_cast<int>((1u << w) - 1));
+    for (int b = 0; b < kRun / 4; b += 8) {
+      const uint8_t* blk = low + static_cast<size_t>(b >> 1) * w;  // 32 values: 4 * w bytes
+      for (int jj = 0; jj < 8; ++jj) {
+        const uint8_t* s = blk + T.start[w][jj];
+        __m128i v = _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i*>(s)),
+                                     _mm_load_si128(reinterpret_cast<const __m128i*>(T.shuffle[w][jj])));
+        v = _mm_mullo_epi32(v, _mm_load_si128(reinterpret_cast<const __m128i*>(T.multiply[w][jj])));
+        v = _mm_and_si128(_mm_srli_epi32(v, 7), mask);
+        const __m128i d = _mm_xor_si128(_mm_srli_epi32(v, 1), _mm_sub_epi32(zero, _mm_and_si128(v, one)));
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(r + 4 * (b + jj)), d);
+      }
+    }
+  }
+
   template <int P>
   MP_SSE41 static void prefix(const int32_t* r, int32_t* x, int32_t* carry) {
     if constexpr (P == 0) {
@@ -349,6 +435,23 @@ struct Vector {
       }
       for (int m = 0; m < P; ++m) carry[m] = _mm_cvtsi128_si32(c[m]);
     }
+  }
+
+  MP_SSE41 static void range(const int32_t* v, size_t count, int32_t& lo, int32_t& hi) {
+    __m128i l = _mm_set1_epi32(lo), h = _mm_set1_epi32(hi);
+    size_t i = 0;
+    for (; i + 4 <= count; i += 4) {
+      const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(v + i));
+      l = _mm_min_epi32(l, x);
+      h = _mm_max_epi32(h, x);
+    }
+    l = _mm_min_epi32(l, _mm_shuffle_epi32(l, 0x4E));
+    l = _mm_min_epi32(l, _mm_shuffle_epi32(l, 0xB1));
+    h = _mm_max_epi32(h, _mm_shuffle_epi32(h, 0x4E));
+    h = _mm_max_epi32(h, _mm_shuffle_epi32(h, 0xB1));
+    lo = _mm_cvtsi128_si32(l);
+    hi = _mm_cvtsi128_si32(h);
+    Plain::range(v + i, count - i, lo, hi);
   }
 
   MP_SSE41 static void stereo(int mode, const int32_t* a, const int32_t* b, int32_t* out) {
@@ -421,6 +524,7 @@ void prefixOrder(int order, const int32_t* r, int32_t* x, int32_t* carry) {
 struct Channel {
   int order = 0;
   uint8_t k[kGroupsPerBlock] = {};
+  uint8_t w[kRunsPerBlock] = {};  // packed: each run's width
   const uint8_t* low = nullptr;
   int32_t carry[kMaxOrder] = {};
   int32_t* marks = nullptr;
@@ -435,8 +539,10 @@ CodecError decodeBlockWith(const uint8_t* data, size_t begin, size_t end, int n,
   const uint8_t* p = data + begin;
   const uint8_t* const e = data + end;
   if (p >= e) return CodecError::Truncated;
-  const int mode = *p++;
-  if (mode > 3 || (channels == 1 && mode != 0)) return CodecError::CodecFailed;
+  const int modeByte = *p++;
+  const bool packed = (modeByte & kPackedMode) != 0;
+  const int mode = modeByte & 3;
+  if (modeByte > (kPackedMode | 3) || (channels == 1 && mode != 0)) return CodecError::CodecFailed;
 
   Channel ch[kSplitRiceMaxChannels];
   int32_t hist[kSplitRiceMaxChannels][kMaxOrder] = {};
@@ -462,9 +568,25 @@ CodecError decodeBlockWith(const uint8_t* data, size_t begin, size_t end, int n,
   const int padded = (n + kGroup - 1) / kGroup * kGroup;
   const int groups = padded / kGroup;
   const size_t kBytes = (static_cast<size_t>(groups) * 5 + 7) / 8;
+  const int runs = groups * kRunsPerGroup;
+  const size_t wBytes = (static_cast<size_t>(runs) * 5 + 7) / 8;
   for (int c = 0; c < channels; ++c) {
     Channel& h = ch[c];
     const size_t len = length[c];
+    if (packed) {
+      if (len < wBytes) return CodecError::Truncated;
+      size_t body = 0;
+      for (int j = 0; j < runs; ++j) {
+        const unsigned bit = static_cast<unsigned>(j) * 5;
+        h.w[j] = static_cast<uint8_t>((ld32(p + (bit >> 3)) >> (bit & 7)) & 31);
+        body += static_cast<size_t>(h.w[j]) * (kRun / 8);
+      }
+      if (len - wBytes < body) return CodecError::Truncated;
+      h.low = p + wBytes;
+      initCarry(h.order, hist[c], h.carry);
+      p += len;
+      continue;
+    }
     if (len < kBytes) return CodecError::Truncated;
     size_t lowBytes = 0;
     for (int g = 0; g < groups; ++g) {
@@ -484,9 +606,17 @@ CodecError decodeBlockWith(const uint8_t* data, size_t begin, size_t end, int n,
   int32_t* x0 = r + kGroup;
   int32_t* x1 = x0 + kGroup;
   auto decodeGroup = [&](Channel& h, int32_t* dst) {
-    const unsigned k = h.k[h.group];
-    K::group(h.low, k, h.marks + 1 + static_cast<size_t>(h.group) * kGroup, r);
-    h.low += static_cast<size_t>(k) * (kGroup / 8);
+    if (packed) {
+      for (int j = 0; j < kRunsPerGroup; ++j) {
+        const unsigned w = h.w[h.group * kRunsPerGroup + j];
+        K::packed(h.low, w, r + j * kRun);
+        h.low += static_cast<size_t>(w) * (kRun / 8);
+      }
+    } else {
+      const unsigned k = h.k[h.group];
+      K::group(h.low, k, h.marks + 1 + static_cast<size_t>(h.group) * kGroup, r);
+      h.low += static_cast<size_t>(k) * (kGroup / 8);
+    }
     ++h.group;
     prefixOrder<K>(h.order, r, dst, h.carry);
   };
@@ -504,11 +634,7 @@ CodecError decodeBlockWith(const uint8_t* data, size_t begin, size_t end, int n,
   const int32_t low = static_cast<int32_t>(codecSampleMin(bitDepth));
   const int32_t high = static_cast<int32_t>(codecSampleMax(bitDepth));
   int32_t lo = 0, hi = 0;
-  const size_t count = static_cast<size_t>(n) * static_cast<size_t>(channels);
-  for (size_t i = 0; i < count; ++i) {
-    lo = std::min(lo, out[i]);
-    hi = std::max(hi, out[i]);
-  }
+  K::range(out, static_cast<size_t>(n) * static_cast<size_t>(channels), lo, hi);
   if (lo < low || hi > high) return CodecError::CodecFailed;
   return CodecError::None;
 }
@@ -636,7 +762,7 @@ uint64_t newSplitRiceSerial() {
 }
 
 bool encodeSplitRice(const int32_t* samples, uint64_t frames, int channels, int bitDepth,
-                     SplitRiceStream& out, CodecError* error) {
+                     SplitRiceStream& out, CodecError* error, SplitRiceLevel level) {
   auto fail = [&](CodecError why) {
     if (error) *error = why;
     return false;
@@ -659,6 +785,7 @@ bool encodeSplitRice(const int32_t* samples, uint64_t frames, int channels, int 
   // The signals a block may be held as: left (or the only channel), right,
   // and side.
   const int signals = channels == 1 ? 1 : 3;
+  const bool packed = level == SplitRiceLevel::Light;
   std::vector<int32_t> sig[3];
   Candidate cand[3][kEncodeOrder + 1];
   for (uint64_t f0 = 0; f0 < frames; f0 += kBlock) {
@@ -682,8 +809,8 @@ bool encodeSplitRice(const int32_t* samples, uint64_t frames, int channels, int 
     int best[3] = {};
     for (int s = 0; s < signals; ++s) {
       uint64_t bits = ~0ull;
-      for (int order = 0; order <= kEncodeOrder; ++order) {
-        analyse(sig[s].data() + kMaxOrder, n, padded, order, cand[s][order]);
+      for (int order = 0; order <= (packed ? kLightOrder : kEncodeOrder); ++order) {
+        analyse(sig[s].data() + kMaxOrder, n, padded, order, packed, cand[s][order]);
         if (cand[s][order].bits < bits) {
           bits = cand[s][order].bits;
           best[s] = order;
@@ -697,7 +824,7 @@ bool encodeSplitRice(const int32_t* samples, uint64_t frames, int channels, int 
       mode = 1;
       pick[1] = 2;
     }
-    out.data.push_back(static_cast<uint8_t>(mode));
+    out.data.push_back(static_cast<uint8_t>(mode | (packed ? kPackedMode : 0)));
     for (int c = 0; c < channels; ++c) {
       const Candidate& k = cand[pick[c]][best[pick[c]]];
       out.data.push_back(static_cast<uint8_t>(k.order));
@@ -707,7 +834,10 @@ bool encodeSplitRice(const int32_t* samples, uint64_t frames, int channels, int 
     if (channels == 2) st32(out.data, 0);
     const size_t bodyAt = out.data.size();
     for (int c = 0; c < channels; ++c) {
-      writeBody(cand[pick[c]][best[pick[c]]], out.data);
+      if (packed)
+        writePackedBody(cand[pick[c]][best[pick[c]]], out.data);
+      else
+        writeBody(cand[pick[c]][best[pick[c]]], out.data);
       if (c == 0 && channels == 2) {
         const uint32_t length = static_cast<uint32_t>(out.data.size() - bodyAt);
         for (int i = 0; i < 4; ++i) out.data[lengthAt + static_cast<size_t>(i)] = static_cast<uint8_t>(length >> (8 * i));

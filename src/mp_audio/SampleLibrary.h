@@ -147,6 +147,11 @@ public:
   // bit. The sample cache holds them coded too. Takes effect on the next load.
   void setCodeSamples(bool on) { codeSamples_ = on; }
   bool codeSamples() const { return codeSamples_; }
+  // Light compression: the blocks packed at a fixed width, which decodes
+  // with less work and takes a little more memory. Read only while the
+  // samples are coded.
+  void setCodeLight(bool on) { codeLight_ = on; }
+  bool codeLight() const { return codeLight_; }
   // The samples loaded that are held coded.
   size_t codedCount() const;
 
@@ -476,6 +481,7 @@ private:
   // 24-bit: what the sample sets are. See SampleStorage.
   SampleStorage storage_ = SampleStorage::Int24;
   bool codeSamples_ = false;
+  bool codeLight_ = false;
   bool loadMono_ = false;
   // How many notes of a rank are loaded: 1 for every note, 2 for every
   // second, 3 for every third.

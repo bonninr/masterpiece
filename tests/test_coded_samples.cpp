@@ -91,9 +91,10 @@ mp::SampleBuffer plainBuffer(Width width, int frames, int channels, double hz, u
   return b;
 }
 
-mp::SampleBuffer codedCopy(const mp::SampleBuffer& plain) {
+mp::SampleBuffer codedCopy(const mp::SampleBuffer& plain,
+                           mp::SplitRiceLevel level = mp::SplitRiceLevel::Full) {
   mp::SampleBuffer b = plain;
-  const bool ok = mp::codeSampleBuffer(b);
+  const bool ok = mp::codeSampleBuffer(b, level);
   MP_CHECK(ok, "the buffer codes");
   return b;
 }
@@ -257,12 +258,14 @@ public:
   CodedBufferTest() : Test("functional.samples.coded-buffer", Category::Functional) {}
 
   void run() override {
+    for (const auto level : {mp::SplitRiceLevel::Full, mp::SplitRiceLevel::Light})
     for (const Width width : {Width::Int16, Width::Int24, Width::Int16In24})
       for (const int channels : {1, 2}) {
-        const std::string label =
-            std::string(widthName(width)) + ", " + std::to_string(channels) + " channels";
+        const std::string label = std::string(level == mp::SplitRiceLevel::Light ? "light, " : "") +
+                                  std::string(widthName(width)) + ", " + std::to_string(channels) +
+                                  " channels";
         const auto plain = plainBuffer(width, 9001, channels, 220.0, 7);
-        const auto coded = codedCopy(plain);
+        const auto coded = codedCopy(plain, level);
         MP_CHECK(coded.coded != nullptr, label + ": held coded");
         MP_CHECK(coded.pcm16.empty() && coded.pcm24.empty(), label + ": the plain counts freed");
         MP_CHECK(coded.compact(), label + ": compact");
@@ -600,6 +603,8 @@ public:
       const auto releasePlain = plainBuffer(width, 48000, 2, 220.0, 42);
       const auto attackCoded = codedCopy(attackPlain);
       const auto releaseCoded = codedCopy(releasePlain);
+      const auto attackLight = codedCopy(attackPlain, mp::SplitRiceLevel::Light);
+      const auto releaseLight = codedCopy(releasePlain, mp::SplitRiceLevel::Light);
       Playing a;
       a.attack = &attackPlain;
       a.release = &releasePlain;
@@ -611,8 +616,12 @@ public:
       Playing b = a;
       b.attack = &attackCoded;
       b.release = &releaseCoded;
+      Playing c = a;
+      c.attack = &attackLight;
+      c.release = &releaseLight;
       const Played plain = play(a, false, isa);
       const Played coded = play(b, true, isa);
+      const Played light = play(c, true, isa);
       // The blocks of the coder each voice reads through, at its ratio.
       double through = 0.0;
       for (const double r : a.ratios)
@@ -620,7 +629,12 @@ public:
       std::printf("    %s, %s: plain %.0f ms, coded %.0f ms (%.2fx); %llu blocks decoded, %.0f played through\n",
                   widthName(width), mp::simd::isaName(isa), plain.seconds * 1e3, coded.seconds * 1e3,
                   coded.seconds / plain.seconds, static_cast<unsigned long long>(coded.decoded), through);
+      std::printf("    %s, light: %.0f ms (%.2fx), %zu bytes against %zu coded and %zu plain\n", widthName(width),
+                  light.seconds * 1e3, light.seconds / plain.seconds, attackLight.residentBytes(),
+                  attackCoded.residentBytes(), attackPlain.residentBytes());
       MP_CHECK(coded.started == 256, std::string(widthName(width)) + ": every coded voice starts");
+      MP_CHECK(same(worstDifference(plain.out, light.out)),
+               std::string(widthName(width)) + ": light plays what plain plays");
       MP_CHECK(same(worstDifference(plain.out, coded.out)),
                std::string(widthName(width)) + ": coded plays what plain plays");
     }

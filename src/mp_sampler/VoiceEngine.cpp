@@ -922,7 +922,7 @@ bool narrowSampleBuffer(SampleBuffer& buf) {
   return true;
 }
 
-bool codeSampleBuffer(SampleBuffer& buf) {
+bool codeSampleBuffer(SampleBuffer& buf, SplitRiceLevel level) {
   if (buf.coded != nullptr) return true;
   if (buf.numFrames <= 0 || buf.numChannels < 1 || buf.numChannels > kSplitRiceMaxChannels)
     return false;
@@ -957,7 +957,7 @@ bool codeSampleBuffer(SampleBuffer& buf) {
   const int depth = wide && shift < 8 ? 24 : 16;
   auto stream = std::make_shared<SplitRiceStream>();
   if (!encodeSplitRice(values.data(), static_cast<uint64_t>(buf.numFrames), buf.numChannels,
-                       depth, *stream))
+                       depth, *stream, nullptr, level))
     return false;
   buf.coded = std::move(stream);
   buf.pcmScale = std::ldexp(buf.pcmScale, shift);
