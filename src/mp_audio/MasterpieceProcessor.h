@@ -3512,8 +3512,13 @@ private:
   bool simpleParamSeen_ = false;
   void mirrorSimpleWavParameter();
 #if MP_ENABLE_DSP
-  // Keyed by enclosure id so a reload cannot mismatch filters and boxes.
-  std::unordered_map<Id, dsp::EnclosureFilter> enclosureFilters_;
+  // Keyed by enclosure id so a reload cannot mismatch filters and boxes. One
+  // filter per mixer bus, as many as the rank EQ keeps memories for: the
+  // buses are rendered one after another through the same box, and a filter
+  // they shared carried one bus's signal into the next one's block, heard as
+  // distortion with the box closed (#1007). One bus uses the first alone.
+  static constexpr int kEnclosureFilterSlots = RankEq::kMaxPairs;
+  std::unordered_map<Id, std::vector<dsp::EnclosureFilter>> enclosureFilters_;
   // Bus layout, fixed at prepareToPlay: one bus per enclosure in a stable
   // order, then one final bus for everything unenclosed.
   std::vector<Id> busEnclosures_;

@@ -405,11 +405,14 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   for (size_t i = 0; i < busEnclosures_.size(); ++i) {
     const Id id = busEnclosures_[i];
     enclosureBusIndex_[id] = static_cast<int>(i);
-    auto& f = enclosureFilters_[id];
-    f.prepare(spec);
-    // Start where the shoe actually is, so loading an organ with the swell
-    // open does not ramp audibly through the first block.
-    f.snapTo(controls_.shutterFor(model_.enclosures.at(id)));
+    auto& filters = enclosureFilters_[id];
+    filters.resize(static_cast<size_t>(kEnclosureFilterSlots));
+    for (auto& f : filters) {
+      f.prepare(spec);
+      // Start where the shoe actually is, so loading an organ with the swell
+      // open does not ramp audibly through the first block.
+      f.snapTo(controls_.shutterFor(model_.enclosures.at(id)));
+    }
   }
   // Everything no box encloses goes to one extra bus that no filter touches.
   unenclosedBus_ = static_cast<int>(busEnclosures_.size());
@@ -946,6 +949,11 @@ void MasterpieceProcessor::renderOneMixBus(juce::AudioBuffer<float>& dest,
 #else
       false;
 #endif
+#if MP_ENABLE_DSP
+  // This bus's own swell-box filters (#1007).
+  const size_t enclosureSlot =
+      static_cast<size_t>(std::clamp(mixBusFilter, 0, kEnclosureFilterSlots - 1));
+#endif
 
   // Without expression there is nothing to separate: render every voice at
   // once and skip the per-enclosure scratch entirely. The same for a block
@@ -996,9 +1004,9 @@ void MasterpieceProcessor::renderOneMixBus(juce::AudioBuffer<float>& dest,
         if (filterIt != enclosureFilters_.end() && encIt != model_.enclosures.end()) {
           juce::dsp::AudioBlock<float> block(planes, static_cast<size_t>(numCh),
                                              static_cast<size_t>(numFrames));
-          filterIt->second.processBlock(block, encIt->second,
-                                        controls_.shutterFor(encIt->second),
-                                        graph_.engineSwitch);
+          filterIt->second[enclosureSlot].processBlock(block, encIt->second,
+                                                       controls_.shutterFor(encIt->second),
+                                                       graph_.engineSwitch);
         }
       }
 #endif
@@ -1026,9 +1034,9 @@ void MasterpieceProcessor::renderOneMixBus(juce::AudioBuffer<float>& dest,
         juce::dsp::AudioBlock<float> block(
             busScratch_.getArrayOfWritePointers(),
             static_cast<size_t>(numCh), static_cast<size_t>(numFrames));
-        filterIt->second.processBlock(block, encIt->second,
-                                      controls_.shutterFor(encIt->second),
-                                      graph_.engineSwitch);
+        filterIt->second[enclosureSlot].processBlock(block, encIt->second,
+                                                     controls_.shutterFor(encIt->second),
+                                                     graph_.engineSwitch);
       }
     }
 #endif

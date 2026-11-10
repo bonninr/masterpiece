@@ -9,15 +9,19 @@
 #include "MpTest.h"
 #include "../src/mp_audio/MasterpieceProcessor.h"
 
+#include <algorithm>
 #include <cmath>
+#include <string>
 #include <vector>
 
 namespace {
 
 using mp::test::Category;
 
-// One manual, one rank in a swell box, a 523.25 Hz tone.
-juce::File writeSwellOrgan(const juce::File& root) {
+// One manual, one rank in a swell box, a 523.25 Hz tone. A `shaped` box dulls
+// the treble when closed, as most sets state theirs: its shelf filter then
+// carries the signal from one block into the next.
+juce::File writeSwellOrgan(const juce::File& root, bool shaped = false) {
   root.deleteRecursively();
   const auto defs = root.getChildFile("OrganDefinitions");
   const auto pkg = root.getChildFile("OrganInstallationPackages").getChildFile("000001");
@@ -74,10 +78,15 @@ juce::File writeSwellOrgan(const juce::File& root) {
       "<ContinuousControl><ControlID>9</ControlID><Name>Swell shoe</Name><DefaultValue>127</DefaultValue></ContinuousControl>"
       "</ObjectList><ObjectList ObjectType=\"EnclosurePipe\">"
       "<EnclosurePipe><EnclosureID>1</EnclosureID><PipeID>301</PipeID>"
-      "<FiltParamWhenClsd_OverallAttnDb>12</FiltParamWhenClsd_OverallAttnDb>"
-      "<FiltParamWhenClsd_MaxFreqHz>20000</FiltParamWhenClsd_MaxFreqHz>"
-      "<FiltParamWhenClsd_ExtraAttnAtMinDb>0</FiltParamWhenClsd_ExtraAttnAtMinDb>"
-      "<FiltParamWhenOpen_MaxFreqHz>20000</FiltParamWhenOpen_MaxFreqHz>"
+      "<FiltParamWhenClsd_OverallAttnDb>12</FiltParamWhenClsd_OverallAttnDb>" +
+      juce::String(shaped ? "<FiltParamWhenClsd_MaxFreqHz>440</FiltParamWhenClsd_MaxFreqHz>"
+                            "<FiltParamWhenClsd_MinFreqHz>3000</FiltParamWhenClsd_MinFreqHz>"
+                            "<FiltParamWhenClsd_ExtraAttnAtMinDb>9</FiltParamWhenClsd_ExtraAttnAtMinDb>"
+                            "<FiltParamWhenOpen_MaxFreqHz>3500</FiltParamWhenOpen_MaxFreqHz>"
+                            "<FiltParamWhenOpen_MinFreqHz>9000</FiltParamWhenOpen_MinFreqHz>"
+                          : "<FiltParamWhenClsd_MaxFreqHz>20000</FiltParamWhenClsd_MaxFreqHz>"
+                            "<FiltParamWhenClsd_ExtraAttnAtMinDb>0</FiltParamWhenClsd_ExtraAttnAtMinDb>"
+                            "<FiltParamWhenOpen_MaxFreqHz>20000</FiltParamWhenOpen_MaxFreqHz>") +
       "</EnclosurePipe></ObjectList></Hauptwerk>");
   return odf;
 }
@@ -139,6 +148,89 @@ public:
   }
 };
 static BigBlockSwellTest g_bigBlockSwell;
+
+// The shaped organ through a processor with `outputs` channels and `buses`
+// mixer buses, bus i on device pair i, the rank on bus `rankBus`, the shoe
+// at `shoe` and a key held: every channel, block after block.
+std::vector<std::vector<float>> playOnBuses(const juce::File& odf, int outputs, int buses, int rankBus, int shoe) {
+  mp::MasterpieceProcessor proc;
+  juce::AudioProcessor::BusesLayout layout;
+  layout.outputBuses.add(outputs == 2 ? juce::AudioChannelSet::stereo()
+                                      : juce::AudioChannelSet::discreteChannels(outputs));
+  if (!proc.setBusesLayout(layout)) return {};
+  proc.prepareToPlay(48000.0, 256);
+  if (!proc.loadOrgan(odf, 0, false).ok) return {};
+  auto& mixer = proc.mixer();
+  mixer.buses.clear();
+  for (int i = 0; i < buses; ++i) {
+    mp::MixerBus b;
+    b.id = mp::BusId{i + 1};
+    if (2 * i + 1 < outputs) b.deviceChannels = {2 * i, 2 * i + 1};
+    mixer.buses.push_back(b);
+  }
+  mp::RankRouting r;
+  r.rankId = 201;
+  r.perspectives[0].dest = mp::BusId{rankBus};
+  mixer.rankRoutings[201] = r;
+  proc.refreshMixerBuses();
+  proc.setStopEngaged(901, true);
+  proc.setContinuousControl(9, shoe);
+
+  juce::AudioBuffer<float> buf(outputs, 256);
+  std::vector<std::vector<float>> heard(static_cast<size_t>(outputs));
+  for (int block = 0; block < 64; ++block) {
+    juce::MidiBuffer m;
+    if (block == 0) m.addEvent(juce::MidiMessage::noteOn(1, 72, 0.8f), 0);
+    buf.clear();
+    proc.processBlock(buf, m);
+    for (int ch = 0; ch < outputs; ++ch)
+      heard[static_cast<size_t>(ch)].insert(heard[static_cast<size_t>(ch)].end(), buf.getReadPointer(ch),
+                                            buf.getReadPointer(ch) + 256);
+  }
+  return heard;
+}
+
+float peakOf(const std::vector<float>& x) {
+  float p = 0.0f;
+  for (float v : x) p = std::max(p, std::fabs(v));
+  return p;
+}
+
+// #1007: with the shoe closed, a set played through several mixer buses -- a
+// multichannel interface with the organ spread over its pairs, or a mixer
+// summed into stereo -- sounds as it does through one. Each bus has its own
+// swell-box filter memory, so the filter of one bus never hears another's
+// signal.
+class SwellPerBusTest final : public mp::test::Test {
+public:
+  SwellPerBusTest() : Test("functional.swell.filter-per-mixer-bus", Category::Functional) {}
+  void run() override {
+    const juce::File root = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-swell-per-bus");
+    const juce::File odf = writeSwellOrgan(root, /*shaped=*/true);
+
+    for (const int shoe : {0, 127}) {
+      const std::string where = shoe == 0 ? "closed" : "open";
+      const auto one = playOnBuses(odf, 2, 1, 1, shoe);
+      const auto summed = playOnBuses(odf, 2, 3, 2, shoe);
+      const auto spread = playOnBuses(odf, 6, 3, 2, shoe);
+      MP_CHECK(!one.empty() && !summed.empty() && !spread.empty(), "the organ loads, the box " + where);
+      if (one.empty() || summed.empty() || spread.empty()) return;
+      MP_CHECK(peakOf(one[0]) > 0.01f, "the box " + where + " sounds, its peak is " + std::to_string(peakOf(one[0])));
+
+      MP_CHECK(summed[0] == one[0] && summed[1] == one[1],
+               "the box " + where + ", three buses summed into stereo sound bit for bit as one bus");
+      MP_CHECK(spread[2] == one[0] && spread[3] == one[1],
+               "the box " + where + ", the rank's own pair of six channels carries bit for bit what one bus does");
+      for (const int ch : {0, 1, 4, 5})
+        MP_CHECK(peakOf(spread[static_cast<size_t>(ch)]) == 0.0f,
+                 "the box " + where + ", channel " + std::to_string(ch + 1) +
+                     " of a pair with no rank is silent, its peak is " +
+                     std::to_string(peakOf(spread[static_cast<size_t>(ch)])));
+    }
+    root.deleteRecursively();
+  }
+};
+static SwellPerBusTest g_swellPerBus;
 
 }  // namespace
 
