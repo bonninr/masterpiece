@@ -426,6 +426,35 @@ public:
   juce::Rectangle<int> contentBoundsForTest() const {
     return consoleView_.isVisible() ? consoleView_.getBounds() : jambView_.getBounds();
   }
+  // What the main window shows. A console page, a panel and the score each
+  // have a tab; the stop list has none.
+  struct MainView {
+    enum class Kind { Console, StopList, Panel, Score };
+    Kind kind = Kind::Console;
+    int panel = -1;  // Kind::Panel: which panel
+    bool operator==(const MainView& o) const { return kind == o.kind && panel == o.panel; }
+  };
+  // For tests: the organ loaded in the processor taken in, as the end of a
+  // load does; the view; the tab strip; a tab pressed (a tab already the
+  // current one sends no change, as with the mouse); a View menu item; and
+  // what is drawn, read from the components: "console 0", "stop list",
+  // "panel 0", "score".
+  void organLoadedForTest() {
+    MasterpieceProcessor::LoadResult loaded;
+    loaded.ok = true;
+    finishLoad(proc_.loadedOrganFile(), true, loaded);
+  }
+  MainView viewForTest() const { return view_; }
+  int currentTabForTest() const { return pageTabs_.getCurrentTabIndex(); }
+  int tabCountForTest() const { return pageTabs_.getNumTabs(); }
+  bool tabStripShownForTest() const { return pageTabs_.isVisible(); }
+  void pressTabForTest(int tab) {
+    if (tab == pageTabs_.getCurrentTabIndex()) return;
+    pageTabs_.setCurrentTabIndex(tab, false);
+    changeListenerCallback(&pageTabs_);
+  }
+  void chooseViewItemForTest(int id);
+  juce::String drawnForTest() const;
   // Load the organ that is loaded now again, with whatever its settings say.
   void reloadOrgan();
   // File > Import and Export, Organ > Copy settings (SettingsBackup.cpp): the
@@ -556,7 +585,6 @@ private:
   std::vector<std::unique_ptr<PanelView>> panels_;
   std::vector<std::unique_ptr<PanelWindow>> panelWindows_;
   std::vector<int> panelTabs_;
-  int showingPanel_ = -1;
 #if MP_HAS_SCORE
   // The score panel: made when it is first opened from the View menu, then
   // kept for the session, a tab after the panels' or a window of its own.
@@ -565,7 +593,6 @@ private:
   std::unique_ptr<ScorePanel> score_;
   std::unique_ptr<juce::DocumentWindow> scoreWindow_;
   juce::Rectangle<int> scoreWindowBounds_;
-  bool showingScore_ = false;
   int scoreTab_ = -1;  // its tab, -1 while it has none
   void showScore();
   void setScoreDetached(bool detached);
@@ -660,10 +687,28 @@ private:
   // keyboard underneath is duplicate furniture, so it is off by default and
   // there for a machine with no MIDI console attached.
   bool showingKeyboard_ = false;
-  bool showingConsole_ = true;
-  // The plain stop list is on screen, over the console. An organ that ships
-  // no console artwork shows it anyway, and then this is never set.
-  bool showingStopList_ = false;
+  // What the main window shows, read by the layout and the View menu alike
+  // and changed only by setView(). Shown over a tab, the stop list keeps that
+  // tab in underList_ and goes back to it when it is hidden.
+  MainView view_;
+  MainView underList_;
+  // With nothing else chosen: the console, or the stop list of an organ that
+  // draws no console.
+  MainView baseView() const;
+  // The view itself when it can be shown in this window; the base view for a
+  // panel or the score in a window of its own, or one no longer there.
+  MainView showable(MainView view) const;
+  // The view a tab stands for, and the tab a view stands on (-1 for none).
+  MainView viewForTab(int tab) const;
+  int tabForView(const MainView& view) const;
+  // The one way the view changes: the tab strip is moved to match, without
+  // a change message, and the window is laid out again.
+  void setView(MainView view);
+  // The stop list shown over a tab of an organ that draws a console.
+  bool stopListOver() const { return view_.kind == MainView::Kind::StopList && console_.hasArtwork(); }
+  // One of the console's pages, counting from 0: under the stop list while
+  // it is shown, on screen otherwise.
+  void showPage(int page);
   // The expression shoes as a strip of faders down the side. Off by default:
   // it took 120px of console width permanently, and on a set that draws its
   // own shoes it was showing the same control twice. Kept because a set whose

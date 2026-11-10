@@ -2028,8 +2028,7 @@ void MasterpieceEditor::closePageWindow(PageWindow* window) {
   rememberPageWindows();
   refreshPopOutIcons();
   // The page goes back where it came from: its tab, shown, in this window.
-  if (page >= 0 && page < pageTabs_.getNumTabs() && showingConsole_)
-    pageTabs_.setCurrentTabIndex(page, true);
+  if (console_.hasArtwork()) showPage(page);
 }
 
 void MasterpieceEditor::rememberPageWindows() {
@@ -2292,7 +2291,6 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   rebuildPageTabs();
   if (consoleProfile_ != nullptr) consoleProfile_->panel().reload();
   offerConsoleProfile();
-  if (pageTabs_.getNumTabs() > 0) pageTabs_.setCurrentTabIndex(0, false);
   addPopOutIcons();
   restorePageWindows();
 
@@ -2339,12 +2337,10 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   // strip sat across the bottom of every console that happened to be
   // photographed that way. The Keys button is there when it is wanted.
 
-  showingConsole_ = console_.hasArtwork();
   // A new organ brings its own console; the plain stop list is asked for
-  // again if the player wants it.
-  showingStopList_ = false;
-  resized();
-  if (showingStopList_) jamb_.focusFirstStop();
+  // again if the player wants it. The tab strip shows the page drawn.
+  underList_ = baseView();
+  setView(baseView());
 
   // The organ's name is in the window title, so the bar says what the title
   // cannot: how much instrument arrived, and whether it has any audio.
@@ -2556,7 +2552,7 @@ void MasterpieceEditor::resized() {
 #if MP_HAS_SCORE
   otherTabs = otherTabs || scoreTab_ >= 0;
 #endif
-  pageTabs_.setVisible(showingConsole_ && !showingStopList_ &&
+  pageTabs_.setVisible(view_.kind != MainView::Kind::StopList &&
                        (console_.pageCount() > 1 || otherTabs));
   if (pageTabs_.isVisible()) pageTabs_.setBounds(r.removeFromTop(28));
 
@@ -2584,28 +2580,19 @@ void MasterpieceEditor::resized() {
 #if MP_HAS_SCORE
   if (score_ != nullptr && scoreWindow_ == nullptr) score_->setVisible(false);
 #endif
-  if (showingStopList_) {
-    // The plain list of stops, in place of the console: the way in for a
-    // player who cannot see the console.
-    consoleView_.setVisible(false);
-    jambView_.setVisible(true);
-    jambView_.setBounds(r);
-    const int jambWidth = jambView_.getWidth() - 12;
-    jamb_.setSize(jambWidth, jamb_.heightFor(jambWidth));
-    return;
-  }
-  if (showingConsole_ && showingPanel_ >= 0 &&
-      showingPanel_ < static_cast<int>(panels_.size()) &&
-      panelWindows_[static_cast<size_t>(showingPanel_)] == nullptr) {
+  // What the view says, and only that. setView() has checked that a panel or
+  // the score shown here is not in a window of its own.
+  const MainView view = showable(view_);
+  if (view.kind == MainView::Kind::Panel) {
     consoleView_.setVisible(false);
     jambView_.setVisible(false);
-    auto& panel = *panels_[static_cast<size_t>(showingPanel_)];
+    auto& panel = *panels_[static_cast<size_t>(view.panel)];
     panel.setBounds(r);
     panel.setVisible(true);
     return;
   }
 #if MP_HAS_SCORE
-  if (showingConsole_ && showingScore_ && score_ != nullptr && scoreWindow_ == nullptr) {
+  if (view.kind == MainView::Kind::Score) {
     consoleView_.setVisible(false);
     jambView_.setVisible(false);
     score_->setBounds(r);
@@ -2613,9 +2600,12 @@ void MasterpieceEditor::resized() {
     return;
   }
 #endif
-  consoleView_.setVisible(showingConsole_);
-  jambView_.setVisible(!showingConsole_);
-  if (showingConsole_) {
+  // The plain list of stops, over the console or in place of a console the
+  // organ does not draw: the way in for a player who cannot see the console.
+  const bool console = view.kind == MainView::Kind::Console;
+  consoleView_.setVisible(console);
+  jambView_.setVisible(!console);
+  if (console) {
     // The layout follows the shape of the room the console has (#366): a
     // portrait layout when it is taller than it is wide, the main one when
     // it is wider. A layout chosen by hand holds until the shape turns.
@@ -2679,7 +2669,9 @@ void MasterpieceEditor::loadPanels() {
   for (auto& p : panels_) removeChildComponent(p.get());
   panels_.clear();
   panelWindows_.clear();
-  showingPanel_ = -1;
+  // The panels are read again: none of them is on screen.
+  if (view_.kind == MainView::Kind::Panel) view_ = baseView();
+  if (underList_.kind == MainView::Kind::Panel) underList_ = baseView();
   const auto layouts = loadPanelLayouts(proc_);
   for (size_t i = 0; i < layouts.size(); ++i) {
     panels_.push_back(std::make_unique<PanelView>(proc_, static_cast<int>(i), layouts[i]));
@@ -2693,13 +2685,9 @@ void MasterpieceEditor::loadPanels() {
 }
 
 void MasterpieceEditor::rebuildPageTabs() {
-  // What the window shows, chosen again once the tabs are made again: a panel
-  // put back from its window, or a tab renamed, leaves it where it was.
-  // Cleared and refilled, the bar alone would go to its first tab.
-  const int pageShown = console_.currentPage();
-#if MP_HAS_SCORE
-  const bool scoreShown = showingScore_;
-#endif
+  // What the window shows stays as it was once the tabs are made again: a
+  // panel put back from its window, or a tab renamed, leaves it where it was.
+  // A panel or the score gone into a window of its own leaves the base view.
   pageTabs_.clearTabs();
   for (int i = 0; i < console_.pageCount(); ++i)
     pageTabs_.addTab(console_.pageName(i), juce::Colour(0xff2a2f3a), i);
@@ -2716,18 +2704,9 @@ void MasterpieceEditor::rebuildPageTabs() {
     scoreTab_ = pageTabs_.getNumTabs();
     pageTabs_.addTab(TRANS("Score"), juce::Colour(0xff26333a), scoreTab_);
   }
-  if (scoreTab_ < 0) showingScore_ = false;
 #endif
-  if (showingPanel_ >= 0 &&
-      std::find(panelTabs_.begin(), panelTabs_.end(), showingPanel_) == panelTabs_.end())
-    showingPanel_ = -1;
-  int tab = console_.pageCount() > 0 ? juce::jlimit(0, console_.pageCount() - 1, pageShown) : -1;
-  for (size_t i = 0; i < panelTabs_.size(); ++i)
-    if (panelTabs_[i] == showingPanel_) tab = console_.pageCount() + static_cast<int>(i);
-#if MP_HAS_SCORE
-  if (scoreShown && scoreTab_ >= 0) tab = scoreTab_;
-#endif
-  if (tab >= 0 && tab < pageTabs_.getNumTabs()) pageTabs_.setCurrentTabIndex(tab, false);
+  underList_ = showable(underList_);
+  setView(view_);
   // The tabs were made again: their pop-out icons with them.
   addPopOutIcons();
   resized();
@@ -2769,15 +2748,9 @@ void MasterpieceEditor::addPanel() {
   wirePanel(index);
   addChildComponent(*view);
   savePanels();
-  showingConsole_ = true;
-  // From the stop list too, which otherwise stays over the new panel's tab.
-  showingStopList_ = false;
-  showingPanel_ = index;
   rebuildPageTabs();
-  // Straight to the new panel's tab.
-  for (int t = 0; t < pageTabs_.getNumTabs(); ++t)
-    if (t >= console_.pageCount() && panelTabs_[static_cast<size_t>(t - console_.pageCount())] == index)
-      pageTabs_.setCurrentTabIndex(t, true);
+  // Straight to the new panel's tab, from the stop list too.
+  setView({MainView::Kind::Panel, index});
 }
 
 void MasterpieceEditor::wirePanel(int index) {
@@ -2801,7 +2774,9 @@ void MasterpieceEditor::deletePanel(int index) {
   removeChildComponent(panels_[static_cast<size_t>(index)].get());
   panels_.erase(panels_.begin() + index);
   panelWindows_.erase(panelWindows_.begin() + index);
-  showingPanel_ = -1;
+  // The panels after it move up a place: from a panel, back to the base view.
+  if (view_.kind == MainView::Kind::Panel) view_ = baseView();
+  if (underList_.kind == MainView::Kind::Panel) underList_ = baseView();
   // The remaining panel is renumbered; its callbacks name its new place.
   for (size_t i = 0; i < panels_.size(); ++i) wirePanel(static_cast<int>(i));
   savePanels();
@@ -2869,13 +2844,7 @@ void MasterpieceEditor::showScore() {
     scoreWindow_->toFront(true);
     return;
   }
-  showingConsole_ = true;
-  showingStopList_ = false;
-  if (scoreTab_ >= 0) pageTabs_.setCurrentTabIndex(scoreTab_, true);
-  // Set here as well: a tab that is already the current one sends no change.
-  showingScore_ = true;
-  showingPanel_ = -1;
-  resized();
+  setView({MainView::Kind::Score, -1});
 }
 
 void MasterpieceEditor::setScoreDetached(bool detached) {
@@ -2890,11 +2859,8 @@ void MasterpieceEditor::setScoreDetached(bool detached) {
     else scoreWindow_->centreWithSize(1100, 760);
     score_->setVisible(true);
     scoreWindow_->setVisible(true);
-    showingScore_ = false;
+    // The score's tab goes: from it, back to the base view.
     rebuildPageTabs();
-    if (console_.pageCount() > 0)
-      pageTabs_.setCurrentTabIndex(juce::jlimit(0, console_.pageCount() - 1, console_.currentPage()), true);
-    resized();
   } else if (!detached && scoreWindow_ != nullptr) {
     scoreWindowBounds_ = scoreWindow_->getBounds();
     scoreWindow_->clearContentComponent();
@@ -2913,15 +2879,9 @@ void MasterpieceEditor::showPanel(int index) {
     w->toFront(true);
     return;
   }
-  // From the plain list of an organ without artwork too.
-  showingConsole_ = true;
-  showingStopList_ = false;
-  for (int t = console_.pageCount(); t < pageTabs_.getNumTabs(); ++t)
-    if (panelTabs_[static_cast<size_t>(t - console_.pageCount())] == index)
-      pageTabs_.setCurrentTabIndex(t, true);
-  // Set here as well: a tab that is already the current one sends no change.
-  showingPanel_ = index;
-  resized();
+  // From the stop list too, and from the plain list of an organ without
+  // artwork.
+  setView({MainView::Kind::Panel, index});
 }
 
 void MasterpieceEditor::togglePanel() {
@@ -2929,27 +2889,108 @@ void MasterpieceEditor::togglePanel() {
     addPanel();
     return;
   }
-  if (showingConsole_ && showingPanel_ >= 0) {
+  if (view_.kind == MainView::Kind::Panel) {
     // Back to the console page that was showing, or to the plain list of an
     // organ that draws no console.
-    if (console_.pageCount() > 0)
-      pageTabs_.setCurrentTabIndex(juce::jlimit(0, console_.pageCount() - 1, console_.currentPage()),
-                                   true);
-    if (!console_.hasArtwork()) showingConsole_ = false;
-    showingPanel_ = -1;
-    resized();
+    setView(baseView());
     return;
   }
   showPanel(0);
 }
 
-void MasterpieceEditor::addPanelItems(juce::PopupMenu& menu) {
-  const bool onPanel = showingConsole_ && showingPanel_ >= 0;
-  bool onScore = false;
+// ---- the main window's view ------------------------------------------------
+
+MasterpieceEditor::MainView MasterpieceEditor::baseView() const {
+  // Before any organ, the console's place, as it always was.
+  const bool organ = proc_.loadedOrganFile() != juce::File();
+  return {console_.hasArtwork() || !organ ? MainView::Kind::Console : MainView::Kind::StopList, -1};
+}
+
+MasterpieceEditor::MainView MasterpieceEditor::showable(MainView view) const {
+  switch (view.kind) {
+    case MainView::Kind::Console:
+      return baseView();
+    case MainView::Kind::StopList:
+      return view;
+    case MainView::Kind::Panel:
+      if (view.panel >= 0 && view.panel < static_cast<int>(panels_.size()) &&
+          panelWindows_[static_cast<size_t>(view.panel)] == nullptr)
+        return view;
+      return baseView();
+    case MainView::Kind::Score:
 #if MP_HAS_SCORE
-  onScore = showingConsole_ && showingScore_;
+      if (score_ != nullptr && scoreWindow_ == nullptr) return view;
 #endif
-  const bool onConsole = !onPanel && !onScore && !showingStopList_;
+      return baseView();
+  }
+  return baseView();
+}
+
+MasterpieceEditor::MainView MasterpieceEditor::viewForTab(int tab) const {
+  const int pages = console_.pageCount();
+  if (tab >= 0 && tab < pages) return {MainView::Kind::Console, -1};
+  if (tab >= pages && tab - pages < static_cast<int>(panelTabs_.size()))
+    return {MainView::Kind::Panel, panelTabs_[static_cast<size_t>(tab - pages)]};
+#if MP_HAS_SCORE
+  if (scoreTab_ >= 0 && tab == scoreTab_) return {MainView::Kind::Score, -1};
+#endif
+  return baseView();
+}
+
+int MasterpieceEditor::tabForView(const MainView& view) const {
+  const int pages = console_.pageCount();
+  switch (view.kind) {
+    case MainView::Kind::Console:
+      return pages > 0 ? juce::jlimit(0, pages - 1, console_.currentPage()) : -1;
+    case MainView::Kind::Panel:
+      for (size_t i = 0; i < panelTabs_.size(); ++i)
+        if (panelTabs_[i] == view.panel) return pages + static_cast<int>(i);
+      return -1;
+    case MainView::Kind::Score:
+#if MP_HAS_SCORE
+      return scoreTab_;
+#else
+      return -1;
+#endif
+    case MainView::Kind::StopList:
+      return -1;
+  }
+  return -1;
+}
+
+void MasterpieceEditor::setView(MainView view) {
+  view = showable(view);
+  if (view.kind == MainView::Kind::StopList && console_.hasArtwork()) {
+    // Over a tab: that tab stays the strip's current one, to go back to.
+    if (view_.kind != MainView::Kind::StopList) underList_ = view_;
+    underList_ = showable(underList_);
+    pageTabs_.setCurrentTabIndex(tabForView(underList_), false);
+  } else {
+    pageTabs_.setCurrentTabIndex(tabForView(view), false);
+  }
+  view_ = view;
+  resized();
+}
+
+void MasterpieceEditor::showPage(int page) {
+  if (page < 0 || page >= console_.pageCount()) return;
+  console_.setPage(page);
+  const MainView console{MainView::Kind::Console, -1};
+  if (stopListOver()) {
+    underList_ = console;
+    pageTabs_.setCurrentTabIndex(page, false);
+    resized();
+    return;
+  }
+  setView(console);
+}
+
+void MasterpieceEditor::addPanelItems(juce::PopupMenu& menu) {
+  // The ticks read the view, as the layout does.
+  const bool onPanel = view_.kind == MainView::Kind::Panel;
+  [[maybe_unused]] const bool onScore = view_.kind == MainView::Kind::Score;
+  const bool onConsole = view_.kind == MainView::Kind::Console;
+  const bool onList = view_.kind == MainView::Kind::StopList;
   // Before any organ is loaded there are no stops to list or to put on a panel.
   const bool organ = proc_.loadedOrganFile() != juce::File();
   // The organ's own pages first, each by its name (#634); an organ that
@@ -2958,11 +2999,11 @@ void MasterpieceEditor::addPanelItems(juce::PopupMenu& menu) {
     for (int i = 0; i < console_.pageCount() && i < 100; ++i)
       menu.addItem(1400 + i, console_.pageName(i), true, onConsole && console_.currentPage() == i);
   } else {
-    menu.addItem(1002, TRANS("Stop list"), organ, organ && onConsole);
+    menu.addItem(1002, TRANS("Stop list"), organ, organ && onList);
   }
   // Pages in windows of their own, for a second screen: the same as a
   // right-click on a page's tab, here where it can be found.
-  if (pagesCanFloat() && showingConsole_ && console_.pageCount() > 0) {
+  if (pagesCanFloat() && console_.hasArtwork() && console_.pageCount() > 0) {
     juce::PopupMenu pages;
     for (int i = 0; i < console_.pageCount(); ++i)
       pages.addItem(300 + i, console_.pageName(i), true, pageWindowFor(i) != nullptr);
@@ -2972,10 +3013,10 @@ void MasterpieceEditor::addPanelItems(juce::PopupMenu& menu) {
   // cannot see the console (the key that opens it is named in the manual),
   // the player's panels and the score.
   menu.addSeparator();
-  if (console_.hasArtwork()) menu.addItem(15, TRANS("Stop list"), true, showingStopList_);
+  if (console_.hasArtwork()) menu.addItem(15, TRANS("Stop list"), true, onList);
   for (size_t i = 0; i < panels_.size(); ++i)
     menu.addItem(1300 + static_cast<int>(i), panels_[i]->title(), true,
-                 onPanel && showingPanel_ == static_cast<int>(i));
+                 onPanel && view_.panel == static_cast<int>(i));
   // The first panel is the whole organ, every stop by division: what the
   // stop list showed, as big buttons to arrange and name.
   menu.addItem(1001, panels_.empty() ? TRANS("Panel of the whole organ") : TRANS("New panel"),
@@ -2996,29 +3037,14 @@ void MasterpieceEditor::addPanelItems(juce::PopupMenu& menu) {
 void MasterpieceEditor::panelItemChosen(int r) {
   if (r == 1001) addPanel();
   else if (r == 1002) {
-    // Back to the console, or to the plain list of an organ that draws no
-    // console.
-    if (showingStopList_) {
-      showingStopList_ = false;
-      resized();
-      return;
-    }
-#if MP_HAS_SCORE
-    if (showingConsole_ && showingScore_) {
-      if (console_.pageCount() > 0)
-        pageTabs_.setCurrentTabIndex(juce::jlimit(0, console_.pageCount() - 1, console_.currentPage()),
-                                     true);
-      if (!console_.hasArtwork()) showingConsole_ = false;
-      showingScore_ = false;
-      resized();
-      return;
-    }
-#endif
-    if (showingConsole_ && showingPanel_ >= 0) togglePanel();
+    // The plain list of an organ that draws no console, from a panel or the
+    // score.
+    setView(baseView());
   } else if (r >= 1400) {
-    // One of the organ's pages: back to the console, on that page.
-    panelItemChosen(1002);
-    if (r - 1400 < pageTabs_.getNumTabs()) pageTabs_.setCurrentTabIndex(r - 1400, true);
+    // One of the organ's pages: back to the console, on that page, from the
+    // stop list too.
+    if (r - 1400 < console_.pageCount()) console_.setPage(r - 1400);
+    setView({MainView::Kind::Console, -1});
   } else if (r >= 1300) showPanel(r - 1300);
   else if (r >= 1200) panels_[static_cast<size_t>(r - 1200)]->askForTitle();
   else if (r >= 1100) deletePanel(r - 1100);
@@ -3031,15 +3057,36 @@ void MasterpieceEditor::toggleKeyboard() {
 
 void MasterpieceEditor::toggleStopList() {
   if (!console_.hasArtwork()) {
-    // The list is already what the window shows: the keyboard focus goes to
-    // the first stop, and the screen reader reads it.
+    // The list is the window's base view, back from a panel or the score:
+    // the keyboard focus goes to the first stop, and the screen reader reads
+    // it.
+    if (view_.kind != MainView::Kind::StopList) setView(baseView());
     jamb_.focusFirstStop();
     return;
   }
-  showingStopList_ = !showingStopList_;
-  if (showingStopList_) showingPanel_ = -1;
-  resized();
-  if (showingStopList_) jamb_.focusFirstStop();
+  // Over the tab that was showing, and back to it.
+  setView(view_.kind == MainView::Kind::StopList ? underList_ : MainView{MainView::Kind::StopList, -1});
+  if (view_.kind == MainView::Kind::StopList) jamb_.focusFirstStop();
+}
+
+void MasterpieceEditor::chooseViewItemForTest(int id) {
+  // As the View menu's callback does.
+  if (id >= 1000) panelItemChosen(id);
+  if (id == 15) toggleStopList();
+#if MP_HAS_SCORE
+  if (id == 16) showScore();
+#endif
+}
+
+juce::String MasterpieceEditor::drawnForTest() const {
+  for (size_t i = 0; i < panels_.size(); ++i)
+    if (panelWindows_[i] == nullptr && panels_[i]->isVisible()) return "panel " + juce::String(static_cast<int>(i));
+#if MP_HAS_SCORE
+  if (score_ != nullptr && scoreWindow_ == nullptr && score_->isVisible()) return "score";
+#endif
+  if (jambView_.isVisible()) return "stop list";
+  if (consoleView_.isVisible()) return "console " + juce::String(console_.currentPage());
+  return "nothing";
 }
 
 void MasterpieceEditor::toggleProgramCouplers() {
@@ -3204,7 +3251,7 @@ void MasterpieceEditor::showViewMenu() {
   }
   // The console's layouts. The window picks one for its shape on its own;
   // this is for choosing by hand.
-  if (showingConsole_ && console_.layoutCount() > 1) {
+  if (console_.hasArtwork() && console_.layoutCount() > 1) {
     juce::PopupMenu layouts;
     for (int i = 0; i < console_.layoutCount() && i < 100; ++i)
       layouts.addItem(200 + i, layoutNames_[i], true, console_.layout() == i);
@@ -3323,24 +3370,24 @@ void MasterpieceEditor::showAbout() {
 
 void MasterpieceEditor::showConsolePage(int oneBased) {
   const int index = oneBased - 1;
-  if (index < 0 || index >= console_.pageCount()) return;
-  pageTabs_.setCurrentTabIndex(index, true);
+  showPage(index);
 }
 
 void MasterpieceEditor::changeListenerCallback(juce::ChangeBroadcaster* src) {
   if (src == &pageTabs_) {
+    // A tab pressed. The program moves the strip itself without a change
+    // message (setView), so this is the player's choice.
     const int tab = pageTabs_.getCurrentTabIndex();
-    const int pages = console_.pageCount();
-    showingPanel_ = tab >= pages && tab - pages < static_cast<int>(panelTabs_.size())
-                        ? panelTabs_[static_cast<size_t>(tab - pages)]
-                        : -1;
-#if MP_HAS_SCORE
-    showingScore_ = scoreTab_ >= 0 && tab == scoreTab_;
-    if (showingPanel_ < 0 && !showingScore_) console_.setPage(tab);
-#else
-    if (showingPanel_ < 0) console_.setPage(tab);
-#endif
-    resized();
+    const MainView chosen = viewForTab(tab);
+    if (chosen.kind == MainView::Kind::Console) {
+      showPage(tab);
+      return;
+    }
+    if (stopListOver()) {
+      underList_ = chosen;
+      return;
+    }
+    if (!(chosen == view_)) setView(chosen);
   }
 }
 
@@ -3370,15 +3417,11 @@ void MasterpieceEditor::timerCallback() {
   // component may only be touched from the message thread.
   switch (proc_.takeConsoleAction()) {
     case MidiTargetKind::ConsoleNextPage:
-      if (console_.pageCount() > 1)
-        pageTabs_.setCurrentTabIndex(
-            (pageTabs_.getCurrentTabIndex() + 1) % console_.pageCount());
+      if (console_.pageCount() > 1) showPage((console_.currentPage() + 1) % console_.pageCount());
       break;
     case MidiTargetKind::ConsolePrevPage:
       if (console_.pageCount() > 1)
-        pageTabs_.setCurrentTabIndex(
-            (pageTabs_.getCurrentTabIndex() + console_.pageCount() - 1) %
-            console_.pageCount());
+        showPage((console_.currentPage() + console_.pageCount() - 1) % console_.pageCount());
       break;
     case MidiTargetKind::ConsoleNextLayout:
       if (console_.layoutCount() > 1) chooseLayout((console_.layout() + 1) % console_.layoutCount());
