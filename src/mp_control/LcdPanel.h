@@ -82,7 +82,6 @@ class LcdPanels {
   void addPanel(LcdPanel p) { panels_.push_back(std::move(p)); rendered_.clear(); }
   void clear() { panels_.clear(); rendered_.clear(); }
   bool empty() const { return panels_.empty(); }
-  size_t panelCount() const { return panels_.size(); }
   const std::vector<LcdPanel>& panels() const { return panels_; }
 
   // The bytes between F0 and the payload. Console-specific; see the header

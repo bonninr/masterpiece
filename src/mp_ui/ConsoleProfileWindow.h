@@ -39,7 +39,6 @@ public:
   void setTicked(int i, bool on);
   juce::String tabText(int i) const;
   juce::String controlText(int i) const;
-  juce::String noteText() const { return note_.getText(); }
   void setNote(const juce::String& s) { note_.setText(s, juce::dontSendNotification); }
 
   void paint(juce::Graphics& g) override;

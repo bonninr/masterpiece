@@ -585,9 +585,6 @@ public:
   // note costs. Read at each block from sixteen of the frames the voice is
   // about to play.
   void setReleaseCutoff(float level) { releaseCutoff_ = level > 0.0f ? level : 0.0f; }
-  float releaseCutoff() const { return releaseCutoff_; }
-  // Release tails ended below the cutoff, since the engine was made.
-  uint64_t tailsEnded() const { return tailsEnded_.load(std::memory_order_relaxed); }
 
   void setSimd(bool on) {
     simdWanted_ = on;
@@ -905,7 +902,6 @@ public:
   // Releases that ask for it start in phase with the attack they follow
   // (PhaseAlignAutomatically). On by default; off only to measure against.
   void setReleasePhaseAlign(bool on) { phaseAlign_.store(on, std::memory_order_release); }
-  bool releasePhaseAlign() const { return phaseAlign_.load(std::memory_order_acquire); }
   // GrandOrgue's release techniques, each off unless switched on:
   // - the start found with its table of 32 levels by 2 slopes, read over the
   //   release's first 50 ms (else: the pipe's first three harmonics);
@@ -927,8 +923,6 @@ public:
   }
   // Reads the streamer has made from the disk since prepare().
   int64_t streamReads() const { return streamReads_.load(std::memory_order_relaxed); }
-  // Streaming passes that threw and were started again (a pulled drive).
-  int64_t streamFaults() const { return streamFaults_.load(std::memory_order_relaxed); }
   // How many times the streamer has gone over the voices looking for a ring
   // to fill. It stands still while nothing streams.
   int64_t streamerPasses() const {
@@ -1013,13 +1007,6 @@ private:
   // A falling release level (the staccato fade) after a block: the voice ends
   // when it reaches silence.
   void fallReleaseLevel(Voice& v, size_t index, int numFrames);
-  // The voice's two windows: the one that reads its buffer, and the other.
-  DecodedWindow* readingWindow(size_t voiceIndex, const Voice& v) {
-    return windows_.empty() ? nullptr : &windows_[voiceIndex * 2 + v.window];
-  }
-  DecodedWindow* otherWindow(size_t voiceIndex, const Voice& v) {
-    return windows_.empty() ? nullptr : &windows_[voiceIndex * 2 + (v.window ^ 1u)];
-  }
 
   // Render the voices at these pool indices into `out`. This is the unit of
   // work a thread takes; the shares never overlap, so no voice is touched
@@ -1042,7 +1029,6 @@ private:
   size_t scanEnd_ = 0;
   int meterSlice_ = 0, meterSlices_ = 0;
   float releaseCutoff_ = 0.0f;
-  std::atomic<uint64_t> tailsEnded_{0};
   int polyphony_ = 0;
   // The voices to take when there is no free slot, in the order to take
   // them, made once a block: stage 1 is the voices dying away, 2 the rest.
@@ -1191,7 +1177,6 @@ private:
   std::atomic<int64_t> streaming_{0};
   std::atomic<int64_t> streamPasses_{0};
   std::atomic<int64_t> streamReads_{0};
-  std::atomic<int64_t> streamFaults_{0};
 
   void startStreamer();
   void stopStreamer();

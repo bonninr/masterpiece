@@ -90,7 +90,6 @@ public:
   int pageCount() const;
   void showPage(int page);
   void setTwoPages(bool two);
-  bool twoPages() const { return twoPages_; }
   // In percent of the starting size, 50..250.
   void setZoom(int percent);
   int zoom() const { return zoom_; }
@@ -164,8 +163,6 @@ public:
   bool stepRegistration(int step);
   void recallRegistration(int index);
 
-  // The file the marks are saved into; none for a score opened from bytes.
-  const juce::File& scoreFile() const { return file_; }
   // Writes the marks into it now; false when there is no file or the write
   // fails. A change is written by itself a moment after it is made.
   bool saveMarks();

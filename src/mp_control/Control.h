@@ -175,8 +175,6 @@ public:
   // sounding every division. Worth surfacing: it means couplers do nothing.
   bool usingFallback() const { return edges_.empty(); }
 
-  void setMasterCoupler(int toDiv, int fromDiv, int pitchKind, bool engaged);
-
   // A program coupler: the player draws it, and a key on the destination's
   // keyboard sounds the source's division at the key's note plus the shift.
   // The program couplers do not chain: they are not part of the organ's own
@@ -234,7 +232,6 @@ private:
   // sound every division rather than nothing.
   std::unordered_set<Id> needsFallback_;
   std::unordered_set<Id> switchFed_;
-  bool master_[8][8][6] = {};
   // The program couplers by their destination division.
   std::unordered_map<Id, std::vector<ProgramCoupler>> programByDest_;
   bool hasProgramCouplers_ = false;

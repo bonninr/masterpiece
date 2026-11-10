@@ -513,9 +513,6 @@ private:
   bool licenceConfirmed_ = false;
   int64_t streamHead_ = 48000; // one second
   int streamHeadPercent_ = 0;
-  // Files a streamed buffer may need to reopen. Kept here so a tail outlives
-  // the load that created it.
-  mutable std::mutex readerMutex_;
   // What the audio thread reads. Always points at one of `generations_`.
   std::atomic<const Store*> live_{nullptr};
   // Ownership of every generation ever published, newest last. Only the

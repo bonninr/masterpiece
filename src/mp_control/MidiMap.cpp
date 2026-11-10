@@ -365,11 +365,6 @@ bool MidiMap::replace(const MidiBinding& binding) {
   return false;
 }
 
-void MidiMap::unbind(const MidiSource& source) {
-  const bool any = bySource_.erase(source) > 0;
-  if (alsoDrives_.erase(source) > 0 || any) rebuildOrdered();
-}
-
 void MidiMap::unbindOne(const MidiSource& source, MidiTargetKind kind, Id targetId) {
   const auto it = bySource_.find(source);
   if (it == bySource_.end()) return;

@@ -45,7 +45,6 @@ public:
   int currentRow() const { return current_; }
   int learnedCount() const { return learned_; }
   juce::String promptText() const { return prompt_.getText(); }
-  juce::ToggleButton& pistonsButton() { return pistons_; }
   juce::ToggleButton& unmappedOnlyButton() { return unmappedOnly_; }
 
   void paint(juce::Graphics& g) override;

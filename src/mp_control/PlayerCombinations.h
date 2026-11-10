@@ -156,7 +156,6 @@ public:
   // them. The current frame stays where it is.
   bool insertFrame();
   bool deleteFrame();
-  void rewind() { frame_ = 0; }
 
   // --- persistence ------------------------------------------------------
   std::string toText() const;

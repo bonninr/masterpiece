@@ -13,7 +13,6 @@ inline constexpr int kMaxStandardDivisions = 7; // Pedal + Manual 1-6
 inline constexpr int kNumGenerals = 20;
 inline constexpr int kNumDivisionalsPerDivision = 20;
 inline constexpr int kMaxJambPerDivision = 38; // default console cap
-inline constexpr int kDefaultConsolePages = 4;
 
 // Stop/Coupler/Tremulant codes determine capture division + jamb sort + MIDI default.
 // Full table lives in OdfEdit HwObjectsAttributesCodes.txt (vendored in specs/odfedit).

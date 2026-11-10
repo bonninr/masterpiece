@@ -189,10 +189,6 @@ struct PipeLayer {
   // sounds the release as a voice of its own, whether the attack still plays
   // or has ended (#978). Key and stop action noises are written this way.
   bool independentRelease = false;
-  // M2+: enclosure/trem/wind depth, EQ, AudioOut codes, reverb-tail truncation.
-  double enclosureDepth01 = 1.0;
-  double tremDepthDb = 0.0;
-  int audioOutCode = 0;
 };
 
 struct Pipe {
@@ -247,7 +243,6 @@ struct Rank {
   std::string name;
   std::vector<Pipe> pipes;
   bool percussive = false;
-  bool randomNoteZero = false; // noise ranks
   // M2.4: key, stop, blower and tracker action noises are ordinary ranks with
   // their own envelopes; they are flagged so the engine can route and gate
   // them separately (and so Options::includeKeyNoises can drop them).

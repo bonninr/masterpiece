@@ -6,43 +6,6 @@
 
 namespace mp {
 
-struct SampleHandle::Impl { std::string path; };
-
-bool SampleHandle::open(const std::string& wavPath, std::string& error) {
-  // M1: path validation only. M2 wires real readers here:
-  //   .wav -> JUCE MemoryMappedAudioFormatReader (direct mmap playback)
-  //   .wv  -> libwavpack decode via background pool into voice buffers (ADR-011)
-  // (Decoders live behind this handle; core stays linkable without audio device.)
-  if (wavPath.empty()) { error = "empty sample path"; return false; }
-  auto hasSuffix = [&](const char* s) {
-    const std::string suf(s);
-    if (wavPath.size() < suf.size()) return false;
-    return std::equal(suf.rbegin(), suf.rend(), wavPath.rbegin(),
-                      [](char a, char b) {
-                        return std::tolower(static_cast<unsigned char>(a)) ==
-                               std::tolower(static_cast<unsigned char>(b));
-                      });
-  };
-  if (hasSuffix(".hbw") || hasSuffix(".hbx")) {
-    error = "encrypted sample (.hbw/.hbx): only the program it was encrypted "
-            "for can read it";
-    return false;
-  }
-  if (!(hasSuffix(".wav") || hasSuffix(".wv"))) {
-    error = "unsupported sample format: .wav and .wv only";
-    return false;
-  }
-  impl = std::make_shared<Impl>();
-  impl->path = wavPath;
-  numChannels = 2; sampleRate = 48000.0; numFrames = 48000 * 4;
-  return true;
-}
-
-int SampleHandle::readHead(float* const* dest, int numCh, int64_t startFrame, int numFramesWanted) const {
-  (void)dest; (void)numCh; (void)startFrame; (void)numFramesWanted;
-  return 0; // M2: real mmap read
-}
-
 int selectAttack(const PipeLayer& layer, const NoteStrike& strike) {
   // Rows chosen by a control are bands by ceiling, so the lowest ceiling the
   // value fits wins, wherever the row sits in the file: St. Maximin lists the
