@@ -333,7 +333,6 @@ class MasterpieceEditor : public juce::AudioProcessorEditor,
                           private juce::KeyListener {
 public:
   explicit MasterpieceEditor(MasterpieceProcessor& p);
-  MasterpieceProcessor& organProcessor() { return proc_; }
   ~MasterpieceEditor() override;
 
   void paint(juce::Graphics& g) override;

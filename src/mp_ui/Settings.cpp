@@ -2590,12 +2590,6 @@ bool MidiPanel::showManuals() {
   return relayout;
 }
 
-juce::StringArray MidiPanel::manualRows() const {
-  juce::StringArray out;
-  for (const auto& l : keyboardSummaries_) out.add(l->getText());
-  return out;
-}
-
 juce::StringArray MidiPanel::pistonRows() const {
   juce::StringArray out;
   for (const auto& l : pistonLines_) out.add(l->getText());

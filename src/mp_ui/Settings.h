@@ -355,9 +355,7 @@ public:
   void refresh();
   // The height the panel's rows and note need at its present width.
   int contentHeight() const { return contentHeight_; }
-  // What the Organ part shows for each manual, then each manual button, as
-  // the player reads it.
-  juce::StringArray manualRows() const;
+  // What the Organ part shows for each manual button, as the player reads it.
   juce::StringArray pistonRows() const;
 
 private:

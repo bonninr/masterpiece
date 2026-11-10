@@ -8517,32 +8517,6 @@ public:
 };
 
 #ifdef MP_TEST_HAS_SAMPLER
-class DiskTierClassifyTest final : public mp::test::Test {
-public:
-  DiskTierClassifyTest()
-    : Test("functional.sampler.disk-tier", Category::Functional) {}
-  void run() override {
-    MP_CHECK(mp::classifyTier(-1.0) == mp::DiskTier::Unknown,
-             "probe error -> Unknown");
-    MP_CHECK(mp::classifyTier(0.0) == mp::DiskTier::Unknown,
-             "zero throughput -> Unknown");
-    MP_CHECK(mp::classifyTier(120.0) == mp::DiskTier::Hdd,
-             "120 MB/s -> Hdd");
-    MP_CHECK(mp::classifyTier(500.0) == mp::DiskTier::SataSsd,
-             "500 MB/s -> SataSsd");
-    MP_CHECK(mp::classifyTier(3500.0) == mp::DiskTier::Nvme,
-             "3500 MB/s -> Nvme");
-    MP_CHECK(mp::headScaleForTier(mp::DiskTier::Nvme) == 100,
-             "NVMe keeps base heads");
-    MP_CHECK(mp::headScaleForTier(mp::DiskTier::SataSsd) == 200,
-             "SATA SSD doubles heads");
-    MP_CHECK(mp::headScaleForTier(mp::DiskTier::Hdd) == 400,
-             "HDD quadruples heads");
-    MP_CHECK(mp::headScaleForTier(mp::DiskTier::Unknown) == 200,
-             "Unknown tier is conservative (SATA-class heads)");
-  }
-};
-
 // The rings of streamed releases sized from what reading the organ's own
 // files costs (#548): short on a solid-state disk, long on a hard disk, and
 // long enough, by the reckoning, for the releases they are sized for.
@@ -8626,43 +8600,6 @@ public:
   }
 };
 
-class SampleHandleTest final : public mp::test::Test {
-public:
-  SampleHandleTest()
-    : Test("functional.sampler.sample-handle", Category::Functional) {}
-  void run() override {
-    std::string err;
-    mp::SampleHandle empty;
-    MP_CHECK(!empty.open("", err), "empty path must fail");
-    MP_CHECK(!err.empty(), "failure must explain itself");
-
-    err.clear();
-    mp::SampleHandle enc;
-    MP_CHECK(!enc.open("pipe.hbw", err),
-             "encrypted sample must be refused (ADR-003)");
-    MP_CHECK(err.find("encrypted") != std::string::npos,
-             "error must mention encryption");
-
-    err.clear();
-    mp::SampleHandle wav;
-    MP_CHECK(wav.open("pipe.wav", err), "plain WAV path accepted (M2 wires real mmap)");
-    MP_CHECK(err.empty(), "no error on plain WAV");
-    MP_CHECK(wav.isOpen(), "handle open after successful path validation");
-
-    err.clear();
-    mp::SampleHandle wv;
-    MP_CHECK(wv.open("pipe.wv", err),
-             "WavPack path accepted (ADR-011: HW-compatibility must)");
-    MP_CHECK(err.empty(), "no error on WavPack");
-    MP_CHECK(wv.isOpen(), "handle open for WavPack");
-
-    err.clear();
-    mp::SampleHandle other;
-    MP_CHECK(!other.open("pipe.flac", err),
-             "non-WAV/WavPack refused in v1 (ADR-011)");
-    MP_CHECK(!err.empty(), "refusal must explain itself");
-  }
-};
 #endif
 
 #ifdef MP_TEST_HAS_AUDIO
@@ -13131,9 +13068,7 @@ static MixBusRenderTest g_mixBusRender;
 static FixturePipeworkTest g_fixturePipework;
 static MissingGeneralTest g_missingGeneral;
 #ifdef MP_TEST_HAS_SAMPLER
-static DiskTierClassifyTest g_diskTier;
 static RingFromDiskTest g_ringFromDisk;
-static SampleHandleTest g_sampleHandle;
 #endif
 #ifdef MP_TEST_HAS_AUDIO
 static AudioRecorderTest g_audioRecorder;

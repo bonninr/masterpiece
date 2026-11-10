@@ -9879,13 +9879,6 @@ bool MasterpieceProcessor::stopLoad(int timeoutMs) {
   return true;
 }
 
-void MasterpieceProcessor::loadOrganAsync(const juce::File& odfFile) {
-  // Loading a 19 GB set must not block the message thread. The audio thread is
-  // unaffected either way: it only ever reads the sample store through an
-  // atomic pointer, and an unfinished load simply has no audio for a pipe yet.
-  juce::Thread::launch([this, odfFile] { loadOrgan(odfFile); });
-}
-
 // ------------------------------------------------------- the MIDI window
 
 void MasterpieceProcessor::sendKey(Id keyboard, int midiNote, int velocity, bool on) {

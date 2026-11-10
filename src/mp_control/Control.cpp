@@ -509,10 +509,6 @@ std::vector<ExpandedNote> CouplerMatrix::expand(
   return out;
 }
 
-void CouplerMatrix::setMasterCoupler(int t, int f, int k, bool e) {
-  master_[t][f][k] = e;
-}
-
 void CouplerMatrix::setProgramCouplers(std::vector<ProgramCoupler> couplers) {
   programByDest_.clear();
   hasProgramExtremes_ = false;

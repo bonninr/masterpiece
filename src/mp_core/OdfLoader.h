@@ -71,11 +71,7 @@ public:
   using ProgressFn = std::function<void(float, const std::string&)>;
 
   struct Options {
-    bool buildAltLayouts = true;      // max layout 3 else 0 (OdfEdit flag)
-    bool pitchFromMetadata = true;
-    bool pitchFromFilename = true;    // 036-C.wav style
     bool includeKeyNoises = true;
-    bool includeUnusedRanks = false;
     std::string organRootDir;         // for Sample file existence checks
     // Stop after _General. Enough to find out which organ this is — its name
     // and its UniqueOrganID — without parsing a 60 000-row Sample table to do

@@ -23,15 +23,10 @@ struct BusId {
   constexpr bool operator==(const BusId& o) const { return value == o.value; }
   constexpr bool operator!=(const BusId& o) const { return value != o.value; }
 };
-inline constexpr int kMaxPrimaryBuses = 1024;
-inline constexpr int kMaxBusGroups = 1024;
 inline constexpr int kNumPerspectives = 4;
-
-enum class BusKind { Primary, Intermediate, Master };
 
 struct MixerBus {
   BusId id{};
-  BusKind kind = BusKind::Primary;
   float levelDb = 0.0f;
   std::vector<int> deviceChannels; // empty = no direct output (mix-send only)
   // M4: sends to mix buses {busId, levelDb}, per-bus IR {file, wet%, perOrgan}.
@@ -88,26 +83,6 @@ inline BusId allocateBus(const BusGroup& group, int midiKey, int rankSalt,
       return mod(static_cast<long long>(midiKey) + rankSalt + noteOffset);
   }
   return group.members.front();
-}
-
-// Resolve all four perspective destinations for one pipe at note-on.
-// Direct bus dests pass through; group dests allocate. rankSalt should be
-// stable per rank (rankId is the natural salt — keeps chords spread).
-inline std::array<BusId, kNumPerspectives> voiceRoutes(
-    const RankRouting& routing, const BusGroup& (*findGroup)(int),
-    int midiKey) {
-  std::array<BusId, kNumPerspectives> out{};
-  for (int p = 0; p < kNumPerspectives; ++p) {
-    const auto& pr = routing.perspectives[p];
-    if (std::holds_alternative<BusId>(pr.dest)) {
-      out[static_cast<size_t>(p)] = std::get<BusId>(pr.dest);
-    } else {
-      const BusGroup& g = findGroup(std::get<int>(pr.dest));
-      out[static_cast<size_t>(p)] = allocateBus(
-          g, midiKey, routing.rankId, pr.algorithm, pr.noteOffset);
-    }
-  }
-  return out;
 }
 
 // Simple-routing defaults (09/10 screens, HW9 simple model): perspectives

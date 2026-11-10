@@ -320,7 +320,6 @@ void VoiceEngine::startStreamer() {
         streamerLoop();
         return;
       } catch (...) {
-        streamFaults_.fetch_add(1, std::memory_order_relaxed);
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
       }
     }
@@ -1647,7 +1646,6 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
           // A room decay that stops dead is heard where one that fades is not.
           v.releaseIsSample = false;
           v.releaseGain = 1.0f;
-          tailsEnded_.fetch_add(1, std::memory_order_relaxed);
         }
       } else {
         v.quietFrames = 0;

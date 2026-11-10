@@ -70,7 +70,6 @@ public:
   // Moving reservoir boards (#812). Takes effect at the next reset(): the
   // working pressures are solved with the boards in place.
   void setBellowsBoard(bool on) { boardWanted_ = on; }
-  bool bellowsBoard() const { return !boards_.empty(); }
 
   void reset(const OrganModel& model);
 
@@ -82,12 +81,10 @@ public:
   void settleWith(const std::unordered_set<Id>& engagedSwitches);
 
   // Tell the solver what is sounding, before advancing. Call once per block:
-  // clear, then add each sounding pipe.
+  // clear, then add the demand of each compartment from a table the caller
+  // already has. The engine knows what is sounding; walking its voice pool
+  // here would mean the solver knowing about voices.
   void clearDemand();
-  void addDemand(const Pipe& pipe);
-  // Set every compartment's demand at once, from a table the caller already
-  // has. This is the path the engine uses: it knows what is sounding, and
-  // walking its voice pool here would mean the solver knowing about voices.
   void addDemandDirect(const std::vector<Id>& compartments,
                        const std::vector<float>& kgPerSec);
 

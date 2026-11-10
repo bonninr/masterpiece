@@ -436,7 +436,6 @@ public:
   // numbering: each map numbers its devices itself, and a binding copied with
   // the other map's number names whichever device this map gave it (#217).
   void bindFrom(const MidiMap& other, MidiBinding binding);
-  void unbind(const MidiSource& source);
   // Only this target's binding on this source: another switch the same
   // message works keeps it.
   void unbindOne(const MidiSource& source, MidiTargetKind kind, Id targetId);

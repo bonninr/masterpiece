@@ -41,9 +41,7 @@ Adapted already (testable against real current code): ODF type detection,
 unknown-type rejection, unknown-table tolerance (ADR-002), encrypted
 detection case-insensitive (ADR-003 — found + fixed a real case-sensitivity
 bug via the uppercase test), CODM code mapping + defaults, temperament
-ratios, SampleHandle path validation (WAV/WavPack-only per ADR-011), disk
-tier classification + head scaling (ADR-012, pure logic — the probe itself
-does real IO and is exercised by hand, not in CI), routing allocation
+ratios, routing allocation
 (determinism, semitone spread, rank salt, empty-group silence, simple
 defaults; `src/mp_audio/AudioGraph.h` is JUCE-free so tests need no audio),
 DSP simple-wav fast path (ADR-005), ODF scan + temperament throughput perf.

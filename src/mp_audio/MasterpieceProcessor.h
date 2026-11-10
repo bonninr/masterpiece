@@ -146,9 +146,9 @@ public:
   // Set by the plugin's editor. False when the editor is gone.
   std::function<bool(const juce::File&)> editorLoader;
 
-  // Organ loading. `loadOrgan` is synchronous and is what the headless
-  // renderer and the tests use; `loadOrganAsync` runs the same work off the
-  // message thread so the UI stays responsive on a 19 GB set.
+  // Organ loading. `loadOrgan` is synchronous: the headless renderer and the
+  // tests call it directly, and the application calls it on its own loading
+  // thread so the window stays responsive on a 19 GB set.
   struct LoadResult {
     bool ok = false;
     std::string error;
@@ -193,7 +193,6 @@ public:
   LoadResult loadOrgan(const juce::File& odfFile,
                        int64_t maxFramesPerSample = 0,
                        bool graphicsOnly = false);
-  void loadOrganAsync(const juce::File& odfFile);
   // loadOrgan's body; loadOrgan turns anything it throws into a failed load.
   LoadResult loadOrganUnguarded(const juce::File& odfFile, int64_t maxFramesPerSample,
                                 bool graphicsOnly);
@@ -662,7 +661,6 @@ public:
   // out; the frames after it move along. Set stores into the current frame.
   bool stepperInsertFrame();
   bool stepperDeleteFrame();
-  void stepperRewind() { player_.rewind(); }
   int continuousControlValue(Id controlId) const {
     return controls_.value(controlId);
   }
@@ -862,9 +860,6 @@ public:
   // to it. 0 means no channel reaches this keyboard.
   int litChannelForKeyboard(Id keyboardId) const;
   int clickChannelForKeyboard(Id keyboardId) const;
-  // True when the organ declared no key flow, so every division sounds on
-  // every key and couplers do nothing. Worth telling the player.
-  bool keyFlowMissing() const { return couplers_.usingFallback(); }
 
   // --- tagged MIDI input -------------------------------------------------
   // A message together with the console it came from. The host's merged MIDI
@@ -1668,22 +1663,6 @@ public:
   // The preset the compressor and limiter hold exactly, or -1 for none.
   int outputDynamicsPreset() const;
 
-  // MIDI OUT. A physical console lights its own drawstops from what the organ
-  // sends back, so engaging a stop on screen has to reach the hardware.
-  void setMidiOutput(juce::MidiOutput* out) {
-    midiOut_ = out;
-    outPorts_.clear();
-    outPortLabels_.clear();
-    outPortNames_.clear();
-    outPortLasting_.clear();
-    if (out != nullptr) {
-      outPorts_.push_back(out);
-      outPortLabels_.push_back(out->getName().toStdString());
-      outPortNames_.push_back(out->getName().toStdString());
-      outPortLasting_.emplace_back();
-    }
-    portOut_.resize(outPorts_.size());
-  }
   // Page turns for a score app (ScorePageMessage): sent on the MIDI output
   // with the next audio block, from any thread. The message is kept in the
   // global settings.
@@ -1960,7 +1939,6 @@ public:
     testNoteOn_.store(on, std::memory_order_release);
     testNoteRestart_.store(true, std::memory_order_release);
   }
-  bool testNote() const { return testNoteOn_.load(std::memory_order_acquire); }
   // The key the test note sounds at, or -1.
   int testNoteKey() const { return testNoteKey_.load(std::memory_order_acquire); }
   // Plays the test note again, so a change to the voicing is heard.
@@ -2210,8 +2188,6 @@ public:
   }
   // The length the voice pool's rings have now.
   double streamSeconds() const { return voices_.streamSeconds(); }
-  // What the last load measured of reading the organ's streamed releases.
-  TailReadCost tailReadCost() const { return tailReadCost_; }
   // Zero unless the disk could not keep up, in which case a release went
   // silent partway and the player deserves to know.
   int64_t streamUnderruns() const { return voices_.streamUnderruns(); }

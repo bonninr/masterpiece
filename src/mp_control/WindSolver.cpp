@@ -600,20 +600,6 @@ void WindSolver::clearDemand() {
   for (State& st : order_) st.demandKgPerSec = 0.0;
 }
 
-void WindSolver::addDemand(const Pipe& pipe) {
-  const int i = indexOf(compartmentForPipe(pipe));
-  if (i < 0) return;
-  State& st = order_[static_cast<size_t>(i)];
-  // What the pipe would draw at its reference pressure. The pressure it is
-  // actually seeing is applied in advance(), so that a chest already sagging
-  // draws less — which is the feedback that stops the model running away.
-  st.demandKgPerSec += pipe.windMassFlowKgPerSec;
-  // Nancy's flow rates are per pipe and honest; an organ that declares none
-  // still has to sag, or the model is decorative. Fall back to a rate that
-  // makes a full tutti matter and a single stop not.
-  if (pipe.windMassFlowKgPerSec <= 0.0) st.demandKgPerSec += 0.0005;
-}
-
 void WindSolver::addDemandDirect(const std::vector<Id>& compartments,
                                  const std::vector<float>& kgPerSec) {
   const size_t n = std::min(compartments.size(), kgPerSec.size());

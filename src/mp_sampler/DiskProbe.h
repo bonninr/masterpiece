@@ -1,10 +1,8 @@
-// Portable storage-tier probe (ADR-012): measure sequential throughput of
-// the drive holding the organ, classify NVMe / SATA SSD / HDD, and scale
-// streaming heads + voice budget accordingly. Pure C++20, no platform APIs,
-// no JUCE — runs at organ load on a background thread, never on audio.
-// Full-on engine (user directive): probe + tiering ships in v1, tuned later.
+// What reading a streamed release costs on the disk the organ is on, timed on
+// the organ's own files at load, and the ring length that cost asks for.
+// Pure C++20, no platform APIs, no JUCE; runs on the load thread, never on
+// the audio thread.
 #pragma once
-#include "StreamingEngine.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -46,18 +44,5 @@ TailReadCost measureTailReads(const std::vector<TailToTime>& tails, int maxFiles
 // file read in order does better than it says.
 double ringSecondsFor(const TailReadCost& cost, double sampleRate, int voices,
                       double minSeconds = 0.25, double maxSeconds = 2.0);
-
-// Conservative sequential-read thresholds (MB/s). Real-world: NVMe 2000+,
-// SATA SSD ~500, HDD ~100-200. Margins keep a slow NVMe in Nvme and a fast
-// HDD out of SataSsd.
-DiskTier classifyTier(double mbPerSec); // <=0 -> Unknown
-
-// Head-size scale for StreamConfig::preloadHeadFrames (percent).
-// Slow tiers preload more so the background pool rarely engages audibly.
-int headScaleForTier(DiskTier tier); // Nvme 100 / SataSsd 200 / Hdd 400 / other 200
-
-// Measures sequential read MB/s by writing + re-reading a temp file in dir.
-// Returns -1 on any error (caller treats as Unknown). megabytes clamped 8..256.
-double probeSequentialMBps(const std::string& dir, int megabytes = 64);
 
 } // namespace mp

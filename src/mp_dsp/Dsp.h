@@ -90,10 +90,8 @@ public:
   // Jump the smoother without a ramp (used when recalling a registration).
   void snapTo(double shutter01);
 
-  double smoothedShutter() const { return smoothShutter_.getCurrentValue(); }
   // The shelf's corner, in hertz, at the shutter's current position.
   double cutoffHz() const { return cutoffHz_; }
-  float gainLinear() const { return gain_.getCurrentValue(); }
 
 private:
   // Where one end of the shoe's travel puts the shelf, and which way round
@@ -117,13 +115,6 @@ private:
   double shelfHz_ = 0.0;
   double shelfDb_ = -1.0;
   bool shelfLowPass_ = false;
-};
-
-struct VoicingOverride {
-  double gainDb = 0.0;
-  double tuningCents = 0.0;
-  double brightnessDb = 0.0; // HarmonicShaping / VoicingEQ01 simplified in M1
-  double stereoBalance = 0.0;
 };
 
 } // namespace mp::dsp
