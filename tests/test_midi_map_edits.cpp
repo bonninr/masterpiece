@@ -21,6 +21,17 @@ namespace {
 
 using mp::test::Category;
 
+// A screen to put a window on. A build box has none: on Linux, with no X or
+// Wayland server, a window put on the desktop crashes the program.
+bool screenToShowOn() {
+#if JUCE_LINUX || JUCE_BSD
+  if (juce::SystemStats::getEnvironmentVariable("DISPLAY", {}).isEmpty() &&
+      juce::SystemStats::getEnvironmentVariable("WAYLAND_DISPLAY", {}).isEmpty())
+    return false;
+#endif
+  return juce::Desktop::getInstance().getDisplays().getPrimaryDisplay() != nullptr;
+}
+
 juce::Button* findButton(juce::Component& c, const juce::String& text) {
   for (auto* child : c.getChildren()) {
     if (auto* b = dynamic_cast<juce::Button*>(child); b != nullptr && b->getButtonText() == text) return b;
@@ -162,33 +173,38 @@ public:
                                              ", was " + std::to_string(before));
 
       // The Pistons tab: one piston removed by its own button, the rest by
-      // Remove all pistons.
-      for (const int ch : {1, 2}) {
-        mp::MidiBinding piston;
-        piston.source.kind = mp::MidiSourceKind::Note;
-        piston.source.channel = 16;
-        piston.source.number = 60 + ch;
-        piston.targetKind = mp::MidiTargetKind::RouteKeyboard;
-        piston.trigger = mp::MidiTrigger::Momentary;
-        piston.targetId = mp::routeKeyboardTarget(great, ch);
-        proc.midiMap().bind(piston);
-      }
+      // Remove all pistons. It lives only in the Manual window, which needs a
+      // screen to open on.
       window.reset();
-      mp::ui::ManualDialog::show(proc, great, mp::ui::ManualDialog::Tab::Pistons);
-      juce::Component::SafePointer<juce::TopLevelWindow> pistonsWindow;
-      for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows(); ++i)
-        if (auto* w = juce::TopLevelWindow::getTopLevelWindow(i); w != nullptr && w->getName().endsWith(" - MIDI"))
-          pistonsWindow = w;
-      MP_CHECK(pistonsWindow != nullptr, "the Manual window opens on its Pistons tab");
-      juce::Button* one = findByTooltip(*pistonsWindow, TRANS("Remove this piston"));
-      MP_CHECK(one != nullptr, "each piston has its own remove button");
-      check(waitsForTheBlock(proc, [&] { one->onClick(); }), "a piston's remove changed the map inside an audio block");
-      check(pistonsOf(great) == 1, "one piston is left, got " + std::to_string(pistonsOf(great)));
-      juce::Button* all = findButton(*pistonsWindow, TRANS("Remove all pistons"));
-      MP_CHECK(all != nullptr, "the Pistons tab has Remove all pistons");
-      check(waitsForTheBlock(proc, [&] { all->onClick(); }), "Remove all pistons changed the map inside an audio block");
-      check(pistonsOf(great) == 0, "no piston is left, got " + std::to_string(pistonsOf(great)));
-      delete pistonsWindow.getComponent();
+      if (screenToShowOn()) {
+        for (const int ch : {1, 2}) {
+          mp::MidiBinding piston;
+          piston.source.kind = mp::MidiSourceKind::Note;
+          piston.source.channel = 16;
+          piston.source.number = 60 + ch;
+          piston.targetKind = mp::MidiTargetKind::RouteKeyboard;
+          piston.trigger = mp::MidiTrigger::Momentary;
+          piston.targetId = mp::routeKeyboardTarget(great, ch);
+          proc.midiMap().bind(piston);
+        }
+        mp::ui::ManualDialog::show(proc, great, mp::ui::ManualDialog::Tab::Pistons);
+        juce::Component::SafePointer<juce::TopLevelWindow> pistonsWindow;
+        for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows(); ++i)
+          if (auto* w = juce::TopLevelWindow::getTopLevelWindow(i); w != nullptr && w->getName().endsWith(" - MIDI"))
+            pistonsWindow = w;
+        MP_CHECK(pistonsWindow != nullptr, "the Manual window opens on its Pistons tab");
+        juce::Button* one = findByTooltip(*pistonsWindow, TRANS("Remove this piston"));
+        MP_CHECK(one != nullptr, "each piston has its own remove button");
+        check(waitsForTheBlock(proc, [&] { one->onClick(); }),
+              "a piston's remove changed the map inside an audio block");
+        check(pistonsOf(great) == 1, "one piston is left, got " + std::to_string(pistonsOf(great)));
+        juce::Button* all = findButton(*pistonsWindow, TRANS("Remove all pistons"));
+        MP_CHECK(all != nullptr, "the Pistons tab has Remove all pistons");
+        check(waitsForTheBlock(proc, [&] { all->onClick(); }),
+              "Remove all pistons changed the map inside an audio block");
+        check(pistonsOf(great) == 0, "no piston is left, got " + std::to_string(pistonsOf(great)));
+        delete pistonsWindow.getComponent();
+      }
 
       // Settings, Clear all mappings: every binding goes.
       mp::MidiBinding stop;
