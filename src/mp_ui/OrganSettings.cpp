@@ -1,5 +1,6 @@
 #include "OrganSettings.h"
 #include "MidiEventDialog.h"
+#include "MixerStrip.h"
 #include "../mp_core/LoadPlan.h"
 
 #include <algorithm>
@@ -760,10 +761,14 @@ VoicingEqPanel::VoicingEqPanel(MasterpieceProcessor& p) : proc_(p) {
   };
   auto style = [this](juce::Slider& sl, juce::Label& name, const juce::String& text) {
     sl.setSliderStyle(juce::Slider::LinearVertical);
-    sl.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 46, 18);
+    sl.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 52, 18);
     sl.setRange(-VoicingEqSettings::kMaxDb, VoicingEqSettings::kMaxDb, 0.5);
     sl.setDoubleClickReturnValue(true, 0.0);
     sl.setTextValueSuffix(" dB");
+    // A graphic EQ's faders: a tick every quarter of the range, 0 dB long.
+    const double m = VoicingEqSettings::kMaxDb;
+    styleFader(sl, {-m, -m * 0.75, -m * 0.5, -m * 0.25, 0.0, m * 0.25, m * 0.5, m * 0.75, m}, 0.0,
+               &sl == &gain_ ? fader::kMaster : fader::kChannel);
     sl.onValueChange = [this] { apply(); };
     addAndMakeVisible(sl);
     name.setText(text, juce::dontSendNotification);
@@ -786,11 +791,13 @@ VoicingEqPanel::VoicingEqPanel(MasterpieceProcessor& p) : proc_(p) {
   attack_.setRange(-12.0, 12.0, 0.5);
   attack_.setTextValueSuffix(" dB");
   attack_.setDoubleClickReturnValue(true, 0.0);
+  styleFader(attack_, {-12.0, -6.0, 0.0, 6.0, 12.0}, 0.0);
   attack_.setTooltip(TRANS("Each pipe begins this much louder, or softer, and comes to its own level: "
                            "more or less chiff. 0 dB is off. Heard from the next note; saved with the organ."));
   attackMs_.setRange(5.0, 300.0, 1.0);
   attackMs_.setTextValueSuffix(" ms");
   attackMs_.setSkewFactorFromMidPoint(60.0);
+  styleFader(attackMs_, {5.0, 30.0, 60.0, 150.0, 300.0}, fader::kNoUnity);
   attackMs_.setTooltip(TRANS("How long the attack's emphasis lasts"));
   for (auto* sl : {&attack_, &attackMs_}) {
     sl->onValueChange = [this] {

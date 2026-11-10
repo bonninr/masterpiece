@@ -1047,6 +1047,13 @@ public:
   // Whether the drawn manuals show the keys being played. Drawing them is
   // the window's largest cost while the organ is played fast; off, the
   // console neither looks at the keys nor draws them.
+  // The Mixer tab's strips drawn narrow, the scale's ticks without numbers:
+  // more strips in view on a large organ.
+  bool narrowStrips() const { return narrowStrips_.load(std::memory_order_relaxed); }
+  void setNarrowStrips(bool on) {
+    narrowStrips_.store(on, std::memory_order_relaxed);
+    writeGlobalFile();
+  }
   bool showPlayedKeys() const { return showPlayedKeys_.load(std::memory_order_relaxed); }
   void setShowPlayedKeys(bool on) {
     showPlayedKeys_.store(on, std::memory_order_relaxed);
@@ -1866,6 +1873,28 @@ public:
   int liveGroupOfRank(int rankIndex) const { return liveLevels_.rankGroup(rankIndex); }
   // The division a rank's fader sits under, by those lists' indices; -1 for none.
   int liveDivisionOfRank(int rankIndex) const { return liveLevels_.rankDivision(rankIndex); }
+  // Mute and solo on the mixer's strips (LiveLevels::setMuted). Not saved:
+  // every organ starts with none, as its faders start at full.
+  bool liveMuted(LiveLevels::Strip s, int index) const { return liveLevels_.muted(s, index); }
+  bool liveSoloed(LiveLevels::Strip s, int index) const { return liveLevels_.soloed(s, index); }
+  void setLiveMuted(LiveLevels::Strip s, int index, bool on) {
+    if (!organLoading()) liveLevels_.setMuted(s, index, on);
+  }
+  void setLiveSoloed(LiveLevels::Strip s, int index, bool on) {
+    if (!organLoading()) liveLevels_.setSoloed(s, index, on);
+  }
+  // The strips' meters, on while the mixer shows them. Off, the engine
+  // measures nothing. A rank's, division's or group's level is the power sum
+  // of the peaks of the pipes under it, after every fader, before the swell
+  // boxes and the room; a pair's is the peak of its own signal, after its
+  // swell boxes and its room, before the master volume. Linear, 1 is full
+  // scale; a reading about four times a second.
+  void setStripMeters(bool on) { stripMeters_.store(on, std::memory_order_relaxed); }
+  float stripLevel(LiveLevels::Strip s, int index) const {
+    if (organLoading() || index < 0 || index >= liveLevels_.count(s)) return 0.0f;
+    const size_t at = stripOffset(s) + static_cast<size_t>(index);
+    return at < stripLevelCount_ ? stripLevels_[at].load(std::memory_order_relaxed) : 0.0f;
+  }
   // A rank's or a division's place in those lists; -1 for none.
   int liveRankIndexOf(Id rankId) const {
     const auto it = liveRankIndex_.find(rankId);
@@ -2288,6 +2317,8 @@ private:
   // `buffer`. One filter per enclosure, prepared at prepareToPlay; nothing is
   // allocated here.
   void renderBuses(juce::AudioBuffer<float>& buffer);
+  // One block of at most maxBlock_ frames, the meters' step around it.
+  void renderMixBuses(juce::AudioBuffer<float>& output, int outCh, int numFrames);
   // Sound one load-progress tap when a 10% threshold passes and render any
   // tap in flight. Audio thread only, after the recorder: taps are a
   // monitoring aid, not the performance.
@@ -2528,6 +2559,10 @@ private:
   // Sets a live level from a MIDI control: a rank or division by its id, a
   // pair by its number from 1.
   void setLiveLevelFromMidi(MidiTargetKind kind, Id targetId, int value);
+  // A mute or solo target's strip, toggled; and a strip's live-level index
+  // from the id its level target has.
+  void toggleStripFromMidi(MidiTargetKind kind, Id targetId);
+  int stripIndexForTarget(int strip, Id levelId) const;
   void advanceTremulants(int numFrames);
   // The wind sway: one slow wave per division and one for ranks in none,
   // with each rank's place resolved at load; advanced once a block.
@@ -2879,6 +2914,37 @@ private:
   juce::File lastButtonSave_;
   std::atomic<float> outPeak_[2]{{0.0f}, {0.0f}};
   float peakHeld_[2] = {0.0f, 0.0f};
+  // The strips' meters: ranks, then divisions, groups and pairs, one table.
+  // Sized at a load; the levels are the copy the UI reads, the sums and the
+  // held values the audio thread's own.
+  std::atomic<bool> stripMeters_{false};
+  std::unique_ptr<std::atomic<float>[]> stripLevels_;
+  size_t stripLevelCount_ = 0;
+  std::vector<float> stripPower_, stripHeld_;
+  bool stripMetersLit_ = false;
+  // About this many readings a second, each watching every pipe once for at
+  // least kStripMeterWatchSeconds (beginStripMeterBlock).
+  static constexpr double kStripMetersPerSecond = 4.0;
+  static constexpr double kStripMeterWatchSeconds = 0.02;
+  bool stripMetersNow_ = false;
+  int stripMeterBlock_ = 0, stripMeterWindow_ = 1, stripMeterSlices_ = 1;
+  std::array<float, LiveLevels::kMaxPairs> pairPeak_{};
+  size_t stripOffset(LiveLevels::Strip s) const {
+    const auto ranks = static_cast<size_t>(liveLevels_.rankCount());
+    const auto divisions = static_cast<size_t>(liveLevels_.divisionCount());
+    const auto groups = static_cast<size_t>(liveLevels_.groupCount());
+    switch (s) {
+      case LiveLevels::Strip::Rank: return 0;
+      case LiveLevels::Strip::Division: return ranks;
+      case LiveLevels::Strip::Group: return ranks + divisions;
+      case LiveLevels::Strip::Pair: return ranks + divisions + groups;
+    }
+    return 0;
+  }
+  void sizeStripMeters();
+  void beginStripMeterBlock(int numFrames);
+  void meterPair(int bus, const juce::AudioBuffer<float>& b, int numFrames);
+  void takeStripMeters();
   // Per-block decay, worked out once in prepareToPlay. A host that varies its
   // block size shifts the fall slightly; nobody can see that in a lamp, and
   // it is not worth an exp() per callback to correct.
@@ -3099,6 +3165,7 @@ private:
   std::atomic<bool> setOffAfterStore_{false};
   bool leaveBassAndMelody_ = false;
   std::atomic<bool> showPlayedKeys_{true};
+  std::atomic<bool> narrowStrips_{false};
   std::atomic<bool> smallPagesFill_{false};
   std::atomic<bool> rememberWindowPlaces_{true};
   std::atomic<bool> simpleMode_{true};

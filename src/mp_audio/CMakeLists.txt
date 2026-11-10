@@ -62,6 +62,8 @@ add_library(mp_audio STATIC
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/TuningPanel.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/TunerWindow.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/TunerWindow.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/MixerStrip.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/MixerStrip.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Wizard.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/UpdateCheck.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/UpdateCheck.cpp

@@ -299,6 +299,25 @@ public:
              "a pair raised to the top, +24 dB");
     v = 204;
     MP_CHECK(model.set(mp::api::Type::Pair, 0, v) == mp::api::Error::BadValue, "0..203 only");
+    // Mute and solo: the ranks first, then the divisions, groups and pairs.
+    const int strips = model.count(mp::api::Type::Mute);
+    MP_CHECK(strips >= 2 + 1 + 1 && model.count(mp::api::Type::Solo) == strips, "a mute and a solo per strip");
+    v = 1;
+    MP_CHECK(model.set(mp::api::Type::Mute, 1, v) == mp::api::Error::None &&
+                 p.liveMuted(mp::LiveLevels::Strip::Rank, 1),
+             "rank B muted from the API");
+    v = 2;
+    MP_CHECK(model.set(mp::api::Type::Mute, 1, v) == mp::api::Error::None &&
+                 !p.liveMuted(mp::LiveLevels::Strip::Rank, 1) && v == 0,
+             "toggled back: " + std::to_string(v));
+    v = 1;
+    MP_CHECK(model.set(mp::api::Type::Solo, 2, v) == mp::api::Error::None &&
+                 p.liveSoloed(mp::LiveLevels::Strip::Division, 0) && model.get(mp::api::Type::Solo, 2, v, e) && v == 1,
+             "the first division soloed, and read back");
+    v = 0;
+    model.set(mp::api::Type::Solo, 2, v);
+    v = 3;
+    MP_CHECK(model.set(mp::api::Type::Mute, 0, v) == mp::api::Error::BadValue, "0, 1 or 2 only");
 #endif
 
     // A new organ starts every fader at full.
@@ -561,6 +580,185 @@ public:
   }
 };
 static LiveLevelsGroupsTest g_groups;
+
+// The mixer's strips: mute and solo on each fader, and a meter per strip.
+// Mute and solo leave the faders where they are; a solo on a rank, a
+// division or a group leaves only the ranks under it; mute wins. The meters
+// measure only while asked for, and the output with them off is the output
+// of an organ that never had them.
+class LiveLevelsStripsTest final : public mp::test::Test {
+public:
+  LiveLevelsStripsTest() : Test("functional.levels.strips", Category::Functional) {}
+  void run() override {
+    using mp::LiveLevels;
+    using Strip = LiveLevels::Strip;
+    {
+      // Rank 0 in division 0, rank 1 in division 1, rank 2 in none.
+      LiveLevels l;
+      l.configure({0, 1, -1}, 2);
+      const auto settle = [&l] {
+        for (int i = 0; i < 200; ++i) l.advance(256, 48000.0);
+      };
+      l.setMuted(Strip::Rank, 0, true);
+      MP_CHECK(l.advance(256, 48000.0) && l.rankGain(0) > 0.0f && l.rankGain(0) < 1.0f,
+               "a mute fades, it does not click: " + std::to_string(l.rankGain(0)));
+      settle();
+      MP_CHECK(l.rankGain(0) == 0.0f && l.rankGain(1) == 1.0f && l.rank(0) == LiveLevels::kFull,
+               "a muted rank is silent, its fader where it was, the others untouched");
+      l.setMuted(Strip::Rank, 0, false);
+      l.setSoloed(Strip::Division, 1, true);
+      settle();
+      MP_CHECK(l.rankGain(0) == 0.0f && l.rankGain(1) == 1.0f && l.rankGain(2) == 0.0f,
+               "a soloed division: only its ranks sound");
+      l.setSoloed(Strip::Rank, 2, true);
+      settle();
+      MP_CHECK(l.rankGain(0) == 0.0f && l.rankGain(1) == 1.0f && l.rankGain(2) == 1.0f,
+               "a rank soloed as well joins it");
+      l.setMuted(Strip::Rank, 1, true);
+      settle();
+      MP_CHECK(l.rankGain(1) == 0.0f && l.soloed(Strip::Division, 1), "mute wins over solo");
+      l.setMuted(Strip::Rank, 1, false);
+      l.setSoloed(Strip::Rank, 2, false);
+      l.setSoloed(Strip::Division, 1, false);
+      l.setSoloed(Strip::Pair, 3, true);
+      settle();
+      MP_CHECK(l.pairGain(3) == 1.0f && l.pairGain(0) == 0.0f && l.rankGain(0) == 1.0f,
+               "a soloed pair: the other pairs silent, the ranks' own gains untouched");
+      l.setMuted(Strip::Pair, 3, true);
+      settle();
+      MP_CHECK(l.pairGain(3) == 0.0f, "a muted pair under a solo is silent");
+      l.setSoloed(Strip::Pair, 3, false);
+      l.setMuted(Strip::Pair, 3, false);
+      settle();
+      MP_CHECK(!l.advance(256, 48000.0), "every button off: nothing to apply again");
+      l.setMuted(Strip::Rank, 9, true);
+      MP_CHECK(!l.muted(Strip::Rank, 9), "a strip out of range is ignored");
+    }
+
+    const juce::File root =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-live-strips");
+    const juce::File odf = writeOrgan(root);
+    Rig plain(odf), metered(odf);
+    MP_CHECK(plain.loaded && metered.loaded, "the organ loads");
+    juce::MidiBuffer on;
+    on.addEvent(juce::MidiMessage::noteOn(1, 36, 0.8f), 0);
+    on.addEvent(juce::MidiMessage::noteOn(2, 36, 0.8f), 0);
+    // Metered for 100 blocks, two readings at four a second (one every 44
+    // blocks: 11 slices of the voices, each watched 4 blocks), then not:
+    // equal to the plain organ within rounding while on, and to the last bit
+    // once off again.
+    metered.proc.setStripMeters(true);
+    float worst = 0.0f;
+    bool sameAfter = true;
+    int readings = 0;
+    float last = 0.0f;
+    for (int i = 0; i < 140; ++i) {
+      if (i == 100) metered.proc.setStripMeters(false);
+      plain.block(i == 0 ? on : juce::MidiBuffer());
+      metered.block(i == 0 ? on : juce::MidiBuffer());
+      for (int ch = 0; ch < 2; ++ch)
+        for (int s = 0; s < 256; ++s) {
+          const float d = std::fabs(plain.buf.getSample(ch, s) - metered.buf.getSample(ch, s));
+          if (i < 100) worst = std::max(worst, d);
+          else sameAfter = sameAfter && d == 0.0f;
+        }
+      if (i < 100) {
+        const float now = metered.proc.stripLevel(Strip::Rank, 0);
+        if (now != last) ++readings;
+        last = now;
+      }
+      if (i == 99) {
+        MP_CHECK(readings >= 1 && readings <= 2, "a reading every quarter of a second, the level standing between: " +
+                                    std::to_string(readings) + " in 100 blocks of 256 at 48 kHz");
+        const float a = metered.proc.stripLevel(Strip::Rank, 0), b = metered.proc.stripLevel(Strip::Rank, 1);
+        const float g = metered.proc.stripLevel(Strip::Division, 0);
+        const float pair = metered.proc.stripLevel(Strip::Pair, 0);
+        const float out = std::max(metered.proc.outputPeak(0), metered.proc.outputPeak(1));
+        MP_CHECK(a > 0.01f && b > 0.01f, "each rank's meter reads its pipe: " + std::to_string(a) + ", " + std::to_string(b));
+        MP_CHECK(std::fabs(g - a) < 1.0e-6f, "a division with one rank reads that rank");
+        // The pair reads its own signal, the two ranks in phase: louder than
+        // either, and the output meter's level, the master volume being at 0 dB.
+        MP_CHECK(pair > std::max(a, b), "the pair hears both ranks: " + std::to_string(pair));
+        MP_CHECK(std::fabs(pair - out) < out * 0.1f,
+                 "the pair reads the output's signal: " + std::to_string(pair) + " against " + std::to_string(out));
+        MP_CHECK(metered.proc.stripLevel(Strip::Rank, 7) == 0.0f, "a strip out of range reads nothing");
+      }
+    }
+    MP_CHECK(worst < 1.0e-6f, "metered, the output is the same within rounding: " + std::to_string(worst));
+    MP_CHECK(sameAfter, "the meters off: bit-identical to an organ never metered");
+    MP_CHECK(metered.proc.stripLevel(Strip::Rank, 0) == 0.0f, "the meters off: dark");
+
+    // On the organ: rank A muted, B heard alone; then division G soloed, A
+    // alone. Within 10%: sixteen blocks hold a few periods of the tone, and
+    // where the window falls moves its RMS by a few percent; a strip off
+    // halves it.
+    const float both = metered.settle(30);
+    metered.proc.setLiveMuted(Strip::Rank, 0, true);
+    const float bOnly = metered.settle(120);
+    MP_CHECK(std::fabs(bOnly - both * 0.5f) < both * 0.1f,
+             "rank A muted: B alone, half the two in phase: " + std::to_string(bOnly) + " of " + std::to_string(both));
+    MP_CHECK(metered.proc.liveRankLevel(0) == LiveLevels::kFull, "the fader stays at full");
+    metered.proc.setLiveMuted(Strip::Rank, 0, false);
+    metered.proc.setLiveSoloed(Strip::Division, 0, true);
+    const float aOnly = metered.settle(120);
+    MP_CHECK(std::fabs(aOnly - both * 0.5f) < both * 0.1f, "division G soloed: A alone: " + std::to_string(aOnly));
+    metered.proc.setLiveSoloed(Strip::Division, 0, false);
+    const float again = metered.settle(120);
+    MP_CHECK(std::fabs(again - both) < both * 0.1f,
+             "every button off: both again: " + std::to_string(again) + " of " + std::to_string(both));
+
+    // Mute and solo from MIDI buttons: each press toggles, a release does
+    // nothing, and the bindings are written to the map file.
+    {
+      auto& p = metered.proc;
+      const auto bindCc = [&](int cc, mp::MidiTargetKind kind, mp::Id target) {
+        mp::MidiBinding b;
+        b.source.kind = mp::MidiSourceKind::ControlChange;
+        b.source.channel = 16;
+        b.source.number = cc;
+        b.targetKind = kind;
+        b.targetId = target;
+        p.midiMap().bind(b);
+      };
+      const mp::Id muteA = mp::stripTarget(static_cast<int>(Strip::Rank), 201);
+      const mp::Id soloPair = mp::stripTarget(static_cast<int>(Strip::Pair), 1);
+      MP_CHECK(mp::stripTargetStrip(muteA) == static_cast<int>(Strip::Rank) && mp::stripTargetLevelId(muteA) == 201,
+               "a strip target carries its strip and its level");
+      bindCc(20, mp::MidiTargetKind::StripMute, muteA);
+      bindCc(21, mp::MidiTargetKind::StripSolo, soloPair);
+      const auto press = [&](int cc, int value) {
+        juce::MidiBuffer m;
+        m.addEvent(juce::MidiMessage::controllerEvent(16, cc, value), 0);
+        metered.block(m);
+      };
+      press(20, 127);
+      MP_CHECK(p.liveMuted(Strip::Rank, 0), "the mute button pressed: rank A muted");
+      press(20, 0);
+      MP_CHECK(p.liveMuted(Strip::Rank, 0), "released: still muted");
+      press(20, 127);
+      MP_CHECK(!p.liveMuted(Strip::Rank, 0), "pressed again: heard");
+      p.setLiveMuted(Strip::Rank, 0, true);
+      press(20, 127);
+      MP_CHECK(!p.liveMuted(Strip::Rank, 0), "a press toggles what the strip shows, set from the screen or not");
+      press(21, 127);
+      MP_CHECK(p.liveSoloed(Strip::Pair, 0), "the solo button pressed: the first pair soloed");
+      press(21, 127);
+      MP_CHECK(!p.liveSoloed(Strip::Pair, 0), "pressed again: off");
+
+      const std::string text = p.midiMap().toText();
+      MP_CHECK(text.find("strip-mute") != std::string::npos && text.find("strip-solo") != std::string::npos,
+               "named in the map file");
+      mp::MidiMap again;
+      MP_CHECK(again.fromText(text) && again.bindingFor(mp::MidiTargetKind::StripMute, muteA) != nullptr &&
+                   again.bindingFor(mp::MidiTargetKind::StripSolo, soloPair) != nullptr,
+               "read back from the map file");
+    }
+
+    plain.proc.settingsFileFor(odf).deleteFile();
+    root.deleteRecursively();
+  }
+};
+static LiveLevelsStripsTest g_strips;
 
 }  // namespace
 

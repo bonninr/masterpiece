@@ -8,6 +8,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "../mp_audio/MasterpieceProcessor.h"
+#include "MixerStrip.h"
 
 #include <array>
 #include <functional>
@@ -576,6 +577,7 @@ private:
 class MixerPanel : public juce::Component, private juce::Timer {
 public:
   explicit MixerPanel(MasterpieceProcessor& p);
+  ~MixerPanel() override;
   void resized() override;
   // Rebuild the rank rows. The rank list only exists once an organ is loaded,
   // so this cannot happen in the constructor.
@@ -584,19 +586,20 @@ public:
 private:
   void pushRouting();
   void setBusCount(int buses);
-  // The live levels (LiveLevels.h): a fader for each pair, division and
-  // rank, with a MIDI button to learn a knob or pedal for it. They follow
-  // MIDI and the control API on a timer.
+  // The live levels (LiveLevels.h): a channel strip for each pair, division,
+  // group and rank, with its fader, meter, mute and solo, and a MIDI button
+  // to learn a knob or pedal for its level. They follow MIDI and the control
+  // API on a timer.
   struct Fader {
     MidiTargetKind kind = MidiTargetKind::None;
     Id id = 0;     // the MIDI target's id
     int index = 0; // the place in the processor's list
-    std::unique_ptr<juce::Label> label;
-    std::unique_ptr<juce::Slider> slider;
-    std::unique_ptr<juce::TextButton> midi;
+    std::unique_ptr<ChannelStrip> strip;
   };
+  static LiveLevels::Strip stripOf(MidiTargetKind kind);
   void timerCallback() override;
-  void addFader(std::vector<Fader>& into, MidiTargetKind kind, Id id, int index, const juce::String& name);
+  void addFader(std::vector<Fader>& into, MidiTargetKind kind, Id id, int index, const juce::String& name,
+                const juce::String& tooltip = {});
   int faderLevel(const Fader& f) const;
   void setFaderLevel(const Fader& f, int value);
   void faderMidiMenu(Fader& f);
@@ -619,19 +622,23 @@ private:
   // The filter: rank rows whose name holds the text stay, the rest are hidden.
   // Spread and All to pair 1 act on the rows on show.
   juce::TextEditor filter_;
+  juce::ToggleButton narrow_{TRANS("Narrow strips")};
   bool rankShown(size_t row) const;
   juce::TextButton save_{TRANS("Save for this organ")};
   juce::TextButton spread_{TRANS("Spread ranks evenly")};
   juce::TextButton reset_{TRANS("All to pair 1")};
   // Each pair's lows to a subwoofer channel, in a box of its own.
   juce::TextButton bass_{TRANS("Bass management...")};
-  // One row per rank, inside a viewport: 51 ranks does not fit a dialog.
+  // A strip per rank, side by side in a viewport that scrolls: 51 ranks do
+  // not fit a window. The divisions, groups and pairs stand at the right in
+  // one of their own, as a desk's group and master faders do.
   juce::Viewport viewport_;
   juce::Component rankHolder_;
+  juce::Viewport busViewport_;
+  juce::Component busHolder_;
   // The ranks by division, then by id, each division's name above its first
   // rank; the ranks in no division last.
   std::vector<Id> rankIds_;
-  std::vector<std::unique_ptr<juce::Label>> rankLabels_;
   std::vector<std::unique_ptr<juce::ComboBox>> rankBuses_;
   std::vector<std::unique_ptr<juce::Label>> rankGroups_;
   std::vector<int> rankGroupAbove_;  // per rank, the heading above its row in rankGroups_, or -1

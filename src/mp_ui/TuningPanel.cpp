@@ -1,6 +1,7 @@
 #include "TuningPanel.h"
 #include "MidiEventDialog.h"
 #include "Mobile.h"
+#include "MixerStrip.h"
 
 #include "../mp_core/Temperament.h"
 
@@ -78,6 +79,14 @@ TuningPanel::TuningPanel(MasterpieceProcessor& p) : proc_(p) {
   pitch_.setTextValueSuffix(" Hz");
   pitch_.setNumDecimalPlacesToDisplay(1);
   pitch_.setDoubleClickReturnValue(true, native);
+  {
+    // The organ's own pitch, and the pitches ensembles tune to, where the
+    // range reaches them.
+    std::vector<double> marks{native};
+    for (double hz : {392.0, 415.0, 430.0, 440.0, 466.0})
+      if (hz >= native * 0.75 && hz <= native * 1.34 && std::abs(hz - native) > 1.0) marks.push_back(hz);
+    styleFader(pitch_, marks, native);
+  }
   pitch_.setValue(proc_.masterPitchHz(), juce::dontSendNotification);
   pitch_.onValueChange = [this] {
     const double v = pitch_.getValue();
@@ -114,6 +123,7 @@ TuningPanel::TuningPanel(MasterpieceProcessor& p) : proc_(p) {
     addAndMakeVisible(*s);
     s->setRange(0.0, MasterpieceProcessor::kMaxUnevennessCents, 0.1);
     s->setDoubleClickReturnValue(true, 0.0);
+    styleFader(*s, fader::evenTicks(0.0, MasterpieceProcessor::kMaxUnevennessCents), 0.0);
     s->textFromValueFunction = [](double v) {
       return v <= 0.0 ? TRANS("Off") : TRANS("%1 cents").replace("%1", juce::String(v, 1));
     };

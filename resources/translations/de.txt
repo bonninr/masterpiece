@@ -989,7 +989,6 @@ countries: de at ch li lu
 "Learn score page -" = "Notenseite - anlernen"
 "Learn score page +" = "Notenseite + anlernen"
 "Divisions" = "Werke"
-"Learn a knob or a pedal for this level" = "Einen Drehregler oder ein Pedal für diesen Pegel anlernen"
 "Learn: move the knob or pedal" = "Anlernen: Drehregler oder Pedal bewegen"
 "Move it..." = "Jetzt bewegen..."
 "Attack" = "Ansprache"

@@ -185,6 +185,8 @@ const char* targetName(MidiTargetKind k) {
     case MidiTargetKind::PairLevel: return "pair-level";
     case MidiTargetKind::GroupLevel: return "group-level";
     case MidiTargetKind::ReverbWet: return "reverb-wet";
+    case MidiTargetKind::StripMute: return "strip-mute";
+    case MidiTargetKind::StripSolo: return "strip-solo";
     case MidiTargetKind::None: break;
   }
   return "none";
@@ -237,6 +239,8 @@ MidiTargetKind targetKindFrom(const std::string& s) {
   if (s == "pair-level") return MidiTargetKind::PairLevel;
   if (s == "group-level") return MidiTargetKind::GroupLevel;
   if (s == "reverb-wet") return MidiTargetKind::ReverbWet;
+  if (s == "strip-mute") return MidiTargetKind::StripMute;
+  if (s == "strip-solo") return MidiTargetKind::StripSolo;
   return MidiTargetKind::None;
 }
 
@@ -571,6 +575,8 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
     case MidiTargetKind::VoicingLevelUp:
     case MidiTargetKind::VoicingTuneDown:
     case MidiTargetKind::VoicingTuneUp:
+    case MidiTargetKind::StripMute:
+    case MidiTargetKind::StripSolo:
       // These fire on the press. Acting on the release too would move two
       // frames, or turn a page and turn it straight back -- exactly the
       // failure an organist would notice mid-piece and could not explain.

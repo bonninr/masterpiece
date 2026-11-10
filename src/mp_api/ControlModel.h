@@ -64,6 +64,14 @@ public:
   // A brightness or bass index: the rank's voicing, or the division's.
   PipeVoicing eqVoicing(int index);
   void setEqVoicing(int index, const PipeVoicing& pv);
+  // A mute or solo index: the strip's kind (LiveLevels::Strip, as an int)
+  // and its index among the live levels; ranks, divisions, groups, pairs.
+  struct StripRef {
+    int strip = 0;
+    int index = -1;
+  };
+  StripRef stripAt(int index);
+  int stripCount();
 
 private:
   struct SwitchEntry {

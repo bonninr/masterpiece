@@ -86,6 +86,11 @@ public:
     divisionSet_ = makeFaders(n);
     groupSet_ = makeFaders(ng);
     pairSet_ = makeFaders(kMaxPairs);
+    rankSw_ = makeSwitches(ranks);
+    divisionSw_ = makeSwitches(n);
+    groupSw_ = makeSwitches(ng);
+    pairSw_ = makeSwitches(kMaxPairs);
+    rankOpen_.assign(ranks, 1.0f);
     rankNow_.assign(ranks, 1.0f);
     divisionNow_.assign(n, 1.0f);
     groupNow_.assign(ng, 1.0f);
@@ -114,6 +119,26 @@ public:
   int group(int i) const { return get(groupSet_.get(), groupCount(), i); }
   int pair(int i) const { return get(pairSet_.get(), kMaxPairs, i); }
 
+  // Mute and solo, a mixing desk's two buttons on every strip. They leave the
+  // fader where it is. A muted strip is silent. A solo on a rank, a division
+  // or a group leaves only the ranks under a soloed strip sounding; a solo on
+  // a pair leaves only the soloed pairs. Mute wins over solo. Noises are on
+  // no strip and stay as they are. Any thread.
+  enum class Strip { Rank, Division, Group, Pair };
+  void setMuted(Strip s, int i, bool on) { setSwitch(s, i, kMute, on); }
+  void setSoloed(Strip s, int i, bool on) { setSwitch(s, i, kSolo, on); }
+  bool muted(Strip s, int i) const { return (switches(s, i) & kMute) != 0; }
+  bool soloed(Strip s, int i) const { return (switches(s, i) & kSolo) != 0; }
+  int count(Strip s) const {
+    switch (s) {
+      case Strip::Rank: return rankCount();
+      case Strip::Division: return divisionCount();
+      case Strip::Group: return groupCount();
+      case Strip::Pair: return kMaxPairs;
+    }
+    return 0;
+  }
+
   // Audio thread, once a block before the voices render: each gain moves
   // toward its fader, smoothly enough that a knob turned fast does not click.
   // Returns whether any level is away from full, below or above; while none
@@ -125,24 +150,37 @@ public:
                            ? 1.0f - static_cast<float>(std::exp(-numFrames / (kSmoothSeconds * sampleRate)))
                            : 1.0f;
     bool moving = false, away = false;
+    const auto glide = [&](float target, float& now) {
+      float g = now + (target - now) * step;
+      if (std::fabs(target - g) < 1.0e-4f) g = target;
+      else moving = true;
+      now = g;
+      if (g != 1.0f) away = true;
+    };
     const auto follow = [&](const std::atomic<int>* set, std::vector<float>& now) {
-      for (size_t i = 0; i < now.size(); ++i) {
-        const float target = gainOf(set[i].load(std::memory_order_relaxed));
-        float g = now[i] + (target - now[i]) * step;
-        if (std::fabs(target - g) < 1.0e-4f) g = target;
-        else moving = true;
-        now[i] = g;
-        if (g != 1.0f) away = true;
-      }
+      for (size_t i = 0; i < now.size(); ++i) glide(gainOf(set[i].load(std::memory_order_relaxed)), now[i]);
     };
     follow(rankSet_.get(), rankNow_);
     follow(divisionSet_.get(), divisionNow_);
     follow(groupSet_.get(), groupNow_);
-    follow(pairSet_.get(), pairNow_);
+    // A pair's own buttons act on its own gain.
+    const bool pairSolo = anySolo(pairSw_.get(), kMaxPairs);
+    for (size_t i = 0; i < pairNow_.size(); ++i) {
+      const int sw = pairSw_[i].load(std::memory_order_relaxed);
+      const bool open = (sw & kMute) == 0 && (!pairSolo || (sw & kSolo) != 0);
+      glide(open ? gainOf(pairSet_[i].load(std::memory_order_relaxed)) : 0.0f, pairNow_[i]);
+    }
+    // A rank's are its own, its division's and its group's, together.
+    const bool rankSolo = anySolo(rankSw_.get(), rankCount()) || anySolo(divisionSw_.get(), divisionCount()) ||
+                          anySolo(groupSw_.get(), groupCount());
     for (size_t i = 0; i < rankGain_.size(); ++i) {
       const int d = rankDivision_[i];
       const int g = rankGroup_[i];
-      rankGain_[i] = rankNow_[i] * (d >= 0 ? divisionNow_[static_cast<size_t>(d)] : 1.0f) *
+      const int sw = rankSw_[i].load(std::memory_order_relaxed) |
+                     (d >= 0 ? divisionSw_[static_cast<size_t>(d)].load(std::memory_order_relaxed) : 0) |
+                     (g >= 0 ? groupSw_[static_cast<size_t>(g)].load(std::memory_order_relaxed) : 0);
+      glide((sw & kMute) == 0 && (!rankSolo || (sw & kSolo) != 0) ? 1.0f : 0.0f, rankOpen_[i]);
+      rankGain_[i] = rankNow_[i] * rankOpen_[i] * (d >= 0 ? divisionNow_[static_cast<size_t>(d)] : 1.0f) *
                      (g >= 0 ? groupNow_[static_cast<size_t>(g)] : 1.0f);
     }
     moving_ = moving;
@@ -181,10 +219,41 @@ private:
     return i >= 0 && i < count ? faders[i].load(std::memory_order_relaxed) : kFull;
   }
 
+  static constexpr int kMute = 1, kSolo = 2;
+  static std::unique_ptr<std::atomic<int>[]> makeSwitches(size_t n) {
+    std::unique_ptr<std::atomic<int>[]> f(new std::atomic<int>[std::max<size_t>(n, 1)]);
+    for (size_t i = 0; i < std::max<size_t>(n, 1); ++i) f[i].store(0, std::memory_order_relaxed);
+    return f;
+  }
+  std::atomic<int>* switchTable(Strip s) const {
+    switch (s) {
+      case Strip::Rank: return rankSw_.get();
+      case Strip::Division: return divisionSw_.get();
+      case Strip::Group: return groupSw_.get();
+      case Strip::Pair: return pairSw_.get();
+    }
+    return nullptr;
+  }
+  int switches(Strip s, int i) const {
+    return i >= 0 && i < count(s) ? switchTable(s)[i].load(std::memory_order_relaxed) : 0;
+  }
+  void setSwitch(Strip s, int i, int bit, bool on) {
+    if (i < 0 || i >= count(s)) return;
+    if (on) switchTable(s)[i].fetch_or(bit, std::memory_order_relaxed);
+    else switchTable(s)[i].fetch_and(~bit, std::memory_order_relaxed);
+    dirty_.store(true, std::memory_order_release);
+  }
+  static bool anySolo(const std::atomic<int>* sw, int n) {
+    for (int i = 0; i < n; ++i)
+      if ((sw[i].load(std::memory_order_relaxed) & kSolo) != 0) return true;
+    return false;
+  }
+
   std::vector<int> rankDivision_, rankGroup_;
   std::unique_ptr<std::atomic<int>[]> rankSet_, divisionSet_, groupSet_, pairSet_;
-  // Audio thread only.
-  std::vector<float> rankNow_, divisionNow_, groupNow_, pairNow_, rankGain_;
+  std::unique_ptr<std::atomic<int>[]> rankSw_, divisionSw_, groupSw_, pairSw_;
+  // Audio thread only. rankOpen_ is each rank's mute and solo, 0 to 1.
+  std::vector<float> rankNow_, divisionNow_, groupNow_, pairNow_, rankGain_, rankOpen_;
   bool active_ = false;
   bool moving_ = false;
   std::atomic<bool> dirty_{false};

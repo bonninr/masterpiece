@@ -989,7 +989,6 @@ countries: it ch sm va
 "Learn score page -" = "Apprendi pagina spartito -"
 "Learn score page +" = "Apprendi pagina spartito +"
 "Divisions" = "Manuali"
-"Learn a knob or a pedal for this level" = "Apprendere una manopola o un pedale per questo livello"
 "Learn: move the knob or pedal" = "Apprendi: muovi la manopola o il pedale"
 "Move it..." = "Muovilo..."
 "Attack" = "Attacco"
