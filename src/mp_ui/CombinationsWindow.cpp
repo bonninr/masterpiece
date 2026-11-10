@@ -616,10 +616,10 @@ void askForFrame(MasterpieceProcessor& p) {
 
 void CombinationsPanel::showMidiMenu(PistonButton& b, MidiTargetKind kind,
                                      Id targetId, bool offerHold) {
-  auto& map = proc_.midiMap();
+  const auto& map = std::as_const(proc_).midiMap();
   // A right-click while a learn is armed backs out of it.
   if (map.learning()) {
-    map.cancelLearn();
+    proc_.cancelLearn();
     return;
   }
   juce::PopupMenu menu;
@@ -646,16 +646,15 @@ void CombinationsPanel::showMidiMenu(PistonButton& b, MidiTargetKind kind,
   menu.showMenuAsync(
       juce::PopupMenu::Options().withTargetComponent(&b),
       [this, kind, targetId, name](int choice) {
-        auto& m = proc_.midiMap();
         switch (choice) {
           case 4:
             MidiEventDialog::show(proc_, kind, targetId, name);
             break;
           case 1:
-            m.beginLearnAs(kind, targetId, MidiTrigger::Momentary);
+            proc_.beginLearnAs(kind, targetId, MidiTrigger::Momentary);
             break;
           case 2:
-            m.beginLearnAs(kind, targetId, MidiTrigger::Toggle);
+            proc_.beginLearnAs(kind, targetId, MidiTrigger::Toggle);
             break;
           case 3:
             proc_.clearObjectMapping(kind, targetId);

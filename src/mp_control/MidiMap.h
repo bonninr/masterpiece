@@ -601,6 +601,10 @@ public:
   bool learning() const { return learnKind_ != MidiTargetKind::None; }
   MidiTargetKind learningKind() const { return learnKind_; }
   Id learningTarget() const { return learnTarget_; }
+  // Whether the learn waiting takes this message: a shoe or a level learns a
+  // controller, anything else any press. Changes nothing, so the audio
+  // thread can ask it.
+  bool learnTakes(const MidiSource& source) const;
   // Returns true when the message completed a binding.
   bool learnFrom(const MidiSource& source);
 

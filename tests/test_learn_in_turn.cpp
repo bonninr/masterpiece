@@ -67,6 +67,8 @@ public:
         juce::MidiBuffer m;
         buf.clear();
         proc.processBlock(buf, m);
+        // A learn taken goes into the map on the main window's timer.
+        proc.serviceMidiRequests();
       };
       mp::ui::LearnInTurnPanel panel(proc);
       panel.setSize(600, 500);

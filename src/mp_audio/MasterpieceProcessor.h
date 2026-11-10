@@ -74,6 +74,18 @@ struct AudioGraphConfig {
   ParallelConfig parallel;
 };
 
+// What the next MIDI message is taken for, in place of playing the organ or
+// moving what it is mapped to. One waits at a time.
+//   MapLearn       a stop, a piston or a control learns the next press
+//                  (MidiMap::beginLearn); a continuous target takes only a
+//                  controller
+//   KeyboardLearn  a manual learns its range from two key presses
+//   KeyPick        a manual piston learns which keyboard it moves, from one
+//                  key on a console
+//   Listen         the MIDI window takes one message for a row
+//   ListenPair     the MIDI window takes a message on, then its off (#927)
+enum class MidiCapture { None, MapLearn, KeyboardLearn, KeyPick, Listen, ListenPair };
+
 class MasterpieceProcessor : public juce::AudioProcessor {
 public:
   // The playing state -- switches, controls, voices, pistons -- belongs to
@@ -697,15 +709,30 @@ public:
   // rows; -1 sets the manual to the learned row alone.
   void beginKeyboardLearn(Id keyboardId, int row = -1);
 
+  // --- MIDI capture ---------------------------------------------------------
+  // The capture waiting, as a window sees it. Every begin below ends the
+  // capture waiting before it, and a load ends any. The audio thread only
+  // takes the message: a learn it has taken is written into the map by
+  // serviceMidiRequests(), on the message thread, and waits until then.
+  MidiCapture midiCapture() const {
+    const MidiCapture c = capture_.load(std::memory_order_acquire);
+    if (c != MidiCapture::None) return c;
+    return midiMap_.learning() ? MidiCapture::MapLearn : MidiCapture::None;
+  }
+  // Ends whichever capture waits; a message already taken is kept.
+  void cancelMidiCapture();
+  // A map learn: the next press is learned for this target (MidiMap's
+  // beginLearn and beginLearnAs). cancelLearn ends a map learn only.
+  void beginLearn(MidiTargetKind kind, Id targetId, bool latching = true);
+  void beginLearnAs(MidiTargetKind kind, Id targetId, MidiTrigger trigger);
+  void cancelLearn();
+
   // Which of the player's keyboards is meant, found by playing it: the next
   // key pressed on a console (not on screen) is taken, not played, and its
   // channel is kept. How a manual piston is told which keyboard it moves
   // (#90), without a menu of channel numbers.
-  void beginKeyPick() {
-    pickedChannel_.store(0, std::memory_order_relaxed);
-    keyPick_.store(true, std::memory_order_release);
-  }
-  void cancelKeyPick() { keyPick_.store(false, std::memory_order_release); }
+  void beginKeyPick();
+  void cancelKeyPick();
   // The player has set which keyboard plays what, by hand: that is where the
   // keyboards start from now, and where General Cancel puts them back.
   void keepRouting() { pistonRouted_.store(false); }
@@ -714,20 +741,11 @@ public:
   // Listen: the next press from a console -- a note, a controller, a program
   // change -- is taken rather than acted on, and kept for the window to fill a
   // row with. GrandOrgue's "Listen for Event".
-  void beginMidiListen() {
-    heardReady_.store(false, std::memory_order_relaxed);
-    listenPair_.store(false, std::memory_order_relaxed);
-    midiListen_.store(true, std::memory_order_release);
-  }
+  void beginMidiListen();
   // Listen for two messages, a tab moved on and then off (#927), as
   // GrandOrgue's "Detect complex MIDI setup" does. The second may be a
   // release; the first sent again is passed over.
-  void beginMidiListenPair() {
-    heardReady_.store(false, std::memory_order_relaxed);
-    pairStep_.store(0, std::memory_order_relaxed);
-    listenPair_.store(true, std::memory_order_relaxed);
-    midiListen_.store(true, std::memory_order_release);
-  }
+  void beginMidiListenPair();
   // How many of the pair have been heard so far, for the window to say
   // which one it waits for.
   int midiListenPairStep() const { return pairStep_.load(std::memory_order_acquire); }
@@ -740,8 +758,11 @@ public:
     offValue = heardOffValue_;
     return true;
   }
-  void cancelMidiListen() { midiListen_.store(false, std::memory_order_release); }
-  bool midiListening() const { return midiListen_.load(std::memory_order_acquire); }
+  void cancelMidiListen();
+  bool midiListening() const {
+    const MidiCapture c = capture_.load(std::memory_order_acquire);
+    return c == MidiCapture::Listen || c == MidiCapture::ListenPair;
+  }
   // The message that answered, once. False while none has.
   bool takeHeardMidi(MidiSource& source, int& value) {
     if (!heardReady_.exchange(false, std::memory_order_acq_rel)) return false;
@@ -767,15 +788,16 @@ public:
   void clearObjectMapping(MidiTargetKind kind, Id id);
   // A computer key pressed on the console. True when a shortcut used it.
   bool applyKeyShortcut(const std::string& key);
-  bool keyPicking() const { return keyPick_.load(std::memory_order_acquire); }
+  bool keyPicking() const { return capture_.load(std::memory_order_acquire) == MidiCapture::KeyPick; }
   // The channel of the key that answered, or 0 while none has.
   int pickedChannel() const { return pickedChannel_.load(std::memory_order_acquire); }
-  void cancelKeyboardLearn() { keyboardLearn_ = 0; }
-  Id keyboardLearning() const { return keyboardLearn_; }
+  void cancelKeyboardLearn();
+  // The manual a keyboard learn waits for, 0 while none does.
+  Id keyboardLearning() const { return keyboardLearn_.load(std::memory_order_acquire); }
   // The lowest key has arrived and the highest is awaited, so the prompt can
   // say which of the two presses it wants next.
   bool keyboardLearnHasLowKey() const {
-    return keyboardLearn_ != 0 && keyboardLearnLow_ >= 0;
+    return keyboardLearning() != 0 && keyboardLearnLow_.load(std::memory_order_acquire) >= 0;
   }
 
   Id keyboardForChannel(int channel, int deviceId = 0) const;
@@ -3078,7 +3100,6 @@ private:
   int noteDeviceId_ = 0;
   // The channel of the message being handled, for the same reason.
   int noteChannel_ = 0;
-  std::atomic<bool> keyPick_{false};
   std::atomic<int> pickedChannel_{0};
   // Keyboards moved by pistons, and where they were before (#90).
   std::atomic<bool> pistonRouted_{false};
@@ -3106,7 +3127,40 @@ private:
   static size_t takenIndex(int channel, int note) {
     return static_cast<size_t>((channel - 1) & 15) * 128 + static_cast<size_t>(note & 127);
   }
-  bool learningFrom(int deviceId) const;
+  // The capture beside the map's learn: KeyboardLearn, KeyPick, Listen or
+  // ListenPair, else None. Set on the message thread under the audio lock;
+  // the audio thread ends a Listen or a KeyPick that has answered.
+  std::atomic<MidiCapture> capture_{MidiCapture::None};
+  // A learn the audio thread has taken and the message thread has still to
+  // write into the map: the press for a map learn, the two keys for a
+  // keyboard learn. The capture it ends still waits for the windows until
+  // then; the MIDI handling plays on as if none waited.
+  std::atomic<bool> takePending_{false};
+  MidiCapture takenFor_ = MidiCapture::None;
+  MidiSource takenSource_;
+  // The capture the MIDI handling acts on: none while a taken learn waits to
+  // be written. One atomic load while nothing waits.
+  MidiCapture liveCapture() const {
+    const MidiCapture c = capture_.load(std::memory_order_acquire);
+    if (c == MidiCapture::None && !midiMap_.learning()) return MidiCapture::None;
+    if (takePending_.load(std::memory_order_acquire)) return MidiCapture::None;
+    return c != MidiCapture::None ? c : MidiCapture::MapLearn;
+  }
+  // Whether a capture takes a press from this device: a key pick only from a
+  // console.
+  static bool capturesFrom(MidiCapture c, int deviceId) {
+    return c != MidiCapture::None && (c != MidiCapture::KeyPick || deviceId > 0);
+  }
+  // Audio thread: keeps a press for the waiting map learn.
+  void takeForMapLearn(const MidiSource& source);
+  // Audio thread: a key for the waiting keyboard learn, the low one first.
+  void takeKeyboardKey(int deviceId, int channel, int note);
+  // Message thread, under the audio lock: writes a taken learn into the map.
+  void applyTakenCapture();
+  // Message thread, under the audio lock: a taken learn is written, and then
+  // no capture waits.
+  void endCaptureLocked();
+  bool learningFrom(int deviceId) const { return capturesFrom(liveCapture(), deviceId); }
   void holdForLearn(const MidiSource& source, int value);
   void learnHeldKeys();
   void learnFromPress(const MidiSource& source, int value);
@@ -3191,12 +3245,10 @@ private:
   void restoreRouting();
   // Listen for the MIDI window. heard_ is written by the audio thread before
   // heardReady_ is released, and read by the window after it is acquired.
-  std::atomic<bool> midiListen_{false};
   std::atomic<bool> heardReady_{false};
   MidiSource heard_;
   int heardValue_ = 0;
   // Listening for an on and an off (#927): the off is kept beside the on.
-  std::atomic<bool> listenPair_{false};
   std::atomic<int> pairStep_{0};
   MidiSource heardOff_;
   int heardOffValue_ = 0;
@@ -3233,15 +3285,14 @@ private:
   // Notes Off and its relatives mean, per the MIDI standard.
   void releaseChannel(int channel, int deviceId);
   // The manual being learned, and the first key pressed for it. 0 means not
-  // learning; -1 for the note means the low key is still to come.
-  Id keyboardLearn_ = 0;
-  int keyboardLearnLow_ = -1;
+  // learning; -1 for the note means the low key is still to come. The manual
+  // and its row are set on the message thread; the keys by the audio thread.
+  std::atomic<Id> keyboardLearn_{0};
+  std::atomic<int> keyboardLearnLow_{-1};
+  int keyboardLearnHigh_ = -1;
   int keyboardLearnRow_ = -1;
   int keyboardLearnDevice_ = 0;
   int keyboardLearnChannel_ = 0;
-  // Take a key press as part of learning a manual. Returns true when the
-  // message was consumed and must not also play.
-  bool learnKeyboardFrom(int deviceId, int channel, int note);
   // Reused every block: matching a key against the manual bindings must not
   // allocate on the audio thread.
   std::vector<MidiMap::KeyHit> keyHits_;

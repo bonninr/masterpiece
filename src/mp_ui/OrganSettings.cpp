@@ -908,9 +908,9 @@ void VoicingEqPanel::askName(const juce::String& title, const juce::String& init
 // Learn a MIDI button for the preset chosen, or for the next and the previous
 // one; the mapping is the console's, the same on every organ.
 void VoicingEqPanel::presetMidiMenu() {
-  auto& map = proc_.midiMap();
+  const auto& map = std::as_const(proc_).midiMap();
   if (map.learning()) {
-    map.cancelLearn();
+    proc_.cancelLearn();
     return;
   }
   const int id = proc_.currentVoicingEqPreset() != 0 ? proc_.currentVoicingEqPreset() : proc_.lastVoicingEqPreset();
@@ -945,10 +945,9 @@ void VoicingEqPanel::presetMidiMenu() {
                      [self, targets](int choice) {
                        if (self == nullptr || choice <= 0) return;
                        const auto& t = targets[static_cast<size_t>((choice - 1) / 10)];
-                       auto& m = self->proc_.midiMap();
                        switch ((choice - 1) % 10) {
                          case 0:
-                           m.beginLearnAs(t.kind, t.id, MidiTrigger::Momentary);
+                           self->proc_.beginLearnAs(t.kind, t.id, MidiTrigger::Momentary);
                            break;
                          case 1:
                            MidiEventDialog::show(self->proc_, t.kind, t.id, t.name);

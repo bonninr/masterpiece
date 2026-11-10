@@ -543,7 +543,6 @@ private:
     if (pairListening_) stopListening();
     rows_.push_back(b);
     listening_ = static_cast<int>(rows_.size()) - 1;
-    proc_.midiMap().cancelLearn();
     proc_.beginMidiListen();
     rebuild();
   }
@@ -554,7 +553,6 @@ private:
       return;
     }
     stopListening();
-    proc_.midiMap().cancelLearn();
     proc_.beginMidiListenPair();
     pairListening_ = true;
     showPairStep(0);
@@ -575,7 +573,6 @@ private:
       return;
     }
     if (pairListening_) stopListening();
-    proc_.midiMap().cancelLearn();
     proc_.beginMidiListen();
     listening_ = row;
     for (size_t i = 0; i < rowViews_.size(); ++i)
