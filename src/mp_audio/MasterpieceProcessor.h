@@ -924,6 +924,17 @@ public:
 
   MidiMap& midiMap() { return midiMap_; }
   const MidiMap& midiMap() const { return midiMap_; }
+  // A change to the map from a window. The audio thread reads the map on
+  // every message it handles (actionFor, matchKeyboards, hasChannelBinding),
+  // so the change waits for the block in progress, under the audio lock. The
+  // caller saves the map when the change is one to keep.
+  template <class Edit>
+  void editMidiMap(Edit&& edit) {
+    const AudioLock lock(*this);
+    edit(midiMap_);
+    // The lamps are matched to the map's rows by place: they start over.
+    pistonLamps_.clear();
+  }
   // One keyboard playing the whole organ (#358). Message thread, apart from
   // the two calls in the MIDI handling.
   SplitKeyboardHost& splitKeyboard() { return split_; }
