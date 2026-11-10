@@ -1328,17 +1328,19 @@ void VoiceEngine::renderVoice(Voice& v, float* const* out, int numChannels,
     renderVoice(v, shifted, channels, numFrames - skip, thread);
     return;
   }
-  if (!v.shelf) {
+  const bool meter = meterSlices_ > 0 && static_cast<int>(index % static_cast<size_t>(meterSlices_)) == meterSlice_;
+  if (!v.shelf && !meter) {
     renderVoiceRaw(v, index, out, numChannels, numFrames, scratch);
     return;
   }
-  renderVoiceNow(v, index, out, numChannels, numFrames, thread, scratch);
+  renderVoiceNow(v, index, out, numChannels, numFrames, thread, scratch, meter);
 }
 
-// A shelved voice is rendered alone into this thread's buffer, a chunk at a
-// time, passed through its shelf channel by channel and added to the output.
+// A shelved voice, or a voice the meters measure this block, is rendered
+// alone into this thread's buffer, a chunk at a time, passed through its shelf
+// channel by channel and added to the output. A metered voice keeps its peak.
 void VoiceEngine::renderVoiceNow(Voice& v, size_t index, float* const* out, int numChannels,
-                                 int numFrames, int thread, DecodeScratch* scratch) {
+                                 int numFrames, int thread, DecodeScratch* scratch, bool meter) {
   std::vector<float>* buf =
       thread >= 0 && static_cast<size_t>(thread) < shelfScratch_.size()
           ? shelfScratch_[static_cast<size_t>(thread)].get()
@@ -1352,6 +1354,8 @@ void VoiceEngine::renderVoiceNow(Voice& v, size_t index, float* const* out, int 
   float* planes[kMaxChannels];
   for (int c = 0; c < channels; ++c) planes[c] = buf->data() + static_cast<size_t>(c) * kShelfChunk;
   const ShelfFigures& f = shelfFigures_[index];
+  const int sections = v.shelf ? f.count : 0;
+  float peak = v.meterPeak;
   float* const state = shelfState_.data() + index * static_cast<size_t>(numChannels_) * kShelfStates;
   for (int done = 0; done < numFrames && v.active();) {
     const int n = std::min(kShelfChunk, numFrames - done);
@@ -1359,14 +1363,15 @@ void VoiceEngine::renderVoiceNow(Voice& v, size_t index, float* const* out, int 
     renderVoiceRaw(v, index, planes, channels, n, scratch);
     for (int c = 0; c < channels; ++c) {
       // Every section but the last filters the plane in place; the last adds
-      // to the output.
+      // to the output. Metered, the last one stays in place too, and the
+      // plane is measured and added below.
       float* x = planes[c];
       float* y = out[c] + done;
-      for (int s = 0; s < f.count; ++s) {
+      for (int s = 0; s < sections; ++s) {
         const ShelfSection& q = f.section[s];
         float* z = state + c * kShelfStates + s * 2;
         float z1 = z[0], z2 = z[1];
-        if (s + 1 < f.count) {
+        if (s + 1 < sections || meter) {
           for (int i = 0; i < n; ++i) {
             const float in = x[i];
             const float o = q.b0 * in + z1;
@@ -1390,9 +1395,16 @@ void VoiceEngine::renderVoiceNow(Voice& v, size_t index, float* const* out, int 
         z[0] = z1;
         z[1] = z2;
       }
+      if (meter) {
+        for (int i = 0; i < n; ++i) {
+          y[i] += x[i];
+          peak = std::max(peak, std::fabs(x[i]));
+        }
+      }
     }
     done += n;
   }
+  if (meter) v.meterPeak = peak;
 }
 
 void VoiceEngine::renderVoiceRaw(Voice& v, size_t index, float* const* out, int numChannels,

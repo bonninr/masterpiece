@@ -570,6 +570,10 @@ TopBar::TopBar(MasterpieceProcessor& p)
   volume_.setRange(-40.0, 24.0, 0.1);
   volume_.setTextValueSuffix(" dB");
   volume_.setSkewFactor(1.0);
+  // The desk's fader, red as a master is, marked every 10 dB and at 0 dB;
+  // a double-click puts it back at 0 dB.
+  styleFader(volume_, {-30.0, -20.0, -10.0, 0.0, 10.0, 20.0}, 0.0, fader::kMaster);
+  volume_.setDoubleClickReturnValue(true, 0.0);
   if (auto* gain = proc_.apvts().getRawParameterValue("masterGain"))
     volume_.setValue(juce::Decibels::gainToDecibels(gain->load(), -40.0f),
                      juce::dontSendNotification);
@@ -733,6 +737,7 @@ AudioSettingsPanel::AudioSettingsPanel(juce::AudioDeviceManager& devices,
             "too low and too quiet to hear under the organ, so the line is never "
             "silent."));
   level_.setRange(-80.0, -40.0, 1.0);
+  styleFader(level_, fader::evenTicks(-80.0, -40.0), fader::kNoUnity);
   level_.setTextValueSuffix(" dB");
   level_.setValue(db < 0.0f ? db : -60.0, juce::dontSendNotification);
   level_.setTooltip(TRANS("Raise it if the speaker still goes to sleep; lower it if "
@@ -761,6 +766,7 @@ AudioSettingsPanel::AudioSettingsPanel(juce::AudioDeviceManager& devices,
   ceilingLabel_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
   addAndMakeVisible(ceiling_);
   ceiling_.setRange(-12.0, -0.1, 0.1);
+  styleFader(ceiling_, {-12.0, -9.0, -6.0, -3.0, -1.0}, fader::kNoUnity, fader::kMaster);
   ceiling_.setValue(proc_.limiterCeilingDb(), juce::dontSendNotification);
   ceiling_.setTextValueSuffix(" dBFS");
   ceiling_.setTooltip(TRANS("The level the output is held under. A little "
@@ -783,6 +789,7 @@ AudioSettingsPanel::AudioSettingsPanel(juce::AudioDeviceManager& devices,
   releaseLabel_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
   addAndMakeVisible(release_);
   release_.setRange(50.0, 1000.0, 10.0);
+  styleFader(release_, {50.0, 250.0, 500.0, 750.0, 1000.0}, fader::kNoUnity, fader::kMaster);
   release_.setValue(proc_.limiterReleaseMs(), juce::dontSendNotification);
   release_.setTextValueSuffix(" ms");
   release_.setTooltip(TRANS("How long the gain takes to come back after a "
@@ -892,6 +899,7 @@ void AudioSettingsPanel::setUpRow(Row& row, const juce::String& name, double lo,
   row.label.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
   addAndMakeVisible(row.slider);
   row.slider.setRange(lo, hi, step);
+  styleFader(row.slider, fader::evenTicks(lo, hi), lo <= 0.0 && hi >= 0.0 ? 0.0 : fader::kNoUnity, fader::kMaster);
   row.slider.setValue(value, juce::dontSendNotification);
   row.slider.setTextValueSuffix(suffix);
   row.slider.setTooltip(tip);

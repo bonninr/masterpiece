@@ -120,7 +120,18 @@ enum class MidiTargetKind {
   // The reverb's wet level (Organ settings > Reverb), driven like a shoe: a
   // knob or a pedal across the whole of its range.
   ReverbWet,
+  // A mixer strip's mute and solo buttons, toggled on the press: id =
+  // stripTarget(strip, the id its level target has).
+  StripMute,
+  StripSolo,
 };
+
+// A mute or solo target's id: the strip's kind (0 rank, 1 division, 2 group,
+// 3 output pair, as LiveLevels::Strip) and the id that strip's level target
+// has -- a rank's or division's id, a group's or pair's place from 1.
+inline Id stripTarget(int strip, Id levelId) { return levelId * 4 + strip; }
+inline int stripTargetStrip(Id target) { return static_cast<int>(((target % 4) + 4) % 4); }
+inline Id stripTargetLevelId(Id target) { return (target - stripTargetStrip(target)) / 4; }
 
 // A temperament's MIDI target id: 0 for the organ's own, else a hash of the
 // library name, so a mapping survives entries added to the library.

@@ -1057,6 +1057,12 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& output) {
     }
     return;
   }
+  beginStripMeterBlock(numFrames);
+  renderMixBuses(output, outCh, numFrames);
+  takeStripMeters();
+}
+
+void MasterpieceProcessor::renderMixBuses(juce::AudioBuffer<float>& output, int outCh, int numFrames) {
 
   // One block for the whole callback, whatever the bus count.
   voices_.beginBlock(numFrames);
@@ -1103,6 +1109,7 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& output) {
           busConvolvers_[static_cast<size_t>(i)] != nullptr)
         busConvolvers_[static_cast<size_t>(i)]->process(dest);
 #endif
+      meterPair(i, dest, numFrames);
       // Its lows to the subwoofer's channel, when the output has it; the
       // highs go on to the pair.
       if (i < static_cast<int>(busBass_.size()) && busBass_[static_cast<size_t>(i)] != nullptr)
@@ -1128,6 +1135,7 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& output) {
   // there was a mixer.
   if (buses <= 1 && mixBusCapture_ == nullptr && !anyBusReverb) {
     renderOneMixBus(buffer, -1);
+    meterPair(0, buffer, numFrames);
     return;
   }
 
@@ -1152,6 +1160,7 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& output) {
         busConvolvers_[static_cast<size_t>(i)]->process(view);
       }
 #endif
+      meterPair(i, mixScratch_, numFrames);
       for (int ch = 0; ch < numCh; ++ch)
         buffer.addFrom(ch, 0, mixScratch_, ch, 0, numFrames);
     }
@@ -1164,7 +1173,16 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& output) {
   for (int i = 0; i < buses; ++i) {
     if (mixBusCapture_ == nullptr) {
       // No capture: add straight into the output, which needs no per-bus
-      // memory at all.
+      // memory at all. While the strips' meters are on, each bus goes
+      // through the pair scratch first, to be measured on its own.
+      if (stripMetersNow_ && numCh <= pairScratch_.getNumChannels() && numFrames <= pairScratch_.getNumSamples()) {
+        juce::AudioBuffer<float> pair(pairScratch_.getArrayOfWritePointers(), numCh, numFrames);
+        pair.clear();
+        renderOneMixBus(pair, buses <= 1 ? -1 : i);
+        meterPair(i, pair, numFrames);
+        for (int ch = 0; ch < numCh; ++ch) buffer.addFrom(ch, 0, pair, ch, 0, numFrames);
+        continue;
+      }
       renderOneMixBus(buffer, buses <= 1 ? -1 : i);
       continue;
     }
@@ -1180,6 +1198,7 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& output) {
         busConvolvers_[static_cast<size_t>(i)] != nullptr)
       busConvolvers_[static_cast<size_t>(i)]->process(dest);
 #endif
+    meterPair(i, dest, numFrames);
     // Summed into the output as well, so capturing does not change what the
     // callback produces.
     for (int ch = 0; ch < numCh && ch < dest.getNumChannels(); ++ch)
@@ -1587,6 +1606,12 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
             for (const auto& b : *action.alsoDrives)
               if (const int v = MidiMap::controlValue(b, source, value); v >= 0)
                 setLiveLevelFromMidi(b.targetKind, b.targetId, v);
+          continue;
+        // A strip's mute or solo, toggled on the press; the live levels'
+        // switches are atomics, so the audio thread sets them itself.
+        case MidiTargetKind::StripMute:
+        case MidiTargetKind::StripSolo:
+          toggleStripFromMidi(action.kind, action.targetId);
           continue;
         case MidiTargetKind::Keyboard:
         case MidiTargetKind::None:
@@ -2773,6 +2798,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (leaveBassAndMelody_) text << "pistonsleavebass 1\n";
   if (!showPlayedKeys_.load()) text << "showkeys 0\n";
   if (smallPagesFill_.load()) text << "smallpagesfill 1\n";
+  if (narrowStrips_.load()) text << "narrowstrips 1\n";
   if (!rememberWindowPlaces_.load()) text << "rememberwindows 0\n";
   text << "displaymode " << (simpleMode_.load() ? "simple" : "professional") << "\n";
   // Written either way: on is the default since 0.7.11, and a player who
@@ -2994,6 +3020,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       player_.setLeaveBassAndMelody(leaveBassAndMelody_);
     } else if (key == "showkeys") {
       showPlayedKeys_.store(val.getIntValue() != 0);
+    } else if (key == "narrowstrips") {
+      narrowStrips_.store(val.getIntValue() != 0);
     } else if (key == "displaymode") {
       simpleMode_.store(val.trim() == "simple");
     } else if (key == "smallpagesfill") {
@@ -6114,6 +6142,25 @@ void MasterpieceProcessor::setScorePageMessage(const ScorePageMessage& m) {
   writeGlobalFile();
 }
 
+int MasterpieceProcessor::stripIndexForTarget(int strip, Id levelId) const {
+  switch (static_cast<LiveLevels::Strip>(strip)) {
+    case LiveLevels::Strip::Rank: return liveRankIndexOf(levelId);
+    case LiveLevels::Strip::Division: return liveDivisionIndexOf(levelId);
+    case LiveLevels::Strip::Group:
+    case LiveLevels::Strip::Pair: return static_cast<int>(levelId) - 1;
+  }
+  return -1;
+}
+
+void MasterpieceProcessor::toggleStripFromMidi(MidiTargetKind kind, Id targetId) {
+  if (organLoading()) return;
+  const int strip = stripTargetStrip(targetId);
+  const auto s = static_cast<LiveLevels::Strip>(strip);
+  const int index = stripIndexForTarget(strip, stripTargetLevelId(targetId));
+  if (kind == MidiTargetKind::StripMute) liveLevels_.setMuted(s, index, !liveLevels_.muted(s, index));
+  else liveLevels_.setSoloed(s, index, !liveLevels_.soloed(s, index));
+}
+
 void MasterpieceProcessor::setLiveLevelFromMidi(MidiTargetKind kind, Id targetId, int value) {
   switch (kind) {
     case MidiTargetKind::RankLevel: liveLevels_.setRank(liveRankIndexOf(targetId), value); break;
@@ -7826,6 +7873,95 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   soundingVoices_.store(voices_.stats().activeVoices, std::memory_order_relaxed);
 }
 
+// While no block renders: at a load, once the live levels know the organ.
+void MasterpieceProcessor::sizeStripMeters() {
+  const size_t n = stripOffset(LiveLevels::Strip::Pair) + LiveLevels::kMaxPairs;
+  stripLevels_.reset(new std::atomic<float>[n]);
+  for (size_t i = 0; i < n; ++i) stripLevels_[i].store(0.0f, std::memory_order_relaxed);
+  stripPower_.assign(n, 0.0f);
+  stripHeld_.assign(n, 0.0f);
+  stripLevelCount_ = n;
+  stripMeterBlock_ = 0;
+  pairPeak_.fill(0.0f);
+}
+
+// Audio thread, before a block renders: which slice of the voices the meters
+// watch. Each slice is watched for kStripMeterWatchSeconds, long enough for a
+// 32' pipe's half period, and the slices are as many as fit in a quarter of a
+// second, so every pipe is read once a reading and each block costs the same.
+void MasterpieceProcessor::beginStripMeterBlock(int numFrames) {
+  stripMetersNow_ = stripMeters_.load(std::memory_order_relaxed) && stripLevelCount_ > 0;
+  if (!stripMetersNow_) {
+    voices_.setMetering(0, 0);
+    return;
+  }
+  if (stripMeterBlock_ == 0) {
+    const double rate = sampleRate_ > 0.0 ? sampleRate_ : 48000.0;
+    const double frames = static_cast<double>(juce::jmax(1, numFrames));
+    stripMeterWindow_ = juce::jmax(1, static_cast<int>(std::ceil(kStripMeterWatchSeconds * rate / frames)));
+    stripMeterSlices_ = juce::jlimit(
+        1, 64, static_cast<int>(rate / kStripMetersPerSecond / (frames * static_cast<double>(stripMeterWindow_))));
+  }
+  voices_.setMetering(stripMeterBlock_ / stripMeterWindow_, stripMeterSlices_);
+}
+
+// A pair's own signal, after its swell boxes and its room: its peak this
+// block, kept to the reading. One vectorised pass, only while the strips
+// show.
+void MasterpieceProcessor::meterPair(int bus, const juce::AudioBuffer<float>& b, int numFrames) {
+  if (!stripMetersNow_ || bus < 0 || bus >= LiveLevels::kMaxPairs) return;
+  float& peak = pairPeak_[static_cast<size_t>(bus)];
+  for (int c = 0; c < juce::jmin(2, b.getNumChannels()); ++c) peak = juce::jmax(peak, b.getMagnitude(c, 0, numFrames));
+}
+
+// Audio thread, after a block: once every slice has been watched, each
+// pipe's peak, squared, onto its rank, its division and its group. Pipes at
+// different pitches add as powers, so a strip reads the square root of the
+// sum. The pairs read their own signal's peak.
+void MasterpieceProcessor::takeStripMeters() {
+  if (stripLevelCount_ == 0) return;
+  if (!stripMetersNow_) {
+    // Off, the lamps go dark once, then nothing is done.
+    if (!stripMetersLit_) return;
+    for (size_t i = 0; i < stripLevelCount_; ++i) stripLevels_[i].store(0.0f, std::memory_order_relaxed);
+    std::fill(stripHeld_.begin(), stripHeld_.end(), 0.0f);
+    pairPeak_.fill(0.0f);
+    voices_.takeMeterPeaks([](int, int, float) {});
+    stripMeterBlock_ = 0;
+    stripMetersLit_ = false;
+    return;
+  }
+  stripMetersLit_ = true;
+  if (++stripMeterBlock_ < stripMeterWindow_ * stripMeterSlices_) return;
+  stripMeterBlock_ = 0;
+  std::fill(stripPower_.begin(), stripPower_.end(), 0.0f);
+  const int ranks = liveLevels_.rankCount();
+  const size_t divisions = stripOffset(LiveLevels::Strip::Division);
+  const size_t groups = stripOffset(LiveLevels::Strip::Group);
+  const size_t pairs = stripOffset(LiveLevels::Strip::Pair);
+  voices_.takeMeterPeaks([&](int rank, int, float peak) {
+    const float p = peak * peak;
+    if (rank >= 0 && rank < ranks) {
+      stripPower_[static_cast<size_t>(rank)] += p;
+      const int d = liveLevels_.rankDivision(rank);
+      if (d >= 0) stripPower_[divisions + static_cast<size_t>(d)] += p;
+      const int g = liveLevels_.rankGroup(rank);
+      if (g >= 0) stripPower_[groups + static_cast<size_t>(g)] += p;
+    }
+  });
+  for (size_t b = 0; b < pairPeak_.size(); ++b) {
+    stripPower_[pairs + b] = pairPeak_[b] * pairPeak_[b];
+    pairPeak_[b] = 0.0f;
+  }
+  // Each reading stands until the next one: the lamps step, about four
+  // times a second.
+  for (size_t i = 0; i < stripLevelCount_; ++i) {
+    stripHeld_[i] = std::sqrt(stripPower_[i]);
+    if (stripHeld_[i] < 1.0e-6f) stripHeld_[i] = 0.0f;
+    stripLevels_[i].store(stripHeld_[i], std::memory_order_relaxed);
+  }
+}
+
 void MasterpieceProcessor::setContinuousControl(Id controlId, int value) {
   setControlValue(controlId, value);
 }
@@ -8326,6 +8462,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     }
     liveLevels_.configure(std::move(divisionOfRank), static_cast<int>(divisions.size()), std::move(groupOfRank),
                           static_cast<int>(liveGroupNames_.size()));
+    sizeStripMeters();
   }
   // The layer levels: each control that a pipe layer reads as its level,
   // in id order. An id with no control behind it stays at full, as before.

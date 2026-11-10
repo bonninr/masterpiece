@@ -3,6 +3,7 @@
 #include "../mp_audio/MidiPorts.h"
 #include "../mp_audio/SystemMemory.h"
 
+#include <array>
 #include <cmath>
 #include <map>
 #include <iterator>
@@ -1477,6 +1478,7 @@ ReverbPanel::ReverbPanel(MasterpieceProcessor& p) : proc_(p) {
   styleLabel(mixLabel_, TRANS("Wet"));
   addAndMakeVisible(mix_);
   mix_.setRange(0.0, 1.0, 0.01);
+  styleFader(mix_, fader::evenTicks(0.0, 1.0), fader::kNoUnity);
   mix_.setValue(proc_.convolver().mix(), juce::dontSendNotification);
   mix_.onValueChange = [this] {
     proc_.convolver().setMix(static_cast<float>(mix_.getValue()));
@@ -1575,6 +1577,7 @@ MetronomePanel::MetronomePanel(MasterpieceProcessor& p) : proc_(p) {
   styleLabel(levelLabel_, TRANS("Level"));
   addAndMakeVisible(level_);
   level_.setRange(0.0, 1.0, 0.01);
+  styleFader(level_, fader::evenTicks(0.0, 1.0), fader::kNoUnity);
   level_.setValue(proc_.metronome().level(), juce::dontSendNotification);
   level_.onValueChange = [this] {
     proc_.metronome().setLevel(static_cast<float>(level_.getValue()));
@@ -3295,6 +3298,7 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   gain_.setRange(-12.0, 12.0, 0.1);
   gain_.setTextValueSuffix(" dB");
   gain_.setValue(0.0, juce::dontSendNotification);
+  styleFader(gain_, {-12.0, -6.0, 0.0, 6.0, 12.0}, 0.0);
   gain_.onValueChange = [this] { pushCurrent(kVoicingLevel); };
 
   addAndMakeVisible(tuneLabel_);
@@ -3304,6 +3308,7 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   tune_.setRange(-50.0, 50.0, 0.1);
   tune_.setTextValueSuffix(" cents");
   tune_.setValue(0.0, juce::dontSendNotification);
+  styleFader(tune_, fader::evenTicks(-50.0, 50.0), 0.0);
   tune_.onValueChange = [this] { pushCurrent(kVoicingTuning); };
   addAndMakeVisible(tune_);
   // A test note is struck again when a drag ends; during it, it would stutter.
@@ -3316,6 +3321,7 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
     s->setRange(-12.0, 12.0, 0.5);
     s->setTextValueSuffix(" dB");
     s->setValue(0.0, juce::dontSendNotification);
+    styleFader(*s, {-12.0, -6.0, 0.0, 6.0, 12.0}, 0.0);
   }
   addAndMakeVisible(brightLabel_);
   styleLabel(brightLabel_, TRANS("Brightness"));
@@ -3339,12 +3345,14 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
     addAndMakeVisible(*s);
     s->setRange(-100.0, 100.0, 1.0);
     s->setValue(0.0, juce::dontSendNotification);
+    styleFader(*s, fader::evenTicks(-100.0, 100.0), 0.0);
   }
   for (auto* s : {&width_, &divWidth_}) {
     addAndMakeVisible(*s);
     s->setRange(0.0, 200.0, 1.0);
     s->setTextValueSuffix(" %");
     s->setValue(100.0, juce::dontSendNotification);
+    styleFader(*s, fader::evenTicks(0.0, 200.0), 100.0);
   }
   addAndMakeVisible(panLabel_);
   styleLabel(panLabel_, TRANS("Pan"));
@@ -3963,6 +3971,15 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
                                  juce::Colours::grey);
   filter_.setTooltip(TRANS("Shows only the ranks whose name holds this text"));
   filter_.onTextChange = [this] { resized(); };
+  addAndMakeVisible(narrow_);
+  narrow_.setToggleState(proc_.narrowStrips(), juce::dontSendNotification);
+  narrow_.setTooltip(TRANS("More strips in view: the scales keep their ticks, without numbers"));
+  narrow_.onClick = [this] {
+    proc_.setNarrowStrips(narrow_.getToggleState());
+    for (auto* list : {&pairFaders_, &divisionFaders_, &groupFaders_, &rankFaders_})
+      for (auto& f : *list) f.strip->setNarrow(narrow_.getToggleState());
+    resized();
+  };
   addAndMakeVisible(save_);
   save_.onClick = [this] { proc_.saveSettings(); };
   addAndMakeVisible(bass_);
@@ -3984,58 +4001,61 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
   viewport_.setScrollBarsShown(true, false);
 
 
-  for (auto* h : {&pairsHeading_, &divisionsHeading_, &ranksHeading_}) rankHolder_.addAndMakeVisible(*h);
+  addAndMakeVisible(busViewport_);
+  busViewport_.setViewedComponent(&busHolder_, false);
+  busViewport_.setScrollBarsShown(false, true);
+  viewport_.setScrollBarsShown(false, true);
+  for (auto* h : {&pairsHeading_, &divisionsHeading_, &groupsHeading_}) {
+    h->setJustificationType(juce::Justification::centredLeft);
+    h->setFont(juce::Font(juce::FontOptions(13.0f, juce::Font::bold)));
+  }
   styleLabel(pairsHeading_, TRANS("Output pairs"));
   styleLabel(divisionsHeading_, TRANS("Divisions"));
   styleLabel(groupsHeading_, TRANS("Perspectives"));
   styleLabel(ranksHeading_, TRANS("Ranks"));
+  ranksHeading_.setFont(juce::Font(juce::FontOptions(13.0f, juce::Font::bold)));
 
   refresh();
-  startTimerHz(10);
+  // Four looks a second, as often as the engine measures.
+  startTimerHz(4);
+}
+
+MixerPanel::~MixerPanel() { proc_.setStripMeters(false); }
+
+LiveLevels::Strip MixerPanel::stripOf(MidiTargetKind kind) {
+  switch (kind) {
+    case MidiTargetKind::PairLevel: return LiveLevels::Strip::Pair;
+    case MidiTargetKind::DivisionLevel: return LiveLevels::Strip::Division;
+    case MidiTargetKind::GroupLevel: return LiveLevels::Strip::Group;
+    default: return LiveLevels::Strip::Rank;
+  }
 }
 
 void MixerPanel::addFader(std::vector<Fader>& into, MidiTargetKind kind, Id id, int index,
-                          const juce::String& name) {
+                          const juce::String& name, const juce::String& tooltip) {
   Fader f;
   f.kind = kind;
   f.id = id;
   f.index = index;
-  if (name.isNotEmpty()) {
-    f.label = std::make_unique<juce::Label>();
-    styleLabel(*f.label, name);
-    rankHolder_.addAndMakeVisible(*f.label);
-  }
-  f.slider = std::make_unique<juce::Slider>(juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight);
-  // Silence to 24 dB over the voicing, as the master volume reaches (#971);
-  // a double-click puts the level back as voiced.
-  f.slider->setRange(0.0, LiveLevels::kTop, 1.0);
-  f.slider->setDoubleClickReturnValue(true, LiveLevels::kFull);
-  f.slider->setTextBoxStyle(juce::Slider::TextBoxRight, false, 64, kRow - 6);
-  f.slider->textFromValueFunction = [](double v) {
-    const int n = juce::roundToInt(v);
-    if (n <= 0) return TRANS("Off");
-    return juce::String(n > LiveLevels::kFull ? "+" : "") + juce::String(LiveLevels::dbOf(n), 1) + " dB";
-  };
-  // A level typed in dB, "+6" or "-12 dB"; "Off" is silence. Anything else
-  // leaves the level where it was.
-  f.slider->valueFromTextFunction = [s = f.slider.get()](const juce::String& text) {
-    const auto t = text.trim();
-    if (t.equalsIgnoreCase(TRANS("Off"))) return 0.0;
-    if (!t.containsAnyOf("0123456789")) return s->getValue();
-    return static_cast<double>(LiveLevels::valueOf(static_cast<float>(t.getDoubleValue())));
-  };
-  f.slider->setValue(faderLevel(f), juce::dontSendNotification);
-  f.slider->setTooltip(TRANS("A live level, heard at once: 0 dB is the level as voiced"));
-  f.midi = std::make_unique<juce::TextButton>(TRANS("MIDI"));
-  f.midi->setTooltip(TRANS("Learn a knob or a pedal for this level"));
-  rankHolder_.addAndMakeVisible(*f.slider);
-  rankHolder_.addAndMakeVisible(*f.midi);
+  const auto stripKind = kind == MidiTargetKind::PairLevel       ? ChannelStrip::Kind::Pair
+                         : kind == MidiTargetKind::DivisionLevel ? ChannelStrip::Kind::Division
+                         : kind == MidiTargetKind::GroupLevel    ? ChannelStrip::Kind::Group
+                                                                 : ChannelStrip::Kind::Rank;
+  f.strip = std::make_unique<ChannelStrip>(stripKind, name, tooltip);
+  f.strip->setNarrow(proc_.narrowStrips());
+  f.strip->setLevel(faderLevel(f));
+  const auto s = stripOf(kind);
+  f.strip->setMuted(proc_.liveMuted(s, index));
+  f.strip->setSoloed(proc_.liveSoloed(s, index));
+  // The ranks scroll on the left; the rest stand at the right.
+  (kind == MidiTargetKind::RankLevel ? rankHolder_ : busHolder_).addAndMakeVisible(*f.strip);
   into.push_back(std::move(f));
   Fader& made = into.back();
-  made.slider->onValueChange = [this, &into, i = into.size() - 1] {
-    setFaderLevel(into[i], juce::roundToInt(into[i].slider->getValue()));
-  };
-  made.midi->onClick = [this, &into, i = into.size() - 1] { faderMidiMenu(into[i]); };
+  ChannelStrip& strip = *made.strip;
+  strip.onLevel = [this, &into, i = into.size() - 1](int value) { setFaderLevel(into[i], value); };
+  strip.onMute = [this, s, index](bool on) { proc_.setLiveMuted(s, index, on); };
+  strip.onSolo = [this, s, index](bool on) { proc_.setLiveSoloed(s, index, on); };
+  strip.midi.onClick = [this, &into, i = into.size() - 1] { faderMidiMenu(into[i]); };
 }
 
 int MixerPanel::faderLevel(const Fader& f) const {
@@ -4066,21 +4086,30 @@ void MixerPanel::faderMidiMenu(Fader& f) {
     map.cancelLearn();
     return;
   }
+  // The level from a knob or a pedal; mute and solo from a button each.
+  const Id buttonId = stripTarget(static_cast<int>(stripOf(f.kind)), f.id);
+  const std::array<std::pair<MidiTargetKind, Id>, 3> targets{
+      {{f.kind, f.id}, {MidiTargetKind::StripMute, buttonId}, {MidiTargetKind::StripSolo, buttonId}}};
+  const juce::String names[] = {TRANS("Level"), TRANS("Mute"), TRANS("Solo")};
   juce::PopupMenu menu;
-  const auto existing = map.bindingsFor(f.kind, f.id);
-  if (existing.empty()) menu.addSectionHeader(TRANS("Not mapped"));
-  for (const MidiBinding* b : existing) menu.addSectionHeader(MidiEventDialog::describeBinding(*b));
-  menu.addItem(1, TRANS("Learn: move the knob or pedal"));
-  menu.addItem(2, TRANS("Clear mapping"), !existing.empty());
+  for (size_t t = 0; t < targets.size(); ++t) {
+    menu.addSectionHeader(names[t]);
+    const auto existing = map.bindingsFor(targets[t].first, targets[t].second);
+    if (existing.empty()) menu.addItem(-1, TRANS("Not mapped"), false);
+    for (const MidiBinding* b : existing) menu.addItem(-1, MidiEventDialog::describeBinding(*b), false);
+    const int base = 1 + static_cast<int>(t) * 2;
+    menu.addItem(base, t == 0 ? TRANS("Learn: move the knob or pedal") : TRANS("Learn: press the button"));
+    menu.addItem(base + 1, TRANS("Clear mapping"), !existing.empty());
+  }
   juce::Component::SafePointer<MixerPanel> self(this);
-  const MidiTargetKind kind = f.kind;
-  const Id id = f.id;
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(f.midi.get()),
-                     [self, kind, id](int choice) {
-                       if (self == nullptr) return;
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&f.strip->midi),
+                     [self, targets](int choice) {
+                       if (self == nullptr || choice <= 0) return;
+                       const auto& [kind, id] = targets[static_cast<size_t>((choice - 1) / 2)];
                        auto& m = self->proc_.midiMap();
-                       if (choice == 1) m.beginLearn(kind, id, false);
-                       if (choice == 2) {
+                       if ((choice - 1) % 2 == 0) {
+                         m.beginLearn(kind, id, false);
+                       } else {
                          m.unbindTarget(kind, id);
                          self->proc_.saveMidiMap();
                        }
@@ -4088,15 +4117,28 @@ void MixerPanel::faderMidiMenu(Fader& f) {
 }
 
 void MixerPanel::timerCallback() {
+  // The engine measures only while the strips are on screen.
+  const bool showing = isShowing();
+  proc_.setStripMeters(showing);
+  if (!showing || proc_.organLoading()) return;
   for (auto* list : {&pairFaders_, &divisionFaders_, &groupFaders_, &rankFaders_})
     for (auto& f : *list) {
-      if (f.slider->isMouseButtonDown()) continue;
-      const int now = faderLevel(f);
-      if (juce::roundToInt(f.slider->getValue()) != now) f.slider->setValue(now, juce::dontSendNotification);
+      ChannelStrip& strip = *f.strip;
+      if (!strip.isVisible()) continue;
+      const auto s = stripOf(f.kind);
+      strip.setMeter(proc_.stripLevel(s, f.index));
+      if (!strip.fader.isMouseButtonDown()) strip.setLevel(faderLevel(f));
+      strip.setMuted(proc_.liveMuted(s, f.index));
+      strip.setSoloed(proc_.liveSoloed(s, f.index));
       // A learning button says so, as the console's controls do.
-      const bool learning = proc_.midiMap().learning() && proc_.midiMap().learningKind() == f.kind &&
-                            proc_.midiMap().learningTarget() == f.id;
-      f.midi->setButtonText(learning ? TRANS("Move it...") : TRANS("MIDI"));
+      const auto& map = proc_.midiMap();
+      const Id buttonId = stripTarget(static_cast<int>(s), f.id);
+      const bool learningLevel = map.learning() && map.learningKind() == f.kind && map.learningTarget() == f.id;
+      const bool learningButton = map.learning() && map.learningTarget() == buttonId &&
+                                  (map.learningKind() == MidiTargetKind::StripMute ||
+                                   map.learningKind() == MidiTargetKind::StripSolo);
+      const auto text = learningLevel ? TRANS("Move it...") : learningButton ? TRANS("Press it...") : TRANS("MIDI");
+      if (strip.midi.getButtonText() != text) strip.midi.setButtonText(text);
     }
 }
 
@@ -4240,7 +4282,6 @@ void MixerPanel::showOutputs() {
 
 void MixerPanel::refresh() {
   rankIds_.clear();
-  rankLabels_.clear();
   rankBuses_.clear();
   pairFaders_.clear();
   divisionFaders_.clear();
@@ -4250,7 +4291,9 @@ void MixerPanel::refresh() {
   rankGroups_.clear();
   rankGroupAbove_.clear();
   rankHolder_.removeAllChildren();
-  for (auto* h : {&pairsHeading_, &divisionsHeading_, &ranksHeading_}) rankHolder_.addAndMakeVisible(*h);
+  busHolder_.removeAllChildren();
+  rankHolder_.addAndMakeVisible(ranksHeading_);
+  for (auto* h : {&pairsHeading_, &divisionsHeading_}) busHolder_.addAndMakeVisible(*h);
 
   for (int i = 0; i < juce::jmin(juce::jmax(1, proc_.mixBusCount()), LiveLevels::kMaxPairs); ++i)
     addFader(pairFaders_, MidiTargetKind::PairLevel, i + 1, i, TRANS("Pair %1").replace("%1", juce::String(i + 1)));
@@ -4272,7 +4315,7 @@ void MixerPanel::refresh() {
     if (!names.empty()) {
       groupsHeading_.setText(groupedByWindchest(proc_.organModel()) ? TRANS("Windchest groups") : TRANS("Perspectives"),
                              juce::dontSendNotification);
-      rankHolder_.addAndMakeVisible(groupsHeading_);
+      busHolder_.addAndMakeVisible(groupsHeading_);
     }
     for (size_t g = 0; g < names.size(); ++g) {
       juce::String name(juce::CharPointer_UTF8(names[g].c_str()));
@@ -4289,7 +4332,7 @@ void MixerPanel::refresh() {
             rankBuses_[i]->setSelectedId(pair, juce::dontSendNotification);
         pushRouting();
       };
-      rankHolder_.addAndMakeVisible(*box);
+      groupFaders_.back().strip->setTopControl(box.get());
       groupPairs_.push_back(std::move(box));
     }
     fillGroupPairs();
@@ -4324,11 +4367,9 @@ void MixerPanel::refresh() {
   busCount_.setSelectedId(buses, juce::dontSendNotification);
 
   for (Id rankId : rankIds_) {
-    auto label = std::make_unique<juce::Label>();
-    styleLabel(*label, rankTitle(proc_.organModel(), rankId));
-    label->setTooltip(TRANS("Rank %1").replace("%1", juce::String(static_cast<int>(rankId))));
-    rankHolder_.addAndMakeVisible(*label);
-    rankLabels_.push_back(std::move(label));
+    const auto title = rankTitle(proc_.organModel(), rankId);
+    addFader(rankFaders_, MidiTargetKind::RankLevel, rankId, proc_.liveRankIndexOf(rankId), title,
+             title + " - " + TRANS("Rank %1").replace("%1", juce::String(static_cast<int>(rankId))));
 
     auto box = std::make_unique<juce::ComboBox>();
     for (int i = 1; i <= buses; ++i) box->addItem(TRANS("Pair %1").replace("%1", juce::String(i)), i);
@@ -4338,9 +4379,9 @@ void MixerPanel::refresh() {
     box->setSelectedId(sel >= 1 && sel <= buses ? sel : 1,
                        juce::dontSendNotification);
     box->onChange = [this] { pushRouting(); };
-    rankHolder_.addAndMakeVisible(*box);
+    box->setTooltip(TRANS("The output pair this rank plays through"));
+    rankFaders_.back().strip->setTopControl(box.get());
     rankBuses_.push_back(std::move(box));
-    addFader(rankFaders_, MidiTargetKind::RankLevel, rankId, proc_.liveRankIndexOf(rankId), {});
   }
 
   pushRouting();
@@ -4349,7 +4390,7 @@ void MixerPanel::refresh() {
 
 bool MixerPanel::rankShown(size_t row) const {
   const auto text = filter_.getText().trim();
-  return text.isEmpty() || (row < rankLabels_.size() && rankLabels_[row]->getText().containsIgnoreCase(text));
+  return text.isEmpty() || (row < rankFaders_.size() && rankFaders_[row].strip->name().containsIgnoreCase(text));
 }
 
 void MixerPanel::resized() {
@@ -4375,68 +4416,91 @@ void MixerPanel::resized() {
   r.removeFromTop(4);
   outputs_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(4);
-  filter_.setBounds(r.removeFromTop(kRow).reduced(0, 1));
+  {
+    auto filterRow = r.removeFromTop(kRow);
+    narrow_.setBounds(filterRow.removeFromRight(150));
+    filterRow.removeFromRight(kGap);
+    filter_.setBounds(filterRow.reduced(0, 1));
+  }
   r.removeFromTop(kGap);
 
-  // The note keeps a little space; the rank list takes the rest, which is what
-  // makes the page work on an organ with fifty ranks and on one with six.
-  auto noteArea = r.removeFromBottom(juce::jmin(76, r.getHeight() / 3));
-  r.removeFromBottom(kGap);
+  // The strips, as on a desk: the ranks on the left, scrolling; the
+  // divisions, the groups and the output pairs on the right, the pairs last.
+  constexpr int band = 22;      // the names above a run of strips
+  constexpr int sectionGap = 10;
+  const int stripW = ChannelStrip::widthFor(proc_.narrowStrips());
+  const int scrollBar = viewport_.getScrollBarThickness();
+  const auto sectionWidth = [&](size_t n) { return n == 0 ? 0 : static_cast<int>(n) * stripW; };
+  const int busNeeded = sectionWidth(divisionFaders_.size()) + sectionWidth(groupFaders_.size()) +
+                        sectionWidth(pairFaders_.size()) +
+                        sectionGap * ((divisionFaders_.empty() ? 0 : 1) + (groupFaders_.empty() ? 0 : 1));
+  const int busW = rankFaders_.empty() ? r.getWidth() : juce::jmin(busNeeded, r.getWidth() * 55 / 100);
+  busViewport_.setBounds(r.removeFromRight(busW));
+  r.removeFromRight(sectionGap);
   viewport_.setBounds(r);
 
-  // The pairs and divisions first, then a row per rank: its name, its pair,
-  // its fader. The fader and its MIDI button sit at the right of each row.
-  const int rowH = kRow + 2;
+  const auto holderHeight = [&](const juce::Viewport& v, int width) {
+    const int h = v.getHeight() - (width > v.getWidth() ? scrollBar : 0);
+    return juce::jmax(ChannelStrip::kMinHeight + band, h);
+  };
+  const auto placeStrip = [&](Fader& f, int x, int h) { f.strip->setBounds(x, band, stripW, h - band); };
+
+  // The right: a heading over each run.
+  {
+    const int h = holderHeight(busViewport_, busNeeded);
+    busHolder_.setSize(busNeeded, h);
+    int x = 0;
+    const auto section = [&](juce::Label& heading, std::vector<Fader>& faders) {
+      if (faders.empty()) {
+        heading.setVisible(false);
+        return;
+      }
+      heading.setVisible(true);
+      heading.setBounds(x + 2, 0, sectionWidth(faders.size()) - 4, band);
+      for (auto& f : faders) {
+        f.strip->setVisible(true);
+        placeStrip(f, x, h);
+        x += stripW;
+      }
+      x += sectionGap;
+    };
+    section(divisionsHeading_, divisionFaders_);
+    section(groupsHeading_, groupFaders_);
+    section(pairsHeading_, pairFaders_);
+  }
+
+  // The left: the ranks, each division's name over its run; the names mean
+  // nothing in a filtered list, which is headed Ranks.
   const bool filtering = filter_.getText().trim().isNotEmpty();
-  int shownRanks = 0;
-  for (size_t i = 0; i < rankIds_.size(); ++i) shownRanks += rankShown(i) ? 1 : 0;
-  const int rows = 3 + (groupFaders_.empty() ? 0 : 1) +
-                   static_cast<int>(pairFaders_.size() + divisionFaders_.size() + groupFaders_.size()) +
-                   shownRanks + (filtering ? 0 : static_cast<int>(rankGroups_.size()));
-  rankHolder_.setSize(juce::jmax(0, viewport_.getWidth() - 12), rows * rowH);
-  int y = 0;
-  const auto line = [&] {
-    juce::Rectangle<int> l(0, y, rankHolder_.getWidth(), kRow);
-    y += rowH;
-    return l;
+  int shown = 0;
+  for (size_t i = 0; i < rankIds_.size(); ++i) shown += rankShown(i) ? 1 : 0;
+  const int ranksW = shown * stripW;
+  const int h = holderHeight(viewport_, ranksW);
+  rankHolder_.setSize(juce::jmax(ranksW, viewport_.getWidth()), h);
+  const bool runs = !filtering && !rankGroups_.empty();
+  ranksHeading_.setVisible(!runs);
+  ranksHeading_.setBounds(2, 0, juce::jmax(stripW, ranksW) - 4, band);
+  for (auto& g : rankGroups_) g->setVisible(runs);
+  int x = 0;
+  int runStart = 0;
+  int runLabel = -1;
+  const auto endRun = [&] {
+    if (runLabel >= 0)
+      rankGroups_[static_cast<size_t>(runLabel)]->setBounds(runStart + 2, 0, juce::jmax(stripW, x - runStart) - 4, band);
   };
-  const auto place = [](Fader& f, juce::Rectangle<int> l) {
-    f.midi->setBounds(l.removeFromRight(70).reduced(2, 1));
-    f.slider->setBounds(l.removeFromRight(260).reduced(2, 1));
-    if (f.label != nullptr) f.label->setBounds(l);
-    return l;
-  };
-  pairsHeading_.setBounds(line());
-  for (auto& f : pairFaders_) place(f, line());
-  divisionsHeading_.setBounds(line());
-  for (auto& f : divisionFaders_) place(f, line());
-  if (!groupFaders_.empty()) {
-    groupsHeading_.setBounds(line());
-    for (size_t g = 0; g < groupFaders_.size(); ++g) {
-      auto l = place(groupFaders_[g], line());
-      if (g < groupPairs_.size()) groupPairs_[g]->setBounds(l.removeFromRight(120).reduced(2, 1));
-      if (groupFaders_[g].label != nullptr) groupFaders_[g].label->setBounds(l);
-    }
-  }
-  ranksHeading_.setBounds(line());
-  // Division headings mean nothing in a filtered list.
-  for (auto& g : rankGroups_) g->setVisible(!filtering);
-  for (size_t i = 0; i < rankIds_.size(); ++i) {
+  for (size_t i = 0; i < rankIds_.size() && i < rankFaders_.size(); ++i) {
     const bool on = rankShown(i);
-    rankLabels_[i]->setVisible(on);
-    rankBuses_[i]->setVisible(on);
-    if (i < rankFaders_.size()) {
-      rankFaders_[i].slider->setVisible(on);
-      rankFaders_[i].midi->setVisible(on);
-    }
+    rankFaders_[i].strip->setVisible(on);
     if (!on) continue;
-    if (!filtering && i < rankGroupAbove_.size() && rankGroupAbove_[i] >= 0)
-      rankGroups_[static_cast<size_t>(rankGroupAbove_[i])]->setBounds(line().withTrimmedLeft(8));
-    auto l = line();
-    if (i < rankFaders_.size()) l = place(rankFaders_[i], l);
-    rankBuses_[i]->setBounds(l.removeFromRight(120).reduced(2, 1));
-    rankLabels_[i]->setBounds(l);
+    if (runs && i < rankGroupAbove_.size() && rankGroupAbove_[i] >= 0) {
+      endRun();
+      runStart = x;
+      runLabel = rankGroupAbove_[i];
+    }
+    placeStrip(rankFaders_[i], x, h);
+    x += stripW;
   }
+  endRun();
 }
 
 // ------------------------------------------------------- console display

@@ -266,6 +266,8 @@ int ControlModel::count(Type type) {
     case Type::Width: return static_cast<int>(ranks_.size() + divisions_.size());
     case Type::Pair: return juce::jmin(proc_.mixBusCount(), LiveLevels::kMaxPairs);
     case Type::Ranklevel: return static_cast<int>(ranks_.size());
+    case Type::Mute:
+    case Type::Solo: return stripCount();
   }
   return 0;
 }
@@ -314,6 +316,12 @@ int ControlModel::valueOf(Type type, int index) {
     case Type::Division:
       return proc_.liveDivisionLevel(proc_.liveDivisionIndexOf(static_cast<Id>(divisions_[static_cast<size_t>(index)].id)));
     case Type::Pair: return proc_.livePairLevel(index);
+    case Type::Mute:
+    case Type::Solo: {
+      const StripRef s = stripAt(index);
+      const auto strip = static_cast<LiveLevels::Strip>(s.strip);
+      return (type == Type::Mute ? proc_.liveMuted(strip, s.index) : proc_.liveSoloed(strip, s.index)) ? 1 : 0;
+    }
     case Type::Ranklevel:
       return proc_.liveRankLevel(proc_.liveRankIndexOf(static_cast<Id>(ranks_[static_cast<size_t>(index)].id)));
     case Type::Route: {
@@ -513,6 +521,26 @@ juce::var ControlModel::object(Type type, int index) {
     case Type::Pair:
       o->setProperty("name", "Pair " + juce::String(index + 1));
       break;
+    case Type::Mute:
+    case Type::Solo: {
+      const int ranks = static_cast<int>(ranks_.size());
+      const int divisions = static_cast<int>(divisions_.size());
+      const int groups = proc_.liveGroupCount();
+      if (index < ranks) {
+        o->setProperty("name", text(ranks_[static_cast<size_t>(index)].name));
+        o->setProperty("rank", index);
+      } else if (index < ranks + divisions) {
+        o->setProperty("name", text(divisions_[static_cast<size_t>(index - ranks)].name));
+        o->setProperty("division", index - ranks);
+      } else if (const int g = index - ranks - divisions; g < groups) {
+        const auto& names = proc_.liveGroupNames();
+        o->setProperty("name", static_cast<size_t>(g) < names.size() ? text(names[static_cast<size_t>(g)])
+                                                                      : "Group " + juce::String(g + 1));
+      } else {
+        o->setProperty("name", "Pair " + juce::String(index - ranks - divisions - groups + 1));
+      }
+      break;
+    }
     case Type::Windchest:
       o->setProperty("name", text(windchests_[static_cast<size_t>(index)].name));
       o->setProperty("odfId", static_cast<juce::int64>(windchests_[static_cast<size_t>(index)].id));
@@ -682,6 +710,15 @@ Error ControlModel::set(Type type, int index, int& value) {
     else
       proc_.setLiveRankLevel(proc_.liveRankIndexOf(static_cast<Id>(ranks_[static_cast<size_t>(index)].id)),
                              value);
+  } else if (type == Type::Mute || type == Type::Solo) {
+    // As the Mixer tab's buttons: heard at once, the faders untouched.
+    const StripRef s = stripAt(index);
+    const auto strip = static_cast<LiveLevels::Strip>(s.strip);
+    const bool now = type == Type::Mute ? proc_.liveMuted(strip, s.index) : proc_.liveSoloed(strip, s.index);
+    if (value == 2) value = now ? 0 : 1;
+    if (value < 0 || value > 1) return Error::BadValue;
+    if (type == Type::Mute) proc_.setLiveMuted(strip, s.index, value == 1);
+    else proc_.setLiveSoloed(strip, s.index, value == 1);
   } else if (type == Type::Route) {
     // As the Mixer tab does: the rank's main perspective to that pair, heard
     // from the next note.
@@ -851,6 +888,27 @@ void ControlModel::setEqVoicing(int index, const PipeVoicing& pv) {
     v.setRank(static_cast<Id>(ranks_[static_cast<size_t>(index)].id), pv);
   else
     v.setDivision(static_cast<Id>(divisions_[static_cast<size_t>(index) - ranks_.size()].id), pv);
+}
+
+int ControlModel::stripCount() {
+  return static_cast<int>(ranks_.size() + divisions_.size()) + proc_.liveGroupCount() +
+         juce::jmin(proc_.mixBusCount(), LiveLevels::kMaxPairs);
+}
+
+ControlModel::StripRef ControlModel::stripAt(int index) {
+  const int ranks = static_cast<int>(ranks_.size());
+  const int divisions = static_cast<int>(divisions_.size());
+  const int groups = proc_.liveGroupCount();
+  if (index < ranks)
+    return {static_cast<int>(LiveLevels::Strip::Rank),
+            proc_.liveRankIndexOf(static_cast<Id>(ranks_[static_cast<size_t>(index)].id))};
+  index -= ranks;
+  if (index < divisions)
+    return {static_cast<int>(LiveLevels::Strip::Division),
+            proc_.liveDivisionIndexOf(static_cast<Id>(divisions_[static_cast<size_t>(index)].id))};
+  index -= divisions;
+  if (index < groups) return {static_cast<int>(LiveLevels::Strip::Group), index};
+  return {static_cast<int>(LiveLevels::Strip::Pair), index - groups};
 }
 
 juce::var ControlModel::identity() {

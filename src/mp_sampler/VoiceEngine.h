@@ -468,6 +468,10 @@ struct Voice {
   // The pitch the pipe sounds, for its harmonic level (#809); 0 when its
   // layer adjusts none.
   double harmonicHz = 0.0;
+  // The largest sample this pipe has added to the output since the meters
+  // last took it, every gain applied. Measured only while the mixer's meters
+  // are on (setMetering).
+  float meterPeak = 0.0f;
 
   bool active() const { return phase != VoicePhase::Idle; }
   bool loops() const {
@@ -779,6 +783,28 @@ public:
     livePairGains_ = pairGains;
     livePairCount_ = pairCount;
   }
+  // The mixer's meters, set before a block renders: the pipes in voice slots
+  // whose number leaves `slice` over `slices` are rendered into their thread's
+  // buffer, their peak taken, and then added to the output; the others
+  // render as they always did. slices 0 is off: nothing is measured. Over
+  // `slices` blocks every pipe is measured once, and each block costs the same.
+  void setMetering(int slice, int slices) {
+    meterSlice_ = slice;
+    meterSlices_ = slices > 0 ? slices : 0;
+  }
+  bool metering() const { return meterSlices_ > 0; }
+  // After a block: each pipe that sounded, with its rank's index, its mixer
+  // bus and its peak; the peak is then cleared for the next block. Audio
+  // thread, once the render is done.
+  template <typename F>
+  void takeMeterPeaks(F&& f) {
+    for (size_t i = 0; i < scanEnd_ && i < voices_.size(); ++i) {
+      Voice& v = voices_[i];
+      if (v.meterPeak <= 0.0f) continue;
+      f(v.rankIndex, v.mixBus, v.meterPeak);
+      v.meterPeak = 0.0f;
+    }
+  }
   float liveGainFor(const Voice& v) const {
     float g = 1.0f;
     if (v.rankIndex >= 0 && v.rankIndex < liveRankCount_) g = liveRankGains_[v.rankIndex];
@@ -979,7 +1005,7 @@ private:
   // The voice as it reaches the output, once its start in the block is
   // placed: through its layer's shelf when it has one.
   void renderVoiceNow(Voice& v, size_t index, float* const* out, int numChannels, int numFrames,
-                      int thread, DecodeScratch* scratch);
+                      int thread, DecodeScratch* scratch, bool meter);
   void renderVoiceRaw(Voice& v, size_t index, float* const* out, int numChannels, int numFrames,
                       DecodeScratch* scratch);
   // A release to or from a coded sample, started in phase (Voice::alignPending).
@@ -1014,6 +1040,7 @@ private:
   // stops here. They walked the whole pool: with ten thousand voices allowed,
   // tens of thousands of empty slots a block for a few hundred sounding.
   size_t scanEnd_ = 0;
+  int meterSlice_ = 0, meterSlices_ = 0;
   float releaseCutoff_ = 0.0f;
   std::atomic<uint64_t> tailsEnded_{0};
   int polyphony_ = 0;
