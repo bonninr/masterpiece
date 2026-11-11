@@ -232,6 +232,8 @@ public:
       // A console that sends a message over and over in the background, ten
       // times a second (#1029): a learn passes it over and takes the button
       // the player presses.
+      // The block size the clock counts by, set as a host sets it.
+      proc.setRateAndBufferSizeDetails(48000.0, 256);
       const auto scan = [&] {
         juce::MidiBuffer m;
         m.addEvent(juce::MidiMessage::controllerEvent(1, 20, 127), 0);

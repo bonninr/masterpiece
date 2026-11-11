@@ -3120,16 +3120,22 @@ private:
   };
   std::array<HeldForLearn, 16> heldForLearn_{};
   // When each recent message last arrived, by its source and value (#1029):
-  // a message that comes again within kRepeatMs is a console's own
-  // background traffic, a scan of its stops or a status repeated, and a
-  // learn or Listen never takes it. Audio thread only.
+  // a message that comes kRepeatRun times in a row, each within kRepeatMs of
+  // the last, is a console's own background traffic, a scan of its stops or
+  // a status repeated, and a learn or Listen never takes it. A tab pressed
+  // twice is still a player. Audio thread only.
   struct RecentMessage {
     uint64_t key = 0;  // 0 is an empty slot
     double atMs = 0.0;
+    int run = 0;
   };
   std::array<RecentMessage, 64> recentMessages_{};
   static constexpr double kRepeatMs = 500.0;
-  // Records the message and says whether the same one came within kRepeatMs.
+  static constexpr int kRepeatRun = 3;
+  // The slot of the message just recorded, so a capture that sees it can
+  // start its count again.
+  RecentMessage* lastRecent_ = nullptr;
+  // Records the message and says whether it is in such a run.
   bool repeatsQuickly(const MidiSource& source, int value);
   // The keys whose press a capture took (a learn, Listen, a key pick), by
   // channel and note. Only their releases are the capture's; the release of
