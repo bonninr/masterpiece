@@ -291,9 +291,70 @@ public:
   }
 };
 
+// The test note from a console whose manuals are mapped in Settings > MIDI
+// (#1057): the mapped keys played the organ, and the test note never sounded.
+class VoicingTestNoteMappedTest final : public mp::test::Test {
+public:
+  VoicingTestNoteMappedTest() : Test("functional.voicing.test-note-mapped-keys", Category::Functional) {}
+  void run() override {
+    const juce::File root =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-voicing-mapped");
+    const juce::File odf = writeOrgan(root);
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads");
+    mp::MidiMap::KeyboardBinding kb;
+    kb.channel = 3;
+    kb.keyboardId = 701;
+    proc.midiMap().addKeyboardBinding(kb);
+
+    juce::AudioBuffer<float> buf(2, 256);
+    const auto block = [&](juce::MidiBuffer m = {}) {
+      buf.clear();
+      proc.processBlock(buf, m);
+    };
+    const auto run = [&](int n) {
+      for (int i = 0; i < n; ++i) block();
+    };
+    const auto voices = [&] { return proc.voiceStats().activeVoices; };
+    const auto key = [&](int note, bool on) {
+      juce::MidiBuffer m;
+      m.addEvent(on ? juce::MidiMessage::noteOn(3, note, 0.8f) : juce::MidiMessage::noteOff(3, note), 0);
+      block(m);
+    };
+
+    proc.setStopEngaged(901, true);
+    key(36, true);
+    run(4);
+    MP_CHECK(voices() == 1, "the mapped key plays stop A");
+    key(36, false);
+    run(400);
+    MP_CHECK(voices() == 0, "and lets go");
+
+    proc.setVoicingTarget(202, 0);
+    proc.setTestNote(true);
+    key(36, true);
+    run(4);
+    MP_CHECK(proc.testNoteKey() == 36, "the mapped key sounds the test note, got " +
+                                           std::to_string(proc.testNoteKey()));
+    MP_CHECK(voices() == 1, "the test pipe alone, got " + std::to_string(voices()));
+    key(36, false);
+    run(400);
+    MP_CHECK(voices() == 1 && proc.testNoteKey() == 36, "letting go leaves it sounding");
+    key(37, true);
+    key(37, false);
+    run(4);
+    MP_CHECK(proc.testNoteKey() == 37, "another mapped key moves it");
+    proc.setTestNote(false);
+    run(400);
+    MP_CHECK(voices() == 0, "turned off, it stops");
+  }
+};
+
 VoicingTestNoteTest g_testNote;
 VoicingStepsTest g_steps;
 VoicingGroupTest g_group;
+VoicingTestNoteMappedTest g_testNoteMapped;
 
 }  // namespace
 

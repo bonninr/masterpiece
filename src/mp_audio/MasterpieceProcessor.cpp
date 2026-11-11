@@ -1765,6 +1765,12 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
       midiMap_.matchKeyboards(deviceId, msg.getChannel(), msg.getNoteNumber(),
                               msg.isNoteOn() ? msg.getVelocity() : 0,
                               blockTimeMs_, keyHits_);
+      // The test note takes a mapped key as it takes any other (#1057): once
+      // for the press, however many manuals the binding sends it to.
+      if (msg.isNoteOn() && testNoteOn_.load(std::memory_order_acquire)) {
+        const auto hit = std::find_if(keyHits_.begin(), keyHits_.end(), [](const auto& h) { return h.on; });
+        if (hit != keyHits_.end() && testNoteKeyDown(hit->midiNote, hit->velocity)) continue;
+      }
       if (logging)
         juce::Logger::writeToLog(
             "midi:     mapped rig: " + juce::String(static_cast<int>(keyHits_.size())) +
