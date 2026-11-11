@@ -1,0 +1,4 @@
+"Draw and cancel" = "Tirer et repousser"
+"For a console that sends one message to draw a tab and another to cancel it: each tab is learned twice" = "Pour une console qui envoie un message pour tirer un jeu et un autre pour le repousser : chaque jeu est appris deux fois"
+"Draw the tab for %1" = "Tirez le jeu %1"
+"Cancel the tab for %1" = "Repoussez le jeu %1"

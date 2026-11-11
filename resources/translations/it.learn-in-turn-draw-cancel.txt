@@ -1,0 +1,4 @@
+"Draw and cancel" = "Inserire e disinserire"
+"For a console that sends one message to draw a tab and another to cancel it: each tab is learned twice" = "Per una consolle che invia un messaggio per inserire un registro e un altro per disinserirlo: ogni registro viene appreso due volte"
+"Draw the tab for %1" = "Inserisci il registro %1"
+"Cancel the tab for %1" = "Disinserisci il registro %1"
