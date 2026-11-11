@@ -1424,6 +1424,15 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     const MidiCapture capture = liveCapture();
     const bool listening = capture == MidiCapture::Listen || capture == MidiCapture::ListenPair;
 
+    // A message that repeats within half a second is a console's background
+    // traffic (#1029): while something learns or listens, it is passed over,
+    // so the learn waits for the button the player presses.
+    const bool repeated = source.kind != MidiSourceKind::None && repeatsQuickly(source, value);
+    if (repeated && capture != MidiCapture::None && !organsRelease) {
+      if (logging) juce::Logger::writeToLog("midi:     repeated within half a second, not learned");
+      continue;
+    }
+
     // The noise filter: while learning, a key is held back until it has been
     // down a quarter second, and one let go sooner is dropped. Listening for
     // an off (#927), a key let go is the off itself.
@@ -2012,6 +2021,29 @@ void MasterpieceProcessor::applyTakenCapture() {
   pistonLamps_.clear();
   midiMapDirty_.store(true, std::memory_order_release);
   takePending_.store(false, std::memory_order_release);
+}
+
+bool MasterpieceProcessor::repeatsQuickly(const MidiSource& source, int value) {
+  uint64_t key = static_cast<uint64_t>(source.kind) << 56 ^ static_cast<uint64_t>(source.channel & 31) << 48 ^
+                 static_cast<uint64_t>(static_cast<uint32_t>(source.number)) << 16 ^
+                 static_cast<uint64_t>(source.deviceId & 255) << 8 ^ static_cast<uint64_t>(value & 255);
+  key = key * 0x9E3779B97F4A7C15ull;
+  key ^= key >> 29;
+  if (key == 0) key = 1;
+  // Four slots from the hash; the one with the same key, or the oldest.
+  const size_t first = static_cast<size_t>(key >> 58);
+  RecentMessage* slot = nullptr;
+  for (size_t i = 0; i < 4; ++i) {
+    RecentMessage& r = recentMessages_[(first + i) & (recentMessages_.size() - 1)];
+    if (r.key == key) {
+      slot = &r;
+      break;
+    }
+    if (slot == nullptr || r.key == 0 || (slot->key != 0 && r.atMs < slot->atMs)) slot = &r;
+  }
+  const bool repeated = slot->key == key && blockTimeMs_ - slot->atMs < kRepeatMs;
+  *slot = {key, blockTimeMs_};
+  return repeated;
 }
 
 void MasterpieceProcessor::holdForLearn(const MidiSource& source, int value) {
