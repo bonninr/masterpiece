@@ -87,7 +87,7 @@ void FaderLook::drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, 
                                 : juce::jmin(static_cast<float>(kCapWidth), area.getHeight() - 2.0f);
 
   // The slot: a narrow cut in the panel, dark inside, lit on its lower lip.
-  const float slotW = 6.0f;
+  const float slotW = 4.0f;
   juce::Rectangle<float> slot =
       vertical ? juce::Rectangle<float>(area.getCentreX() - slotW / 2.0f, maxPos - 3.0f, slotW, minPos - maxPos + 6.0f)
                : juce::Rectangle<float>(minPos - 3.0f, area.getCentreY() - slotW / 2.0f, maxPos - minPos + 6.0f, slotW);
@@ -166,7 +166,7 @@ void FaderLook::drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, 
 
   // Its shadow on the panel below it.
   g.setColour(juce::Colours::black.withAlpha(0.5f * alpha));
-  g.fillRoundedRectangle(cap.translated(0.0f, 3.0f).expanded(1.0f), 3.5f);
+  g.fillRoundedRectangle(cap.translated(0.0f, 2.0f).expanded(0.5f), 2.5f);
 
   // The body, lit from above: a lighter top face falling to a dark lower edge.
   juce::ColourGradient body(juce::Colour(0xff6c6f76), cap.getX(), cap.getY(), juce::Colour(0xff232428), cap.getX(),
@@ -175,16 +175,16 @@ void FaderLook::drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, 
   body.addColour(0.5, juce::Colour(0xff35373c));
   body.multiplyOpacity(alpha);
   g.setGradientFill(body);
-  g.fillRoundedRectangle(cap, 3.0f);
+  g.fillRoundedRectangle(cap, 2.0f);
 
   // The ribs a finger grips, either side of the line.
   const auto ribs = [&](float from, float to) {
     for (float p = from; p + 1.0f < to; p += 3.0f) {
       if (vertical) {
         g.setColour(juce::Colour(0xff17181a).withMultipliedAlpha(alpha));
-        g.fillRect(cap.getX() + 3.0f, p, cap.getWidth() - 6.0f, 1.0f);
+        g.fillRect(cap.getX() + 2.0f, p, cap.getWidth() - 4.0f, 1.0f);
         g.setColour(juce::Colour(0xff6a6d73).withMultipliedAlpha(alpha));
-        g.fillRect(cap.getX() + 3.0f, p + 1.0f, cap.getWidth() - 6.0f, 1.0f);
+        g.fillRect(cap.getX() + 2.0f, p + 1.0f, cap.getWidth() - 4.0f, 1.0f);
       } else {
         g.setColour(juce::Colour(0xff17181a).withMultipliedAlpha(alpha));
         g.fillRect(p, cap.getY() + 3.0f, 1.0f, cap.getHeight() - 6.0f);
@@ -194,8 +194,8 @@ void FaderLook::drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, 
     }
   };
   if (vertical) {
-    ribs(cap.getY() + 4.0f, sliderPos - 4.0f);
-    ribs(sliderPos + 4.0f, cap.getBottom() - 3.0f);
+    ribs(cap.getY() + 3.0f, sliderPos - 3.0f);
+    ribs(sliderPos + 3.0f, cap.getBottom() - 2.0f);
   } else {
     ribs(cap.getX() + 3.0f, sliderPos - 3.0f);
     ribs(sliderPos + 3.0f, cap.getRight() - 2.0f);
@@ -210,7 +210,7 @@ void FaderLook::drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, 
   g.setColour(juce::Colour(0xff8d9097).withMultipliedAlpha(alpha));
   g.drawLine(cap.getX() + 2.5f, cap.getY() + 0.75f, cap.getRight() - 2.5f, cap.getY() + 0.75f, 1.0f);
   g.setColour(juce::Colour(0xff0c0c0e).withMultipliedAlpha(alpha));
-  g.drawRoundedRectangle(cap, 3.0f, 1.0f);
+  g.drawRoundedRectangle(cap, 2.0f, 1.0f);
 }
 
 void styleFader(juce::Slider& s, const std::vector<double>& ticks, double unity, juce::Colour colour) {
@@ -403,8 +403,9 @@ void ChannelStrip::showValue() { value_.setText(fader.getTextFromValue(fader.get
 void ChannelStrip::resized() {
   auto r = getLocalBounds().reduced(narrow_ ? 3 : 4, 0);
   r.removeFromTop(5);  // the stripe
+  // The top control takes the strip's whole width, so "Pair 1" reads in full.
   auto topRow = r.removeFromTop(22);
-  if (top_ != nullptr) top_->setBounds(topRow);
+  if (top_ != nullptr) top_->setBounds(topRow.withX(1).withWidth(getWidth() - 2));
   r.removeFromTop(3);
   value_.setBounds(r.removeFromTop(18));
   r.removeFromTop(4);
@@ -420,7 +421,7 @@ void ChannelStrip::resized() {
   r.removeFromBottom(6);
 
   // The fader's column: the scale, the slot and cap, the meter.
-  scale_ = r.removeFromLeft(narrow_ ? 7 : 26);
+  scale_ = r.removeFromLeft(narrow_ ? 5 : 26);
   auto meterColumn = r.removeFromRight(narrow_ ? 6 : 8);
   r.removeFromRight(2);
   fader.setBounds(r);

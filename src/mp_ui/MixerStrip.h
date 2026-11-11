@@ -26,9 +26,10 @@ public:
 
   // The cap's size along the travel and across it. A vertical fader shorter
   // than kShortTravel takes the short cap.
-  static constexpr int kCapLength = 40, kCapWidth = 26;
-  static constexpr int kCapLengthShort = 24, kShortTravel = 220;
-  static constexpr int kCapLengthHorizontal = 16;
+  // Small caps, so the scale and the meter keep the room (#1020).
+  static constexpr int kCapLength = 22, kCapWidth = 16;
+  static constexpr int kCapLengthShort = 16, kShortTravel = 220;
+  static constexpr int kCapLengthHorizontal = 10;
   // One look for every fader, kept for the program's life.
   static FaderLook& shared();
   // The length of a slider's cap along its travel.
@@ -103,7 +104,8 @@ public:
   void paint(juce::Graphics& g) override;
   void resized() override;
 
-  static constexpr int kWidth = 78, kNarrowWidth = 50;
+  // Sized to the small fader cap: more strips in view.
+  static constexpr int kWidth = 72, kNarrowWidth = 44;
   static constexpr int kMinHeight = 300;
   static int widthFor(bool narrow) { return narrow ? kNarrowWidth : kWidth; }
   // Where 0 dB stands on the travel, from the bottom: three quarters up, as on
