@@ -21,6 +21,10 @@ public:
   FaderLook();
   void drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, float sliderPos, float minPos,
                         float maxPos, juce::Slider::SliderStyle style, juce::Slider& s) override;
+  // A small potentiometer: a dark knob with a light pointer, its travel as an
+  // arc around it, lit up to the value.
+  void drawRotarySlider(juce::Graphics& g, int x, int y, int w, int h, float pos, float startAngle,
+                        float endAngle, juce::Slider& s) override;
   int getSliderThumbRadius(juce::Slider& s) override;
   juce::Label* createSliderTextBox(juce::Slider& s) override;
 

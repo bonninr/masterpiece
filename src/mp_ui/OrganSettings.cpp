@@ -759,7 +759,7 @@ VoicingEqPanel::VoicingEqPanel(MasterpieceProcessor& p) : proc_(p) {
     save_.setButtonText(TRANS("Save for this organ"));
     repaint(curveArea_);
   };
-  auto style = [this](juce::Slider& sl, juce::Label& name, const juce::String& text) {
+  auto style = [this](juce::Slider& sl, juce::Label* name, const juce::String& text) {
     sl.setSliderStyle(juce::Slider::LinearVertical);
     sl.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 52, 18);
     sl.setRange(-VoicingEqSettings::kMaxDb, VoicingEqSettings::kMaxDb, 0.5);
@@ -771,17 +771,51 @@ VoicingEqPanel::VoicingEqPanel(MasterpieceProcessor& p) : proc_(p) {
                &sl == &gain_ ? fader::kMaster : fader::kChannel);
     sl.onValueChange = [this] { apply(); };
     addAndMakeVisible(sl);
-    name.setText(text, juce::dontSendNotification);
-    name.setJustificationType(juce::Justification::centred);
-    name.setColour(juce::Label::textColourId, juce::Colour(0xffb9c2d0));
-    addAndMakeVisible(name);
+    if (name == nullptr) return;
+    name->setText(text, juce::dontSendNotification);
+    name->setJustificationType(juce::Justification::centred);
+    name->setColour(juce::Label::textColourId, juce::Colour(0xffb9c2d0));
+    addAndMakeVisible(*name);
   };
-  for (int i = 0; i < VoicingEqSettings::kBands; ++i) {
-    const double f = VoicingEqSettings::kFrequencies[static_cast<size_t>(i)];
-    style(bands_[static_cast<size_t>(i)], bandNames_[static_cast<size_t>(i)],
-          f >= 1000.0 ? juce::String(f / 1000.0, 0) + "k" : juce::String(f, f < 40 ? 1 : 0).upToFirstOccurrenceOf(".0", false, false));
+  // A small knob: a frequency or a width, double-click for the value it came
+  // with, the value in the box below it.
+  auto knob = [this](juce::Slider& k, double lo, double hi, double mid, double home, const juce::String& tip) {
+    k.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    k.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 52, 16);
+    k.setLookAndFeel(&FaderLook::shared());
+    k.setColour(juce::Slider::thumbColourId, fader::kGroup);
+    k.setRange(lo, hi, 0.0);
+    k.setSkewFactorFromMidPoint(mid);
+    k.setDoubleClickReturnValue(true, home);
+    k.setTooltip(tip);
+    k.onValueChange = [this] { apply(); };
+    addAndMakeVisible(k);
+  };
+  for (size_t i = 0; i < static_cast<size_t>(VoicingEqSettings::kBands); ++i) {
+    style(bands_[i], nullptr, {});
+    auto& f = hz_[i];
+    knob(f, VoicingEqSettings::kMinHz, VoicingEqSettings::kMaxHz, 632.0, VoicingEqSettings::kFrequencies[i],
+         TRANS("The band's frequency. Double-click for the frequency it came with."));
+    f.textFromValueFunction = [](double v) {
+      if (v >= 1000.0) return juce::String(v / 1000.0, v >= 10000.0 ? 1 : 2).trimCharactersAtEnd("0").trimCharactersAtEnd(".") + "k";
+      return juce::String(v, v < 100.0 ? 1 : 0).upToFirstOccurrenceOf(".0", false, false);
+    };
+    f.valueFromTextFunction = [](const juce::String& t) {
+      const auto s = t.trim().toLowerCase().removeCharacters(" hz");
+      return s.endsWithChar('k') ? s.dropLastCharacters(1).getDoubleValue() * 1000.0 : s.getDoubleValue();
+    };
+    auto& w = q_[i];
+    knob(w, VoicingEqSettings::kMinQ, VoicingEqSettings::kMaxQ, VoicingEqSettings::kDefaultQ,
+         VoicingEqSettings::kDefaultQ,
+         i == 0 || i + 1 == static_cast<size_t>(VoicingEqSettings::kBands)
+             ? TRANS("The shelf's slope as a Q: 1.4 the steepest, less a gentler slope. Double-click for 1.4.")
+             : TRANS("The band's width as a Q: more is narrower. Double-click for 1.4."));
+    w.textFromValueFunction = [](double v) { return "Q " + juce::String(v, 1); };
+    w.valueFromTextFunction = [](const juce::String& t) {
+      return t.trim().toLowerCase().removeCharacters("q ").getDoubleValue();
+    };
   }
-  style(gain_, gainName_, TRANS("Gain"));
+  style(gain_, &gainName_, TRANS("Gain"));
   for (auto* l : {&attackName_, &attackOver_}) {
     l->setColour(juce::Label::textColourId, juce::Colour(0xffb9c2d0));
     addAndMakeVisible(*l);
@@ -834,8 +868,11 @@ void VoicingEqPanel::followSpectrum() {
 void VoicingEqPanel::showValues() {
   const auto& eq = proc_.voicingEq();
   on_.setToggleState(eq.on, juce::dontSendNotification);
-  for (size_t i = 0; i < bands_.size(); ++i)
+  for (size_t i = 0; i < bands_.size(); ++i) {
     bands_[i].setValue(eq.bandsDb[i], juce::dontSendNotification);
+    hz_[i].setValue(eq.hz[i], juce::dontSendNotification);
+    q_[i].setValue(eq.q[i], juce::dontSendNotification);
+  }
   gain_.setValue(eq.gainDb, juce::dontSendNotification);
   attack_.setValue(proc_.attackDb(), juce::dontSendNotification);
   attackMs_.setValue(proc_.attackMs(), juce::dontSendNotification);
@@ -843,12 +880,20 @@ void VoicingEqPanel::showValues() {
   seenChanges_ = proc_.voicingEqChanges();
 }
 
-void VoicingEqPanel::apply() {
+VoicingEqSettings VoicingEqPanel::shown() const {
   VoicingEqSettings eq;
   eq.on = on_.getToggleState();
-  for (size_t i = 0; i < bands_.size(); ++i) eq.bandsDb[i] = bands_[i].getValue();
+  for (size_t i = 0; i < bands_.size(); ++i) {
+    eq.bandsDb[i] = bands_[i].getValue();
+    eq.hz[i] = hz_[i].getValue();
+    eq.q[i] = q_[i].getValue();
+  }
   eq.gainDb = gain_.getValue();
-  proc_.setVoicingEq(eq);
+  return eq;
+}
+
+void VoicingEqPanel::apply() {
+  proc_.setVoicingEq(shown());
   seenChanges_ = proc_.voicingEqChanges();
   fillPresets();
   save_.setButtonText(TRANS("Save for this organ"));
@@ -988,17 +1033,21 @@ void VoicingEqPanel::resized() {
     attackOver_.setBounds(attackRow.removeFromLeft(44));
     attackMs_.setBounds(attackRow.reduced(2, 2));
   }
+  // Each band's column: its frequency knob, its width knob, then its fader.
   const int columns = VoicingEqSettings::kBands + 1;
   const int w = r.getWidth() / columns;
-  auto names = r.removeFromTop(20);
+  constexpr int kKnob = 40;  // a 24 px knob and its 16 px box
+  auto knobs = r.removeFromTop(2 * kKnob + 4);
   for (int i = 0; i < columns; ++i) {
     auto col = r.withX(r.getX() + i * w).withWidth(w);
-    auto name = names.withX(names.getX() + i * w).withWidth(w);
+    auto top = knobs.withX(knobs.getX() + i * w).withWidth(w);
     if (i < VoicingEqSettings::kBands) {
-      bandNames_[static_cast<size_t>(i)].setBounds(name);
+      hz_[static_cast<size_t>(i)].setBounds(top.removeFromTop(kKnob).reduced(2, 0));
+      top.removeFromTop(4);
+      q_[static_cast<size_t>(i)].setBounds(top.removeFromTop(kKnob).reduced(2, 0));
       bands_[static_cast<size_t>(i)].setBounds(col.reduced(2, 0));
     } else {
-      gainName_.setBounds(name);
+      gainName_.setBounds(top.removeFromBottom(20));
       gain_.setBounds(col.reduced(2, 0));
     }
   }
@@ -1034,10 +1083,8 @@ void VoicingEqPanel::paint(juce::Graphics& g) {
     g.setColour(juce::Colour(0x5550a0e0));
     g.fillPath(area);
   }
-  VoicingEqSettings eq;
+  VoicingEqSettings eq = shown();
   eq.on = true;
-  for (size_t i = 0; i < bands_.size(); ++i) eq.bandsDb[i] = bands_[i].getValue();
-  eq.gainDb = gain_.getValue();
   juce::Path curve;
   const int n = 160;
   for (int i = 0; i <= n; ++i) {

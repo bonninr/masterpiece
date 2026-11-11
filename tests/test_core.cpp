@@ -23242,6 +23242,126 @@ public:
   }
 };
 static VoicingEqTest g_voicingEq;
+
+#include "../src/mp_audio/VoicingEqPresets.h"
+
+// The bands' frequencies and widths. As they come they make the filters the
+// fixed bands made (Q 1.4 peaks, S = 1 shelves), coefficient for coefficient;
+// a band moved lifts its new frequency; a narrower band leaves its neighbour
+// more alone; the settings and preset lines carry them, and lines without them
+// read as they come.
+class VoicingEqParametricTest final : public mp::test::Test {
+public:
+  VoicingEqParametricTest() : Test("functional.audio.voicing-eq-parametric", Category::Functional) {}
+  void run() override {
+    constexpr double kRate = 48000.0, kPi = 3.14159265358979323846;
+    // The fixed bands' filters, as they were worked out before the bands moved.
+    auto fixed = [&](int band, double db) {
+      const double f = std::min(mp::VoicingEqSettings::kFrequencies[static_cast<size_t>(band)], kRate * 0.45);
+      const double A = std::pow(10.0, db / 40.0), w0 = 2.0 * kPi * f / kRate;
+      const double cw = std::cos(w0), sw = std::sin(w0);
+      double b0, b1, b2, a0, a1, a2;
+      if (band == 0 || band == mp::VoicingEqSettings::kBands - 1) {
+        const double alpha = sw / 2.0 * std::sqrt(2.0), sq = 2.0 * std::sqrt(A) * alpha;
+        if (band == 0) {
+          b0 = A * ((A + 1) - (A - 1) * cw + sq); b1 = 2 * A * ((A - 1) - (A + 1) * cw);
+          b2 = A * ((A + 1) - (A - 1) * cw - sq); a0 = (A + 1) + (A - 1) * cw + sq;
+          a1 = -2 * ((A - 1) + (A + 1) * cw); a2 = (A + 1) + (A - 1) * cw - sq;
+        } else {
+          b0 = A * ((A + 1) + (A - 1) * cw + sq); b1 = -2 * A * ((A - 1) + (A + 1) * cw);
+          b2 = A * ((A + 1) + (A - 1) * cw - sq); a0 = (A + 1) - (A - 1) * cw + sq;
+          a1 = 2 * ((A - 1) - (A + 1) * cw); a2 = (A + 1) - (A - 1) * cw - sq;
+        }
+      } else {
+        const double alpha = sw / (2.0 * 1.4);
+        b0 = 1 + alpha * A; b1 = -2 * cw; b2 = 1 - alpha * A;
+        a0 = 1 + alpha / A; a1 = -2 * cw; a2 = 1 - alpha / A;
+      }
+      return mp::VoicingEq::Biquad{b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0};
+    };
+    mp::VoicingEqSettings asCome;
+    bool same = true;
+    for (int b = 0; b < mp::VoicingEqSettings::kBands; ++b)
+      for (double db : {-12.0, -3.5, 4.0, 12.0}) {
+        const auto want = fixed(b, db);
+        const auto got = mp::VoicingEq::design(b, db, kRate, asCome.hz[static_cast<size_t>(b)],
+                                               asCome.q[static_cast<size_t>(b)]);
+        same = same && got.b0 == want.b0 && got.b1 == want.b1 && got.b2 == want.b2 && got.a1 == want.a1 &&
+               got.a2 == want.a2;
+      }
+    MP_CHECK(same, "the bands as they come make the fixed bands' filters exactly");
+    MP_CHECK(asCome.shapeAsDefault() && asCome.toLine() == "0 0 0 0 0 0 0 0 0 0 0 0",
+             "the line of an EQ as it comes has no frequencies or widths");
+
+    // A band moved: 1 kHz to 1.5 kHz, +12 dB there.
+    mp::VoicingEqSettings moved;
+    moved.on = true;
+    moved.bandsDb[5] = 12.0;
+    moved.hz[5] = 1500.0;
+    MP_CHECK(std::fabs(mp::VoicingEq::responseDb(moved, 1500.0) - 12.0) < 0.1,
+             "the moved band lifts 1.5 kHz by 12 dB, got " + std::to_string(mp::VoicingEq::responseDb(moved, 1500.0)));
+    MP_CHECK(mp::VoicingEq::responseDb(moved, 1000.0) < 10.0, "and 1 kHz less");
+
+    // Narrower: an octave away it lifts less.
+    mp::VoicingEqSettings wide, narrow;
+    wide.bandsDb[5] = narrow.bandsDb[5] = 12.0;
+    narrow.q[5] = 6.0;
+    const double wideAt2k = mp::VoicingEq::responseDb(wide, 2000.0);
+    const double narrowAt2k = mp::VoicingEq::responseDb(narrow, 2000.0);
+    MP_CHECK(narrowAt2k < wideAt2k - 1.0 && std::fabs(mp::VoicingEq::responseDb(narrow, 1000.0) - 12.0) < 0.1,
+             "Q 6 lifts 2 kHz less than Q 1.4 and 1 kHz the same: " + std::to_string(narrowAt2k) + " against " +
+                 std::to_string(wideAt2k));
+
+    // A gentler shelf: half the slope lifts less an octave above 31.5 Hz.
+    mp::VoicingEqSettings steep, gentle;
+    steep.bandsDb[0] = gentle.bandsDb[0] = 12.0;
+    gentle.q[0] = 0.7;
+    MP_CHECK(std::fabs(mp::VoicingEq::responseDb(gentle, 20.0) - mp::VoicingEq::responseDb(steep, 20.0)) < 3.0 &&
+                 mp::VoicingEq::responseDb(gentle, 125.0) > mp::VoicingEq::responseDb(steep, 125.0),
+             "a gentler shelf reaches further from its corner");
+
+    // The settings line carries them; an old line reads as they come.
+    mp::VoicingEqSettings saved = moved;
+    saved.q[2] = 3.25;
+    mp::VoicingEqSettings back;
+    MP_CHECK(back.fromLine(saved.toLine()) && back.hz[5] == 1500.0 && back.q[2] == 3.25 && back.sameShape(saved) &&
+                 back.bandsDb[5] == 12.0,
+             "the settings line reads back its frequencies and widths");
+    mp::VoicingEqSettings old;
+    old.hz[3] = 300.0;
+    MP_CHECK(old.fromLine("1 -2 0 0 0 0 0 4 0 0 0 0") && old.shapeAsDefault() && old.bandsDb[5] == 4.0,
+             "a line without them reads as the bands come");
+    mp::VoicingEqSettings far;
+    MP_CHECK(far.fromLine("1 0 0 0 0 0 0 0 0 0 0 0 5 63 125 250 500 1000 2000 4000 8000 99999 "
+                          "1.4 1.4 1.4 1.4 1.4 1.4 1.4 1.4 1.4 0") &&
+                 far.hz[0] == mp::VoicingEqSettings::kMinHz && far.hz[9] == mp::VoicingEqSettings::kMaxHz &&
+                 far.q[9] == mp::VoicingEqSettings::kMinQ,
+             "values out of range are brought in");
+
+    // A preset of the player's keeps them; the program's match only as they come.
+    mp::VoicingEqPresets presets;
+    const int id = presets.add("Moved", saved);
+    std::string text;
+    for (const auto& line : presets.toLines()) text += line + "\n";
+    mp::VoicingEqPresets read;
+    std::istringstream in(text);
+    for (std::string line; std::getline(in, line);) {
+      const auto space = line.find(' ');
+      const std::string key = line.substr(0, space), value = line.substr(space + 1);
+      if (key == "eqpreset") read.readLine(value);
+      else if (key == "eqpresetshape") read.readShapeLine(value);
+      else if (key == "eqpresetnext") read.readNext(std::stoi(value));
+    }
+    const auto* p = read.find(id);
+    MP_CHECK(p != nullptr && p->eq.sameShape(saved) && read.matching(saved) == id,
+             "a preset of the player's keeps its frequencies and widths");
+    mp::VoicingEqSettings flatMoved;
+    flatMoved.hz[4] = 600.0;
+    MP_CHECK(read.matching(flatMoved) == 0 && read.matching(mp::VoicingEqSettings{}) == 1,
+             "Flat matches only with the bands where they came");
+  }
+};
+static VoicingEqParametricTest g_voicingEqParametric;
 #ifdef MP_TEST_HAS_AUDIO
 #include "../src/mp_ui/Panels.h"
 #include "../src/mp_ui/Settings.h"

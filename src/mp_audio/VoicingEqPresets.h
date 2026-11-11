@@ -93,10 +93,11 @@ public:
   }
 
   // The preset this EQ is, or 0 when it is none of them: the bands and the gain
-  // the same to a twentieth of a decibel. The On box does not count.
+  // the same to a twentieth of a decibel, and the bands' frequencies and widths
+  // the same. The On box does not count.
   int matching(const VoicingEqSettings& eq) const {
     auto same = [&eq](const VoicingEqSettings& p) {
-      if (std::fabs(p.gainDb - eq.gainDb) > 0.05) return false;
+      if (std::fabs(p.gainDb - eq.gainDb) > 0.05 || !p.sameShape(eq)) return false;
       for (size_t i = 0; i < p.bandsDb.size(); ++i)
         if (std::fabs(p.bandsDb[i] - eq.bandsDb[i]) > 0.05) return false;
       return true;
@@ -156,6 +157,8 @@ public:
 
   // The settings file's lines, one per preset of the player's:
   //   eqpreset <id> <gain> <band1> ... <band10> <name>
+  // then, for a preset whose bands have moved,
+  //   eqpresetshape <id> <hz1> ... <hz10> <q1> ... <q10>
   // and `eqpresetnext <id>`, so an id is not given again after a delete.
   std::vector<std::string> toLines() const {
     std::vector<std::string> lines;
@@ -165,6 +168,7 @@ public:
       for (double b : p.eq.bandsDb) o << " " << b;
       o << " " << p.name;
       lines.push_back(o.str());
+      if (!p.eq.shapeAsDefault()) lines.push_back("eqpresetshape " + std::to_string(p.id) + " " + p.eq.shapeLine());
     }
     if (!own_.empty() || nextId_ != kFirstOwn) lines.push_back("eqpresetnext " + std::to_string(nextId_));
     return lines;
@@ -190,6 +194,15 @@ public:
     own_.push_back(p);
     if (p.id >= nextId_) nextId_ = p.id + 1;
     return true;
+  }
+  // The value of an `eqpresetshape` line: the frequencies and widths of a
+  // preset of the player's read before it.
+  bool readShapeLine(const std::string& value) {
+    std::istringstream in(value);
+    int id = 0;
+    if (!(in >> id)) return false;
+    VoicingEqPreset* p = ownPreset(id);
+    return p != nullptr && p->eq.readShape(in);
   }
   void readNext(int next) {
     if (next > nextId_) nextId_ = next;

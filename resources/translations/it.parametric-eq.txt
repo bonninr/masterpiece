@@ -1,0 +1,3 @@
+"The band's frequency. Double-click for the frequency it came with." = "La frequenza della banda. Doppio clic per la frequenza originale."
+"The shelf's slope as a Q: 1.4 the steepest, less a gentler slope. Double-click for 1.4." = "La pendenza del filtro shelving, come Q: 1,4 la più ripida, meno una pendenza più dolce. Doppio clic per 1,4."
+"The band's width as a Q: more is narrower. Double-click for 1.4." = "La larghezza della banda, come Q: di più è più stretta. Doppio clic per 1,4."

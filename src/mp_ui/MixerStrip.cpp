@@ -60,6 +60,46 @@ int FaderLook::capLength(const juce::Slider& s) {
 
 int FaderLook::getSliderThumbRadius(juce::Slider& s) { return capLength(s) / 2; }
 
+void FaderLook::drawRotarySlider(juce::Graphics& g, int x, int y, int w, int h, float pos, float startAngle,
+                                 float endAngle, juce::Slider& s) {
+  const float alpha = s.isEnabled() ? 1.0f : 0.45f;
+  const auto box = juce::Rectangle<float>(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w),
+                                          static_cast<float>(h));
+  const float radius = juce::jmin(box.getWidth(), box.getHeight()) / 2.0f - 1.0f;
+  const auto centre = box.getCentre();
+  const float angle = startAngle + pos * (endAngle - startAngle);
+
+  // The travel, and the part of it up to the value.
+  const float arcR = radius - 1.0f;
+  juce::Path track;
+  track.addCentredArc(centre.x, centre.y, arcR, arcR, 0.0f, startAngle, endAngle, true);
+  g.setColour(juce::Colour(0xff050506).withMultipliedAlpha(alpha));
+  g.strokePath(track, juce::PathStrokeType(2.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+  juce::Path lit;
+  lit.addCentredArc(centre.x, centre.y, arcR, arcR, 0.0f, startAngle, angle, true);
+  g.setColour(s.findColour(juce::Slider::thumbColourId).withMultipliedAlpha(0.8f * alpha));
+  g.strokePath(lit, juce::PathStrokeType(2.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+  // The knob, lit from above, with its shadow and a dark rim.
+  const float knobR = radius - 4.5f;
+  const auto knob = juce::Rectangle<float>(knobR * 2.0f, knobR * 2.0f).withCentre(centre);
+  g.setColour(juce::Colours::black.withAlpha(0.5f * alpha));
+  g.fillEllipse(knob.translated(0.0f, 1.5f));
+  juce::ColourGradient body(juce::Colour(0xff6c6f76), knob.getX(), knob.getY(), juce::Colour(0xff232428),
+                            knob.getX(), knob.getBottom(), false);
+  body.multiplyOpacity(alpha);
+  g.setGradientFill(body);
+  g.fillEllipse(knob);
+  g.setColour(juce::Colour(0xff0c0c0e).withMultipliedAlpha(alpha));
+  g.drawEllipse(knob, 1.0f);
+
+  // The pointer, from near the middle to the rim.
+  juce::Path pointer;
+  pointer.addRoundedRectangle(-1.0f, -knobR + 1.5f, 2.0f, knobR * 0.6f, 1.0f);
+  g.setColour(juce::Colour(0xffeeeeee).withMultipliedAlpha(alpha));
+  g.fillPath(pointer, juce::AffineTransform::rotation(angle).translated(centre.x, centre.y));
+}
+
 juce::Label* FaderLook::createSliderTextBox(juce::Slider& s) {
   auto* l = LookAndFeel_V4::createSliderTextBox(s);
   l->setColour(juce::Label::textColourId, juce::Colour(0xff9fe0ff));
