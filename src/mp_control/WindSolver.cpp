@@ -31,6 +31,9 @@ constexpr double kPitchPerFractionalSag = 0.25;
 // than pitch does.
 constexpr double kAmpPerFractionalSag = 0.7;
 
+// The fraction of its working pressure below which a pipe fades to silence.
+constexpr double kSpeechFraction = 0.5;
+
 // A moving board (#812). One inch of water in pascals, and the atmosphere in
 // inches: a compartment whose volume grows by dV at a fixed amount of air
 // loses p_atm * dV / V of pressure, the same isothermal law as the 339 above.
@@ -278,6 +281,30 @@ void WindSolver::chooseStep() {
 
 void WindSolver::settleWith(const std::unordered_set<Id>& engagedSwitches) {
   settle(&engagedSwitches);
+
+  // A chest the settle left without wind has its blower off at load (#1028):
+  // Alessandria starts its blower from a switch the player can leave off, and
+  // its Tuba chest has a motor of its own. Its working pressure is then the
+  // one it has with the blower running, which the settle with every valve
+  // open finds; the chest itself stays empty, so its pipes are silent until
+  // the blower fills it. A chest that has wind keeps the figure it has now.
+  constexpr double kNoWindInches = 1.0e-3;
+  const bool anyEmpty = std::any_of(order_.begin(), order_.end(), [](const State& st) {
+    return st.nominalInches < kNoWindInches;
+  });
+  if (!anyEmpty) return;
+  const std::vector<State> asLoaded = order_;
+  const std::vector<Board> boardsAsLoaded = boards_;
+  const int sweeps = lastSweeps_;
+  const long long steps = lastSteps_;
+  settle(nullptr);
+  std::vector<State> running = std::move(order_);
+  order_ = asLoaded;
+  boards_ = boardsAsLoaded;
+  for (size_t i = 0; i < order_.size(); ++i)
+    if (order_[i].nominalInches < kNoWindInches) order_[i].nominalInches = running[i].nominalInches;
+  lastSweeps_ += sweeps;
+  lastSteps_ += steps;
 }
 
 void WindSolver::settle(const std::unordered_set<Id>* engagedSwitches) {
@@ -774,6 +801,14 @@ WindSolver::Mod WindSolver::modFor(Id compartmentId) const {
   const double sag = sagFor(compartmentId);
   if (sag == 0.0) return m;
   m.ampMul = std::clamp(1.0 + kAmpPerFractionalSag * sag, 0.25, 2.0);
+  // Below half its working pressure a pipe runs out of wind to speak with,
+  // down to silence in an empty chest (#1028): a blower switched off leaves
+  // the organ mute once the reservoir drains. The line meets the curve above
+  // at half pressure, so an ordinary sag of a few percent is untouched.
+  const double fraction = 1.0 + sag;
+  if (fraction < kSpeechFraction)
+    m.ampMul = std::max(0.0, fraction) * (1.0 + kAmpPerFractionalSag * (kSpeechFraction - 1.0)) /
+               kSpeechFraction;
   // Semitones, then a ratio: a sag flattens the organ, and the amount is
   // deliberately conservative — see the header.
   const double semitones = kPitchPerFractionalSag * sag;
