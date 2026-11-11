@@ -28,8 +28,10 @@ juce::String savedIn(const juce::File& backup) {
              : "\n\n" + TRANS("What was there before is saved in %1.").replace("%1", backup.getFullPathName());
 }
 
-juce::File defaultFolder() {
-  return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
+// Where the last export or import was, else Documents (#1059).
+juce::File startFolder(const MasterpieceProcessor& proc) {
+  const juce::File last = proc.settingsBackupDirectory();
+  return last.isDirectory() ? last : juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
 }
 
 }  // namespace
@@ -42,7 +44,7 @@ void MasterpieceEditor::exportSettings(bool all) {
   const juce::String fileName = all ? juce::String("Masterpiece settings.zip") : key + " settings.zip";
   backupChooser_ = std::make_unique<juce::FileChooser>(
       all ? TRANS("Export all settings") : TRANS("Export this organ's settings"),
-      defaultFolder().getChildFile(fileName), "*.zip");
+      startFolder(proc_).getChildFile(fileName), "*.zip");
   juce::Component::SafePointer<MasterpieceEditor> self(this);
   backupChooser_->launchAsync(
       juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
@@ -52,6 +54,7 @@ void MasterpieceEditor::exportSettings(bool all) {
         juce::File zip = fc.getResult();
         if (zip == juce::File()) return;
         if (!zip.hasFileExtension("zip")) zip = zip.withFileExtension("zip");
+        self->proc_.setSettingsBackupDirectory(zip.getParentDirectory());
         juce::String error;
         const auto root = MasterpieceProcessor::settingsRoot();
         const bool ok = all ? sa::exportAll(root, sa::programVersion(), zip, error)
@@ -65,7 +68,7 @@ void MasterpieceEditor::exportSettings(bool all) {
 }
 
 void MasterpieceEditor::importSettings() {
-  backupChooser_ = std::make_unique<juce::FileChooser>(TRANS("Import settings"), defaultFolder(), "*.zip");
+  backupChooser_ = std::make_unique<juce::FileChooser>(TRANS("Import settings"), startFolder(proc_), "*.zip");
   juce::Component::SafePointer<MasterpieceEditor> self(this);
   backupChooser_->launchAsync(
       juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
@@ -73,6 +76,7 @@ void MasterpieceEditor::importSettings() {
         if (self == nullptr) return;
         const juce::File zip = fc.getResult();
         if (zip == juce::File()) return;
+        self->proc_.setSettingsBackupDirectory(zip.getParentDirectory());
         sa::Contents c;
         juce::String error;
         if (!sa::inspect(zip, c, error)) {
