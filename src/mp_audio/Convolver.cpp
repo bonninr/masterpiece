@@ -177,10 +177,11 @@ void Convolver::process(juce::AudioBuffer<float>& buffer) {
     fromLeft_.process(juce::dsp::ProcessContextReplacing<float>(block));
   }
 
-  // Equal-gain crossfade. The wet signal is the same material through a room,
-  // so it correlates with the dry: equal-power would push the level up.
-  const float wet = mix_;
-  const float dryGain = 1.0f - mix_;
+  // Equal-power crossfade: the room arrives spread over seconds and adds in
+  // power with the dry, so the level holds at every mix (#1053). An
+  // equal-gain crossfade lost 2 dB at the default mix and 3 dB at half.
+  const float wet = std::sin(mix_ * juce::MathConstants<float>::halfPi);
+  const float dryGain = std::cos(mix_ * juce::MathConstants<float>::halfPi);
   for (int ch = 0; ch < numCh; ++ch) {
     float* out = buffer.getWritePointer(ch);
     const float* d = dry_.getReadPointer(ch);

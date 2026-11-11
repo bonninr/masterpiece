@@ -590,7 +590,7 @@ public:
       const float peak = r.peak;
       const auto file = dir.getChildFile("room-" + juce::String(peak, 2) + (r.dark ? "-dark" : "") + ".wav");
       writeRoom(file, peak, r.dark);
-      for (const float wet : {1.0f, 0.25f}) {
+      for (const float wet : {1.0f, 0.5f, 0.25f}) {
         mp::Convolver room;
         room.prepare({kRate, static_cast<juce::uint32>(kBlock), 2});
         MP_CHECK(room.loadImpulseResponse(file), "the room loads");
@@ -630,6 +630,12 @@ public:
           MP_CHECK(db > -2.0 && db < 2.0, "at full wet the room plays at the level of the sound: " +
                                               std::to_string(db) + " dB" + at);
         } else {
+          // Between dry and room the level holds: the room comes in as the
+          // dry goes out (#1053).
+          const double db = 20.0 * std::log10(level);
+          MP_CHECK(db > -1.0 && db < 1.0, "the level holds with the room mixed in: " + std::to_string(db) + " dB" + at);
+        }
+        if (wet == 0.25f) {
           // The default wet: from 50 to 150 ms after the sound stops, the
           // room is still sounding, within 24 dB of it.
           const double db = 20.0 * std::log10(tail);
