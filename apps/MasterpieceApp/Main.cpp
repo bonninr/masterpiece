@@ -373,6 +373,9 @@ public:
     mp::ui::restoreLinkedDocuments();
     win_ = std::make_unique<DocWindow>(*proc_, *devices_);
     win_->setVisible(true);
+    // Shown in front of the other programs, with the keyboard focus (#1030):
+    // on Windows a window made visible stays behind whatever was active.
+    win_->toFront(true);
     // A phone or tablet plays full screen, with the system's bars hidden
     // until a swipe from the edge brings them back. Not on iOS: kiosk mode
     // sizes the window to JUCE's display, which stays upright on a turned
