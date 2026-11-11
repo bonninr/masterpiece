@@ -202,7 +202,7 @@ void TuningPanel::paint(juce::Graphics& g) { g.fillAll(kBackground); }
 void TuningPanel::showMidiMenu() {
   auto& map = proc_.midiMap();
   if (map.learning()) {
-    map.cancelLearn();
+    proc_.cancelLearn();
     return;
   }
   struct Target {
@@ -235,7 +235,7 @@ void TuningPanel::showMidiMenu() {
     if (self == nullptr || chosen <= 0) return;
     const Target& target = targets[static_cast<size_t>((chosen - 1) / 3)];
     switch ((chosen - 1) % 3) {
-      case 0: self->proc_.midiMap().beginLearn(target.kind, target.id, false); break;
+      case 0: self->proc_.beginLearn(target.kind, target.id, false); break;
       case 1: self->proc_.setObjectBindings(target.kind, target.id, {}); break;
       default: MidiEventDialog::show(self->proc_, target.kind, target.id, target.name); break;
     }

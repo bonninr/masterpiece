@@ -16312,6 +16312,8 @@ public:
     proc.beginKeyboardLearn(2, 1);
     press(9, 48);
     press(9, 72);
+    // Taken on the audio thread, written into the map on the message thread.
+    proc.serviceMidiRequests();
     MP_CHECK(proc.keyboardLearning() == 0, "two presses finish the learn");
     const auto* a = proc.midiMap().keyboardBindingAt(2, 0);
     const auto* b = proc.midiMap().keyboardBindingAt(2, 1);
@@ -16324,6 +16326,7 @@ public:
     proc.beginKeyboardLearn(2);
     press(5, 36);
     press(5, 60);
+    proc.serviceMidiRequests();
     MP_CHECK(proc.midiMap().keyboardBindingAt(2, 0) != nullptr &&
                  proc.midiMap().keyboardBindingAt(2, 0)->channel == 5 &&
                  proc.midiMap().keyboardBindingAt(2, 1) == nullptr,
@@ -17613,14 +17616,17 @@ public:
       midi.addEvent(juce::MidiMessage::controllerEvent(1, cc, value), 0);
       proc.processBlock(buf, midi);
     };
+    // Each learn is written into the map by the message thread's service.
     for (size_t i = 0; i < 2; ++i) {
       proc.midiMap().beginLearnAs(mp::MidiTargetKind::Switch, sw(i), mp::MidiTrigger::Toggle);
       send(20, 127);
       send(20, 0);
+      proc.serviceMidiRequests();
     }
     proc.midiMap().beginLearnAs(mp::MidiTargetKind::Switch, sw(2), mp::MidiTrigger::Momentary);
     send(20, 127);
     send(20, 0);
+    proc.serviceMidiRequests();
     MP_CHECK(proc.midiMap().bindings().size() == 3, "one tab learned for three stops keeps all three");
 
     send(20, 127);
@@ -17716,9 +17722,11 @@ public:
                                   mp::MidiTrigger::Momentary);
       send(20, 127);
       send(20, 0);
+      proc.serviceMidiRequests();  // the learn is written on the message thread
       proc.midiMap().beginLearnAs(mp::MidiTargetKind::PlayerDivisionalCancel, div, mp::MidiTrigger::Momentary);
       send(21, 127);
       send(21, 0);
+      proc.serviceMidiRequests();
     }
     MP_CHECK(proc.midiMap().bindingsFor(mp::MidiTargetKind::PlayerDivisional, mp::playerDivisionalTarget(first, 1)).size() == 1 &&
                  proc.midiMap().bindingsFor(mp::MidiTargetKind::PlayerDivisional, mp::playerDivisionalTarget(second, 1)).size() == 1,
@@ -19122,6 +19130,7 @@ public:
       juce::AudioBuffer<float> buf(2, 256);
       juce::MidiBuffer none;
       first.processBlock(buf, none);
+      first.serviceMidiRequests();  // the learn is written on the message thread
       MP_CHECK(!first.midiMap().learning(), "the piston is learned from the console");
       saved = first.midiMap().toText();
     }

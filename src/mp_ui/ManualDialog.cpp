@@ -510,15 +510,23 @@ private:
   enum class Step { Idle, Keyboard, Piston };
 
   void start() {
-    proc_.midiMap().cancelLearn();
     proc_.beginKeyPick();
     step_ = Step::Keyboard;
     refresh();
   }
 
+  // Whether the piston's own learn still waits: a learn begun elsewhere
+  // ends it.
+  bool pistonLearnWaits() const {
+    const auto& map = std::as_const(proc_).midiMap();
+    return proc_.midiCapture() == MidiCapture::MapLearn &&
+           map.learningKind() == MidiTargetKind::RouteKeyboard &&
+           map.learningTarget() == routeKeyboardTarget(keyboardId_, channel_);
+  }
+
   void stop() {
     if (step_ == Step::Keyboard) proc_.cancelKeyPick();
-    if (step_ == Step::Piston) proc_.midiMap().cancelLearn();
+    if (step_ == Step::Piston && pistonLearnWaits()) proc_.cancelLearn();
     step_ = Step::Idle;
     refresh();
   }
@@ -538,14 +546,14 @@ private:
       if (channel_ <= 0) {
         step_ = Step::Idle;
       } else {
-        proc_.midiMap().beginLearnAs(MidiTargetKind::RouteKeyboard,
-                                     routeKeyboardTarget(keyboardId_, channel_),
-                                     tab_.getToggleState() ? MidiTrigger::Toggle
-                                                           : MidiTrigger::Momentary);
+        proc_.beginLearnAs(MidiTargetKind::RouteKeyboard,
+                           routeKeyboardTarget(keyboardId_, channel_),
+                           tab_.getToggleState() ? MidiTrigger::Toggle
+                                                 : MidiTrigger::Momentary);
         step_ = Step::Piston;
       }
       refresh();
-    } else if (step_ == Step::Piston && !proc_.midiMap().learning()) {
+    } else if (step_ == Step::Piston && !pistonLearnWaits()) {
       proc_.saveMidiMap();
       step_ = Step::Idle;
       refresh();

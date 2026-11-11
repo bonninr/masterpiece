@@ -1351,8 +1351,8 @@ void ConsoleView::openMenuAt(juce::Point<int> p, bool keys) {
   }
   // A right-click on nothing cancels an armed learn, so an accidental arm is
   // easy to back out of.
-  if (proc_.midiMap().learning()) {
-    proc_.midiMap().cancelLearn();
+  if (proc_.midiCapture() == MidiCapture::MapLearn) {
+    proc_.cancelLearn();
     repaint();
     return;
   }
@@ -1446,7 +1446,6 @@ void showSwitchMidiMenu(MasterpieceProcessor& proc, Id switchId,
   menu.showMenuAsync(
       juce::PopupMenu::Options().withTargetScreenArea(area),
       [&proc, switchId, latching, after = std::move(after)](int choice) {
-        auto& m = proc.midiMap();
         if (choice == 6) choice = latching ? 1 : 2;
         if (choice == 7) {
           MidiEventDialog::show(proc, MidiTargetKind::Switch, switchId);
@@ -1454,19 +1453,19 @@ void showSwitchMidiMenu(MasterpieceProcessor& proc, Id switchId,
         }
         switch (choice) {
           case 1:
-            m.beginLearnAs(MidiTargetKind::Switch, switchId, MidiTrigger::Toggle);
+            proc.beginLearnAs(MidiTargetKind::Switch, switchId, MidiTrigger::Toggle);
             break;
           case 2:
-            m.beginLearnAs(MidiTargetKind::Switch, switchId,
-                           MidiTrigger::Momentary);
+            proc.beginLearnAs(MidiTargetKind::Switch, switchId,
+                              MidiTrigger::Momentary);
             break;
           case 3:
-            m.beginLearnAs(MidiTargetKind::Switch, switchId,
-                           MidiTrigger::EngageOnly);
+            proc.beginLearnAs(MidiTargetKind::Switch, switchId,
+                              MidiTrigger::EngageOnly);
             break;
           case 4:
-            m.beginLearnAs(MidiTargetKind::Switch, switchId,
-                           MidiTrigger::DisengageOnly);
+            proc.beginLearnAs(MidiTargetKind::Switch, switchId,
+                              MidiTrigger::DisengageOnly);
             break;
           case 5:
             proc.clearObjectMapping(MidiTargetKind::Switch, switchId);
@@ -1638,14 +1637,13 @@ void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
   menu.addItem(2, TRANS("Clear mapping"), mapped);
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(area),
                      [&proc, controlId, after = std::move(after)](int choice) {
-                       auto& m = proc.midiMap();
                        if (choice == 6) {
                          MidiEventDialog::show(proc, MidiTargetKind::ContinuousControl,
                                                controlId);
                          return;
                        }
                        if (choice == 1) {
-                         m.beginLearn(MidiTargetKind::ContinuousControl, controlId, false);
+                         proc.beginLearn(MidiTargetKind::ContinuousControl, controlId, false);
                        } else if (choice == 2) {
                          proc.clearObjectMapping(MidiTargetKind::ContinuousControl, controlId);
                        } else if (choice == 3 || choice == 4) {

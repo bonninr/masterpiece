@@ -1413,19 +1413,24 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     const bool isNote = source.kind == MidiSourceKind::Note;
     const size_t takenKey = isNote ? takenIndex(source.channel, source.number) : 0;
     const bool organsRelease = isNote && value <= 0 && !takenNotes_.test(takenKey);
+    const bool takenRelease = isNote && value <= 0 && !organsRelease;
     if (isNote) takenNotes_.reset(takenKey);
     const auto takePress = [&] {
       if (isNote && value > 0) takenNotes_.set(takenKey);
     };
 
+    // What a capture waiting takes this message for. One at a time; none
+    // while a learn already taken waits to be written into the map.
+    const MidiCapture capture = liveCapture();
+    const bool listening = capture == MidiCapture::Listen || capture == MidiCapture::ListenPair;
+
     // The noise filter: while learning, a key is held back until it has been
     // down a quarter second, and one let go sooner is dropped. Listening for
     // an off (#927), a key let go is the off itself.
-    const bool pairOff = value <= 0 && midiListen_.load(std::memory_order_acquire) &&
-                         listenPair_.load(std::memory_order_acquire) &&
+    const bool pairOff = value <= 0 && capture == MidiCapture::ListenPair &&
                          pairStep_.load(std::memory_order_acquire) == 1;
-    if (isNote && !organsRelease && learnNoiseFilter_.load(std::memory_order_acquire) &&
-        learningFrom(deviceId) && !pairOff) {
+    if (isNote && !organsRelease && capturesFrom(capture, deviceId) &&
+        learnNoiseFilter_.load(std::memory_order_acquire) && !pairOff) {
       holdForLearn(source, value);
       takePress();
       continue;
@@ -1444,25 +1449,29 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     // release that follows is swallowed too, while still listening. A
     // controller is taken at any value: a console that sends 0 for off sends
     // a real message (#565).
-    if (midiListen_.load(std::memory_order_acquire) && source.kind != MidiSourceKind::None && !organsRelease) {
+    if (listening && source.kind != MidiSourceKind::None && !organsRelease) {
       if (!bankSelect) hearForListen(source, value);
       takePress();
       continue;
     }
 
     // Learning consumes the message: a control being mapped must not also
-    // fire whatever it used to do.
-    if (midiMap_.learning() && source.kind != MidiSourceKind::None && !organsRelease) {
+    // fire whatever it used to do. The press is kept here and written into
+    // the map on the message thread (serviceMidiRequests).
+    if (capture == MidiCapture::MapLearn && source.kind != MidiSourceKind::None && !organsRelease) {
       // Only a press, never a release — otherwise letting go of the key
       // immediately re-learns it to the note-off.
-      if (value > 0 && !bankSelect && midiMap_.learnFrom(source)) {
-        // Learned on the audio thread; written by the message thread.
-        midiMapDirty_.store(true, std::memory_order_release);
+      if (value > 0 && !bankSelect && midiMap_.learnTakes(source)) {
+        takeForMapLearn(source);
         takePress();
         continue;
       }
       if (value == 0 || bankSelect) continue;
     }
+
+    // The release of a press a capture took is the capture's, whether or not
+    // the capture still waits: it plays nothing and moves nothing.
+    if (takenRelease) continue;
 
     const MidiAction action = midiMap_.actionFor(source, value, blockTimeMs_);
     if (action.valid() && logging)
@@ -1652,21 +1661,20 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
 
     // Picking a keyboard takes one key press from a console, and that note
     // does not sound either.
-    if (msg.isNoteOn() && deviceId > 0 && keyPick_.load(std::memory_order_acquire)) {
+    if (msg.isNoteOn() && deviceId > 0 && capture == MidiCapture::KeyPick) {
       pickedChannel_.store(msg.getChannel(), std::memory_order_release);
-      keyPick_.store(false, std::memory_order_release);
+      capture_.store(MidiCapture::None, std::memory_order_release);
       takePress();
       continue;
     }
 
     // Learning a manual consumes the key press: the note being used to teach
     // the range must not also sound.
-    if (msg.isNoteOn() && keyboardLearn_ != 0) {
-      learnKeyboardFrom(deviceId, msg.getChannel(), msg.getNoteNumber());
+    if (msg.isNoteOn() && capture == MidiCapture::KeyboardLearn) {
+      takeKeyboardKey(deviceId, msg.getChannel(), msg.getNoteNumber());
       takePress();
       continue;
     }
-    if (msg.isNoteOff() && keyboardLearn_ != 0 && !organsRelease) continue;
     // A mapped rig, for the channels it claims: the binding decides which
     // manual, which note and what velocity. One press can reach more than
     // one manual — a split keyboard does exactly that — so every match is
@@ -1850,62 +1858,160 @@ juce::File MasterpieceProcessor::midiMapFileFor(const juce::File& odf) const {
   return organFile(odf, "midi", ".mpmidi");
 }
 
-void MasterpieceProcessor::beginKeyboardLearn(Id keyboardId, int row) {
-  keyboardLearn_ = keyboardId;
-  keyboardLearnLow_ = -1;
-  keyboardLearnRow_ = row;
+// --- MIDI capture -----------------------------------------------------------
+// One capture waits at a time. Begun and ended here on the message thread,
+// under the audio lock; the audio thread only takes the message, and a learn
+// it takes is written into the map by applyTakenCapture().
+
+void MasterpieceProcessor::endCaptureLocked() {
+  applyTakenCapture();
+  midiMap_.cancelLearn();
+  capture_.store(MidiCapture::None, std::memory_order_release);
+  keyboardLearn_.store(0, std::memory_order_release);
+  keyboardLearnLow_.store(-1, std::memory_order_release);
+  for (auto& h : heldForLearn_) h.used = false;
 }
 
-bool MasterpieceProcessor::learnKeyboardFrom(int deviceId, int channel,
-                                             int note) {
-  if (keyboardLearn_ == 0) return false;
+void MasterpieceProcessor::cancelMidiCapture() {
+  const AudioLock audio(*this);
+  endCaptureLocked();
+}
 
-  if (keyboardLearnLow_ < 0) {
+void MasterpieceProcessor::beginLearn(MidiTargetKind kind, Id targetId, bool latching) {
+  const AudioLock audio(*this);
+  endCaptureLocked();
+  midiMap_.beginLearn(kind, targetId, latching);
+}
+
+void MasterpieceProcessor::beginLearnAs(MidiTargetKind kind, Id targetId, MidiTrigger trigger) {
+  const AudioLock audio(*this);
+  endCaptureLocked();
+  midiMap_.beginLearnAs(kind, targetId, trigger);
+}
+
+void MasterpieceProcessor::cancelLearn() {
+  const AudioLock audio(*this);
+  applyTakenCapture();
+  midiMap_.cancelLearn();
+}
+
+void MasterpieceProcessor::beginKeyboardLearn(Id keyboardId, int row) {
+  const AudioLock audio(*this);
+  endCaptureLocked();
+  if (keyboardId == 0) return;
+  keyboardLearnRow_ = row;
+  keyboardLearn_.store(keyboardId, std::memory_order_release);
+  capture_.store(MidiCapture::KeyboardLearn, std::memory_order_release);
+}
+
+void MasterpieceProcessor::cancelKeyboardLearn() {
+  const AudioLock audio(*this);
+  applyTakenCapture();
+  if (capture_.load(std::memory_order_acquire) != MidiCapture::KeyboardLearn) return;
+  capture_.store(MidiCapture::None, std::memory_order_release);
+  keyboardLearn_.store(0, std::memory_order_release);
+  keyboardLearnLow_.store(-1, std::memory_order_release);
+}
+
+void MasterpieceProcessor::beginKeyPick() {
+  const AudioLock audio(*this);
+  endCaptureLocked();
+  pickedChannel_.store(0, std::memory_order_release);
+  capture_.store(MidiCapture::KeyPick, std::memory_order_release);
+}
+
+void MasterpieceProcessor::cancelKeyPick() {
+  const AudioLock audio(*this);
+  if (capture_.load(std::memory_order_acquire) == MidiCapture::KeyPick)
+    capture_.store(MidiCapture::None, std::memory_order_release);
+}
+
+void MasterpieceProcessor::beginMidiListen() {
+  const AudioLock audio(*this);
+  endCaptureLocked();
+  heardReady_.store(false, std::memory_order_release);
+  capture_.store(MidiCapture::Listen, std::memory_order_release);
+}
+
+void MasterpieceProcessor::beginMidiListenPair() {
+  const AudioLock audio(*this);
+  endCaptureLocked();
+  heardReady_.store(false, std::memory_order_release);
+  pairStep_.store(0, std::memory_order_release);
+  capture_.store(MidiCapture::ListenPair, std::memory_order_release);
+}
+
+void MasterpieceProcessor::cancelMidiListen() {
+  const AudioLock audio(*this);
+  const MidiCapture c = capture_.load(std::memory_order_acquire);
+  if (c == MidiCapture::Listen || c == MidiCapture::ListenPair)
+    capture_.store(MidiCapture::None, std::memory_order_release);
+}
+
+void MasterpieceProcessor::takeForMapLearn(const MidiSource& source) {
+  takenSource_ = source;
+  takenFor_ = MidiCapture::MapLearn;
+  takePending_.store(true, std::memory_order_release);
+}
+
+void MasterpieceProcessor::takeKeyboardKey(int deviceId, int channel, int note) {
+  if (keyboardLearnLow_.load(std::memory_order_acquire) < 0) {
     // First press: the bottom of the range, and the console and channel it
     // came from. Nothing is committed yet — a player who presses the wrong key
     // can press the right one after the second.
-    keyboardLearnLow_ = note;
     keyboardLearnDevice_ = deviceId;
     keyboardLearnChannel_ = channel;
-    return true;
+    keyboardLearnLow_.store(note, std::memory_order_release);
+    return;
   }
-
-  MidiMap::KeyboardBinding b;
-  b.keyboardId = keyboardLearn_;
-  b.deviceId = keyboardLearnDevice_;
-  b.channel = keyboardLearnChannel_;
-  b.lowKey = std::min(keyboardLearnLow_, note);
-  b.highKey = std::max(keyboardLearnLow_, note);
-
-  // Line the pressed range up with the manual's own compass. A player taking
-  // the top two octaves of one keyboard for a short manual wants those keys to
-  // play that manual's bottom notes, not to fall off the end of it.
-  const auto it = model_.keyboards.find(keyboardLearn_);
-  if (it != model_.keyboards.end() && it->second.numKeys > 0)
-    b.transpose = it->second.firstMidiNote - b.lowKey;
-
-  // The row the player selected is filled, and keeps its velocity, debounce
-  // and short octave (#565); with none, the learned row is the manual's only.
-  if (const auto* old = midiMap_.keyboardBindingAt(keyboardLearn_, keyboardLearnRow_)) {
-    b.lowVelocity = old->lowVelocity;
-    b.highVelocity = old->highVelocity;
-    b.ignoreVelocity = old->ignoreVelocity;
-    b.shortOctave = old->shortOctave;
-    b.debounceMs = old->debounceMs;
-    midiMap_.replaceKeyboardBinding(keyboardLearn_, keyboardLearnRow_, b);
-  } else {
-    midiMap_.removeKeyboardBindingsFor(keyboardLearn_);
-    midiMap_.addKeyboardBinding(b);
-  }
-  midiMapDirty_.store(true, std::memory_order_release);
-  keyboardLearn_ = 0;
-  keyboardLearnLow_ = -1;
-  return true;
+  keyboardLearnHigh_ = note;
+  takenFor_ = MidiCapture::KeyboardLearn;
+  takePending_.store(true, std::memory_order_release);
 }
 
-bool MasterpieceProcessor::learningFrom(int deviceId) const {
-  return midiListen_.load(std::memory_order_acquire) || midiMap_.learning() || keyboardLearn_ != 0 ||
-         (deviceId > 0 && keyPick_.load(std::memory_order_acquire));
+void MasterpieceProcessor::applyTakenCapture() {
+  if (!takePending_.load(std::memory_order_acquire)) return;
+  if (takenFor_ == MidiCapture::MapLearn) {
+    midiMap_.learnFrom(takenSource_);
+  } else if (const Id keyboard = keyboardLearn_.load(std::memory_order_acquire);
+             takenFor_ == MidiCapture::KeyboardLearn && keyboard != 0) {
+    const int low = keyboardLearnLow_.load(std::memory_order_acquire);
+    MidiMap::KeyboardBinding b;
+    b.keyboardId = keyboard;
+    b.deviceId = keyboardLearnDevice_;
+    b.channel = keyboardLearnChannel_;
+    b.lowKey = std::min(low, keyboardLearnHigh_);
+    b.highKey = std::max(low, keyboardLearnHigh_);
+
+    // Line the pressed range up with the manual's own compass. A player taking
+    // the top two octaves of one keyboard for a short manual wants those keys
+    // to play that manual's bottom notes, not to fall off the end of it.
+    const auto it = model_.keyboards.find(keyboard);
+    if (it != model_.keyboards.end() && it->second.numKeys > 0)
+      b.transpose = it->second.firstMidiNote - b.lowKey;
+
+    // The row the player selected is filled, and keeps its velocity, debounce
+    // and short octave (#565); with none, the learned row is the manual's only.
+    if (const auto* old = midiMap_.keyboardBindingAt(keyboard, keyboardLearnRow_)) {
+      b.lowVelocity = old->lowVelocity;
+      b.highVelocity = old->highVelocity;
+      b.ignoreVelocity = old->ignoreVelocity;
+      b.shortOctave = old->shortOctave;
+      b.debounceMs = old->debounceMs;
+      midiMap_.replaceKeyboardBinding(keyboard, keyboardLearnRow_, b);
+    } else {
+      midiMap_.removeKeyboardBindingsFor(keyboard);
+      midiMap_.addKeyboardBinding(b);
+    }
+    keyboardLearn_.store(0, std::memory_order_release);
+    keyboardLearnLow_.store(-1, std::memory_order_release);
+    capture_.store(MidiCapture::None, std::memory_order_release);
+  }
+  takenFor_ = MidiCapture::None;
+  // The lamps are matched to the map's rows by place: they start over.
+  pistonLamps_.clear();
+  midiMapDirty_.store(true, std::memory_order_release);
+  takePending_.store(false, std::memory_order_release);
 }
 
 void MasterpieceProcessor::holdForLearn(const MidiSource& source, int value) {
@@ -1947,7 +2053,7 @@ void MasterpieceProcessor::learnHeldKeys() {
 // value; and listening for a pair (#927), the off that follows, which may be
 // a release. The on sent again is passed over.
 void MasterpieceProcessor::hearForListen(const MidiSource& source, int value) {
-  const bool pair = listenPair_.load(std::memory_order_acquire);
+  const bool pair = capture_.load(std::memory_order_acquire) == MidiCapture::ListenPair;
   if (pair && pairStep_.load(std::memory_order_relaxed) == 1) {
     if (source == heard_ && value == heardValue_) return;
     heardOff_ = source;
@@ -1964,27 +2070,32 @@ void MasterpieceProcessor::hearForListen(const MidiSource& source, int value) {
       return;
     }
   }
-  midiListen_.store(false, std::memory_order_release);
+  capture_.store(MidiCapture::None, std::memory_order_release);
   heardReady_.store(true, std::memory_order_release);
 }
 
-// What a press does to whichever learn is waiting, in the order the MIDI
-// handling asks them.
+// What a press held through the noise filter does to the capture waiting.
 void MasterpieceProcessor::learnFromPress(const MidiSource& source, int value) {
-  if (midiListen_.load(std::memory_order_acquire)) {
-    hearForListen(source, value);
-    return;
+  switch (liveCapture()) {
+    case MidiCapture::Listen:
+    case MidiCapture::ListenPair:
+      hearForListen(source, value);
+      return;
+    case MidiCapture::MapLearn:
+      if (midiMap_.learnTakes(source)) takeForMapLearn(source);
+      return;
+    case MidiCapture::KeyPick:
+      if (source.deviceId > 0) {
+        pickedChannel_.store(source.channel, std::memory_order_release);
+        capture_.store(MidiCapture::None, std::memory_order_release);
+      }
+      return;
+    case MidiCapture::KeyboardLearn:
+      takeKeyboardKey(source.deviceId, source.channel, source.number);
+      return;
+    case MidiCapture::None:
+      return;
   }
-  if (midiMap_.learning()) {
-    if (midiMap_.learnFrom(source)) midiMapDirty_.store(true, std::memory_order_release);
-    return;
-  }
-  if (source.deviceId > 0 && keyPick_.load(std::memory_order_acquire)) {
-    pickedChannel_.store(source.channel, std::memory_order_release);
-    keyPick_.store(false, std::memory_order_release);
-    return;
-  }
-  if (keyboardLearn_ != 0) learnKeyboardFrom(source.deviceId, source.channel, source.number);
 }
 
 int MasterpieceProcessor::registerOwnMidiInput(const juce::String& name) {
@@ -2734,6 +2845,10 @@ juce::File MasterpieceProcessor::settingsRoot() {
 }
 
 void MasterpieceProcessor::saveEverythingPending() {
+  if (takePending_.load(std::memory_order_acquire)) {
+    const AudioLock audio(*this);
+    applyTakenCapture();
+  }
   saveCombinationsIfDirty();
   saveSettingsIfDirty();
   saveMidiMapIfDirty();
@@ -8144,8 +8259,13 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   // routing first, then the model and everything built from it -- so the
   // audio thread stands aside until this returns, however it returns.
   const EngineSuspension suspended(*this);
-  // No key of the old organ is held for a capture any more.
+  // No key of the old organ is held for a capture any more, and no capture
+  // waits: a learn begun for the old organ's stops and manuals must not be
+  // written into this one's, nor one it has taken.
   takenNotes_.reset();
+  takePending_.store(false, std::memory_order_release);
+  takenFor_ = MidiCapture::None;
+  endCaptureLocked();
 
   // What this organ was last set to. Has to happen before a byte of audio is
   // read: the resident format, streaming and the preload head all decide how
@@ -9858,6 +9978,12 @@ void MasterpieceProcessor::powerButton(MidiTargetKind kind, bool pressed, bool h
 }
 
 void MasterpieceProcessor::serviceMidiRequests() {
+  // A learn the audio thread has taken goes into the map here, between
+  // blocks. Saved with the map's other changes (saveMidiMapIfDirty).
+  if (takePending_.load(std::memory_order_acquire)) {
+    const AudioLock audio(*this);
+    applyTakenCapture();
+  }
   if (const int left = powerNotArmedSeconds_.exchange(0, std::memory_order_acq_rel); left > 0)
     juce::Logger::writeToLog("midi: quit/power-off button ignored, armed in " + juce::String(left) + " s");
   if (const int64_t t = pendingTemperament_.exchange(0, std::memory_order_acq_rel); t > 0) {

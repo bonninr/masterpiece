@@ -1496,7 +1496,7 @@ ReverbPanel::~ReverbPanel() { stopTimer(); }
 void ReverbPanel::midiMenu() {
   auto& map = proc_.midiMap();
   if (map.learning()) {
-    map.cancelLearn();
+    proc_.cancelLearn();
     return;
   }
   juce::PopupMenu menu;
@@ -1508,8 +1508,7 @@ void ReverbPanel::midiMenu() {
   juce::Component::SafePointer<ReverbPanel> self(this);
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&midi_), [self](int choice) {
     if (self == nullptr) return;
-    auto& m = self->proc_.midiMap();
-    if (choice == 1) m.beginLearn(MidiTargetKind::ReverbWet, 0, false);
+    if (choice == 1) self->proc_.beginLearn(MidiTargetKind::ReverbWet, 0, false);
     if (choice == 2) {
       self->proc_.editMidiMap([](MidiMap& map) { map.unbindTarget(MidiTargetKind::ReverbWet, 0); });
       self->proc_.saveMidiMap();
@@ -1752,7 +1751,7 @@ void RecorderPanel::askBeforeRecording() {
 void RecorderPanel::showMidiMenu() {
   auto& map = proc_.midiMap();
   if (map.learning()) {
-    map.cancelLearn();
+    proc_.cancelLearn();
     return;
   }
   juce::PopupMenu menu;
@@ -1776,7 +1775,7 @@ void RecorderPanel::showMidiMenu() {
     const bool record = chosen <= 3;
     const auto kind = record ? MidiTargetKind::RecorderRecord : MidiTargetKind::RecorderPlay;
     switch ((chosen - 1) % 3) {
-      case 0: self->proc_.midiMap().beginLearn(kind, 0, false); break;
+      case 0: self->proc_.beginLearn(kind, 0, false); break;
       case 1: self->proc_.setObjectBindings(kind, 0, {}); break;
       default: MidiEventDialog::show(self->proc_, kind, 0, record ? TRANS("Record") : TRANS("Play")); break;
     }
@@ -2231,7 +2230,7 @@ void MidiPanel::applyPart() {
 void MidiPanel::learnMenu(const LearnButton& l) {
   auto& map = proc_.midiMap();
   if (map.learning()) {
-    map.cancelLearn();
+    proc_.cancelLearn();
     showLearnState();
     return;
   }
@@ -2250,7 +2249,7 @@ void MidiPanel::learnMenu(const LearnButton& l) {
                      [self, kind, id, name](int choice) {
                        if (self == nullptr) return;
                        switch (choice) {
-                         case 1: self->proc_.midiMap().beginLearn(kind, id, false); break;
+                         case 1: self->proc_.beginLearn(kind, id, false); break;
                          case 2: self->proc_.setObjectBindings(kind, id, {}); break;
                          case 3: MidiEventDialog::show(self->proc_, kind, id, name); break;
                          default: return;
@@ -3651,7 +3650,7 @@ void VoicingPanel::showEveryPipe() {
 void VoicingPanel::midiMenu() {
   auto& map = proc_.midiMap();
   if (map.learning()) {
-    map.cancelLearn();
+    proc_.cancelLearn();
     return;
   }
   struct Target {
@@ -3679,10 +3678,9 @@ void VoicingPanel::midiMenu() {
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&midi_), [self, targets](int choice) {
     if (self == nullptr || choice <= 0) return;
     const auto& t = targets[static_cast<size_t>((choice - 1) / 10)];
-    auto& m = self->proc_.midiMap();
     switch ((choice - 1) % 10) {
       case 0:
-        m.beginLearnAs(t.kind, 0, MidiTrigger::Momentary);
+        self->proc_.beginLearnAs(t.kind, 0, MidiTrigger::Momentary);
         break;
       case 1:
         MidiEventDialog::show(self->proc_, t.kind, 0, t.name);
@@ -4079,7 +4077,7 @@ void MixerPanel::setFaderLevel(const Fader& f, int value) {
 void MixerPanel::faderMidiMenu(Fader& f) {
   auto& map = proc_.midiMap();
   if (map.learning()) {
-    map.cancelLearn();
+    proc_.cancelLearn();
     return;
   }
   // The level from a knob or a pedal; mute and solo from a button each.
@@ -4102,9 +4100,8 @@ void MixerPanel::faderMidiMenu(Fader& f) {
                      [self, targets](int choice) {
                        if (self == nullptr || choice <= 0) return;
                        const auto& [kind, id] = targets[static_cast<size_t>((choice - 1) / 2)];
-                       auto& m = self->proc_.midiMap();
                        if ((choice - 1) % 2 == 0) {
-                         m.beginLearn(kind, id, false);
+                         self->proc_.beginLearn(kind, id, false);
                        } else {
                          self->proc_.editMidiMap([k = kind, i = id](MidiMap& map) { map.unbindTarget(k, i); });
                          self->proc_.saveMidiMap();

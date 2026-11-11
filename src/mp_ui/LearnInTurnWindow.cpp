@@ -120,7 +120,7 @@ void LearnInTurnPanel::start(int from) {
     taken_.clear();
   }
   release();
-  proc_.midiMap().cancelLearn();
+  proc_.cancelLearn();
   current_ = juce::jlimit(0, rowCount() - 1, from);
   refused_.clear();
   arm();
@@ -145,8 +145,8 @@ void LearnInTurnPanel::arm() {
     map.unbindTarget(MidiTargetKind::Switch, r.switchId);
     // The plain Learn of the console's right-click menu: a tab toggles, a
     // piston is held while pressed.
-    map.beginLearnAs(MidiTargetKind::Switch, r.switchId,
-                     r.latching ? MidiTrigger::Toggle : MidiTrigger::Momentary);
+    proc_.beginLearnAs(MidiTargetKind::Switch, r.switchId,
+                       r.latching ? MidiTrigger::Toggle : MidiTrigger::Momentary);
   }
   armed_ = true;
   list_.selectRow(current_);
@@ -160,7 +160,7 @@ void LearnInTurnPanel::release() {
   auto& map = proc_.midiMap();
   const Id sw = rows_[static_cast<size_t>(current_)].switchId;
   const MasterpieceProcessor::AudioLock lock(proc_);
-  if (map.learning() && map.learningTarget() == sw) map.cancelLearn();
+  if (map.learning() && map.learningTarget() == sw) proc_.cancelLearn();
   if (map.bindingsFor(MidiTargetKind::Switch, sw).empty() && !before_.empty())
     map.setBindingsFor(MidiTargetKind::Switch, sw, before_);
 }
