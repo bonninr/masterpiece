@@ -50,6 +50,7 @@
 
 #include <array>
 #include <atomic>
+#include <bitset>
 #include <deque>
 #include <map>
 #include <optional>
@@ -3086,6 +3087,14 @@ private:
     double sinceMs = 0.0;
   };
   std::array<HeldForLearn, 16> heldForLearn_{};
+  // The keys whose press a capture took (a learn, Listen, a key pick), by
+  // channel and note. Only their releases are the capture's; the release of
+  // a key the organ received reaches the organ. Audio thread only; cleared
+  // by Panic, and with the engine stopped by a load and releaseResources().
+  std::bitset<16 * 128> takenNotes_;
+  static size_t takenIndex(int channel, int note) {
+    return static_cast<size_t>((channel - 1) & 15) * 128 + static_cast<size_t>(note & 127);
+  }
   bool learningFrom(int deviceId) const;
   void holdForLearn(const MidiSource& source, int value);
   void learnHeldKeys();

@@ -524,6 +524,7 @@ void MasterpieceProcessor::releaseResources() {
   const AudioLock audio(*this);
   voices_.quiesce();
   soundingNotes_.clear();
+  takenNotes_.reset();
   releaseAllCoupledInputs();
   sustainedKeys_.clear();
   sustainDown_ = false;
@@ -1404,15 +1405,29 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
                                                                     : "pc") +
                      "=" + juce::String(source.number) + " val=" + juce::String(value)));
 
+    // A release belongs to whatever took its press. The release of a key the
+    // organ received goes to the organ, whatever capture waits now: a key held
+    // when a learn starts stops sounding when it is let go. The release of a
+    // press a capture took stays the capture's. Every press starts its key
+    // afresh, so a release lost on the way cannot hold back a later one.
+    const bool isNote = source.kind == MidiSourceKind::Note;
+    const size_t takenKey = isNote ? takenIndex(source.channel, source.number) : 0;
+    const bool organsRelease = isNote && value <= 0 && !takenNotes_.test(takenKey);
+    if (isNote) takenNotes_.reset(takenKey);
+    const auto takePress = [&] {
+      if (isNote && value > 0) takenNotes_.set(takenKey);
+    };
+
     // The noise filter: while learning, a key is held back until it has been
     // down a quarter second, and one let go sooner is dropped. Listening for
     // an off (#927), a key let go is the off itself.
     const bool pairOff = value <= 0 && midiListen_.load(std::memory_order_acquire) &&
                          listenPair_.load(std::memory_order_acquire) &&
                          pairStep_.load(std::memory_order_acquire) == 1;
-    if (source.kind == MidiSourceKind::Note && learnNoiseFilter_.load(std::memory_order_acquire) &&
+    if (isNote && !organsRelease && learnNoiseFilter_.load(std::memory_order_acquire) &&
         learningFrom(deviceId) && !pairOff) {
       holdForLearn(source, value);
+      takePress();
       continue;
     }
 
@@ -1429,19 +1444,21 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     // release that follows is swallowed too, while still listening. A
     // controller is taken at any value: a console that sends 0 for off sends
     // a real message (#565).
-    if (midiListen_.load(std::memory_order_acquire) && source.kind != MidiSourceKind::None) {
+    if (midiListen_.load(std::memory_order_acquire) && source.kind != MidiSourceKind::None && !organsRelease) {
       if (!bankSelect) hearForListen(source, value);
+      takePress();
       continue;
     }
 
     // Learning consumes the message: a control being mapped must not also
     // fire whatever it used to do.
-    if (midiMap_.learning() && source.kind != MidiSourceKind::None) {
+    if (midiMap_.learning() && source.kind != MidiSourceKind::None && !organsRelease) {
       // Only a press, never a release — otherwise letting go of the key
       // immediately re-learns it to the note-off.
       if (value > 0 && !bankSelect && midiMap_.learnFrom(source)) {
         // Learned on the audio thread; written by the message thread.
         midiMapDirty_.store(true, std::memory_order_release);
+        takePress();
         continue;
       }
       if (value == 0 || bankSelect) continue;
@@ -1638,6 +1655,7 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     if (msg.isNoteOn() && deviceId > 0 && keyPick_.load(std::memory_order_acquire)) {
       pickedChannel_.store(msg.getChannel(), std::memory_order_release);
       keyPick_.store(false, std::memory_order_release);
+      takePress();
       continue;
     }
 
@@ -1645,9 +1663,10 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     // the range must not also sound.
     if (msg.isNoteOn() && keyboardLearn_ != 0) {
       learnKeyboardFrom(deviceId, msg.getChannel(), msg.getNoteNumber());
+      takePress();
       continue;
     }
-    if (msg.isNoteOff() && keyboardLearn_ != 0) continue;
+    if (msg.isNoteOff() && keyboardLearn_ != 0 && !organsRelease) continue;
     // A mapped rig, for the channels it claims: the binding decides which
     // manual, which note and what velocity. One press can reach more than
     // one manual — a split keyboard does exactly that — so every match is
@@ -7678,6 +7697,8 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   panicNotes_.clear();
   const bool panic = releaseAll_.exchange(false, std::memory_order_acq_rel);
   if (panic) {
+    // Every key is let go, and the releases below are the organ's.
+    takenNotes_.reset();
     for (int ch = 1; ch <= 16; ++ch) {
       for (int note = 0; note < 128; ++note)
         if (keyboardState_.isNoteOn(ch, note))
@@ -8123,6 +8144,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   // routing first, then the model and everything built from it -- so the
   // audio thread stands aside until this returns, however it returns.
   const EngineSuspension suspended(*this);
+  // No key of the old organ is held for a capture any more.
+  takenNotes_.reset();
 
   // What this organ was last set to. Has to happen before a byte of audio is
   // read: the resident format, streaming and the preload head all decide how
