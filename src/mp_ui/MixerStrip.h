@@ -104,7 +104,8 @@ public:
   void paint(juce::Graphics& g) override;
   void resized() override;
 
-  static constexpr int kWidth = 78, kNarrowWidth = 50;
+  // Sized to the small fader cap: more strips in view.
+  static constexpr int kWidth = 72, kNarrowWidth = 44;
   static constexpr int kMinHeight = 300;
   static int widthFor(bool narrow) { return narrow ? kNarrowWidth : kWidth; }
   // Where 0 dB stands on the travel, from the bottom: three quarters up, as on

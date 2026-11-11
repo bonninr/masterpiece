@@ -87,7 +87,7 @@ void FaderLook::drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, 
                                 : juce::jmin(static_cast<float>(kCapWidth), area.getHeight() - 2.0f);
 
   // The slot: a narrow cut in the panel, dark inside, lit on its lower lip.
-  const float slotW = 6.0f;
+  const float slotW = 4.0f;
   juce::Rectangle<float> slot =
       vertical ? juce::Rectangle<float>(area.getCentreX() - slotW / 2.0f, maxPos - 3.0f, slotW, minPos - maxPos + 6.0f)
                : juce::Rectangle<float>(minPos - 3.0f, area.getCentreY() - slotW / 2.0f, maxPos - minPos + 6.0f, slotW);
@@ -403,8 +403,9 @@ void ChannelStrip::showValue() { value_.setText(fader.getTextFromValue(fader.get
 void ChannelStrip::resized() {
   auto r = getLocalBounds().reduced(narrow_ ? 3 : 4, 0);
   r.removeFromTop(5);  // the stripe
+  // The top control takes the strip's whole width, so "Pair 1" reads in full.
   auto topRow = r.removeFromTop(22);
-  if (top_ != nullptr) top_->setBounds(topRow);
+  if (top_ != nullptr) top_->setBounds(topRow.withX(1).withWidth(getWidth() - 2));
   r.removeFromTop(3);
   value_.setBounds(r.removeFromTop(18));
   r.removeFromTop(4);
@@ -420,7 +421,7 @@ void ChannelStrip::resized() {
   r.removeFromBottom(6);
 
   // The fader's column: the scale, the slot and cap, the meter.
-  scale_ = r.removeFromLeft(narrow_ ? 7 : 26);
+  scale_ = r.removeFromLeft(narrow_ ? 5 : 26);
   auto meterColumn = r.removeFromRight(narrow_ ? 6 : 8);
   r.removeFromRight(2);
   fader.setBounds(r);
