@@ -138,14 +138,18 @@ inline bool stepVoicing(VoicingSet& set, const OrganModel& model, const VoicingT
 
 // --- the groups a voicer chooses from ---------------------------------------
 
-// A stop's ranks, in the order the stop names them, each once.
+// A stop's ranks, in the order the stop names them, each once; then those it
+// reaches through its pallets (#1055).
 inline std::vector<Id> ranksOfStop(const OrganModel& model, Id stopId) {
   std::vector<Id> out;
   const auto it = model.stops.find(stopId);
   if (it == model.stops.end()) return out;
-  for (const auto& e : it->second.ranks)
-    if (model.ranks.count(e.rankId) != 0 && std::find(out.begin(), out.end(), e.rankId) == out.end())
-      out.push_back(e.rankId);
+  const auto add = [&](Id rankId) {
+    if (model.ranks.count(rankId) != 0 && std::find(out.begin(), out.end(), rankId) == out.end())
+      out.push_back(rankId);
+  };
+  for (const auto& e : it->second.ranks) add(e.rankId);
+  for (const Id rankId : it->second.palletRanks) add(rankId);
   return out;
 }
 

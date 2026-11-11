@@ -915,6 +915,13 @@ void MasterpieceProcessor::configureRankEq() {
       if (e.alternateRankId != 0) rankDivision.emplace(e.alternateRankId, d->second);
     }
   }
+  // Then the ranks a stop reaches only through its pallets (#1054).
+  for (Id stopId : stops) {
+    const Stop& stop = model_.stops.at(stopId);
+    const auto d = divisionIndex.find(stop.divisionId);
+    if (d == divisionIndex.end()) continue;
+    for (const Id rankId : stop.palletRanks) rankDivision.emplace(rankId, d->second);
+  }
   std::vector<int> divisionOfRank;
   for (size_t i = 0; i < rankEqRanks_.size(); ++i) {
     rankEqIndex_[rankEqRanks_[i]] = static_cast<int>(i);
@@ -6949,6 +6956,7 @@ void MasterpieceProcessor::flushCoupledInputs() {
 
 void MasterpieceProcessor::findPalletStops() {
   palletStops_.clear();
+  for (auto& [stopId, stop] : model_.stops) stop.palletRanks.clear();
   std::unordered_set<Id> pallets;
   for (const auto& [rankId, rank] : model_.ranks) {
     if (unshippedRanks_.count(rankId) != 0) continue;
@@ -6999,6 +7007,37 @@ void MasterpieceProcessor::findPalletStops() {
   for (const auto& [stopId, stop] : model_.stops)
     if (stop.controllingSwitchId != 0 && reached.count(stop.controllingSwitchId) != 0)
       palletStops_.insert(stopId);
+
+  // Each pallet stop's ranks (#1054, #1055): the pipework pallets its switch
+  // moves, down the wiring. A key is not followed through: what a key moves
+  // is the key's, and a stop that sets a key would claim a whole division.
+  std::unordered_map<Id, std::vector<Id>> ranksOfPallet;
+  for (const auto& [rankId, rank] : model_.ranks) {
+    if (unshippedRanks_.count(rankId) != 0) continue;
+    for (const Pipe& pipe : rank.pipes)
+      if (pipe.palletSwitchId != 0 && pallets.count(pipe.palletSwitchId) != 0) {
+        auto& r = ranksOfPallet[pipe.palletSwitchId];
+        if (r.empty() || r.back() != rankId) r.push_back(rankId);
+      }
+  }
+  for (const Id stopId : palletStops_) {
+    Stop& stop = model_.stops.at(stopId);
+    std::unordered_set<Id> seen{stop.controllingSwitchId};
+    std::vector<Id> down{stop.controllingSwitchId};
+    std::set<Id> ranks;
+    while (!down.empty()) {
+      const Id at = down.back();
+      down.pop_back();
+      if (const auto p = ranksOfPallet.find(at); p != ranksOfPallet.end()) ranks.insert(p->second.begin(), p->second.end());
+      if (at != stop.controllingSwitchId && keys.count(at) != 0) continue;
+      if (const auto it = fed.find(at); it != fed.end())
+        for (Id next : it->second)
+          if (seen.insert(next).second) down.push_back(next);
+    }
+    // A rank the stop names already is not named twice.
+    for (const auto& e : stop.ranks) ranks.erase(e.rankId);
+    stop.palletRanks.assign(ranks.begin(), ranks.end());
+  }
 }
 
 void MasterpieceProcessor::findControlStops() {
@@ -9455,6 +9494,30 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
                              " rank(s) list pipes and ship no samples; their stops are not available");
   phases.mark("ranks");
   findPalletStops();
+  // A set played through its pallets names its stops' ranks only now: their
+  // division faders and division EQ reach them from here (#1054).
+  {
+    std::vector<int> divisionOfRank(liveRankIndex_.size(), -1);
+    bool any = false;
+    std::vector<Id> stops;
+    for (const auto& [id, s] : model_.stops)
+      if (!s.palletRanks.empty()) stops.push_back(id);
+    std::sort(stops.begin(), stops.end());
+    for (const Id stopId : stops) {
+      const Stop& stop = model_.stops.at(stopId);
+      const auto d = liveDivisionIndex_.find(stop.divisionId);
+      if (d == liveDivisionIndex_.end()) continue;
+      for (const Id rankId : stop.palletRanks)
+        if (const auto r = liveRankIndex_.find(rankId); r != liveRankIndex_.end() && divisionOfRank[static_cast<size_t>(r->second)] < 0) {
+          divisionOfRank[static_cast<size_t>(r->second)] = d->second;
+          any = true;
+        }
+    }
+    if (any) {
+      liveLevels_.addRankDivisions(divisionOfRank);
+      configureRankEq();
+    }
+  }
   findControlStops();
   std::unordered_set<Id> silent;
   lockedStops_.clear();

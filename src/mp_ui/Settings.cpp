@@ -3278,7 +3278,10 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
 
   addAndMakeVisible(chooseBy_);
   chooseBy_.setTitle(TRANS("Choose by"));
-  chooseBy_.setTooltip(TRANS("Choose one rank, or every rank of a stop, a division or a windchest at once"));
+  // What a group does, said plainly (#1055).
+  chooseBy_.setTooltip(TRANS("Choose one rank, or every rank of a stop, a division or a windchest at once") + ". " +
+                       TRANS("A change reaches each rank chosen. With One pipe it reaches the pipe at that note in "
+                             "each, so the perspectives of a stop are voiced together."));
   chooseBy_.onChange = [this] {
     fillChoices();
     loadCurrentIntoSliders();

@@ -294,6 +294,13 @@ struct Stop {
   // stop draws and plays nothing. Gathered into `ranks` at load when it is
   // safe to do so; see the loader for the one case where it is not.
   Id hintPrimaryRankId = 0;
+  // The ranks this stop reaches through the switch network, for a set that
+  // plays its pipes through pallets (#1054, #1055): Pinerolo names no rank
+  // under any stop, and its stops reach their pipes only that way. Found at
+  // load, and read where a stop's ranks are shown or grouped: the voicing
+  // choices, the division and perspective levels. The pipes themselves sound
+  // through their pallets, so nothing plays from this list.
+  std::vector<Id> palletRanks;
 };
 
 // One edge of the key-flow graph: keys played on `sourceKeyboard` also reach
