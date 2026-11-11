@@ -3071,6 +3071,8 @@ bool MasterpieceProcessor::writeGlobalFile() const {
     text << "cachedir " << cacheDir_.getFullPathName() << "\n";
   if (packageDir_.getFullPathName().isNotEmpty())
     text << "packagedir " << packageDir_.getFullPathName() << "\n";
+  if (backupDir_.getFullPathName().isNotEmpty())
+    text << "backupdir " << backupDir_.getFullPathName() << "\n";
   if (lastOrgan_.getFullPathName().isNotEmpty())
     text << "lastorgan " << lastOrgan_.getFullPathName() << "\n";
   if (openFolder_.getFullPathName().isNotEmpty())
@@ -3338,6 +3340,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       eqPresets_.readNext(val.getIntValue());
     } else if (key == "packagedir") {
       packageDir_ = val.isEmpty() ? juce::File() : juce::File(val);
+    } else if (key == "backupdir") {
+      backupDir_ = val.isEmpty() ? juce::File() : juce::File(val);
     } else if (key == "lastorgan") {
       lastOrgan_ = juce::File(val);
     } else if (key == "metronome") {
@@ -3987,6 +3991,12 @@ void MasterpieceProcessor::setCacheDirectory(const juce::File& dir) {
 void MasterpieceProcessor::setPackageDirectory(const juce::File& dir) {
   if (dir == packageDir_) return;
   packageDir_ = dir;
+  writeGlobalFile();
+}
+
+void MasterpieceProcessor::setSettingsBackupDirectory(const juce::File& dir) {
+  if (dir == backupDir_) return;
+  backupDir_ = dir;
   writeGlobalFile();
 }
 

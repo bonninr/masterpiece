@@ -1413,6 +1413,10 @@ public:
   juce::File packageDirectory() const { return packageDir_; }
   void setPackageDirectory(const juce::File& dir);
   void usePackageDirectory(const juce::File& dir) { packageDir_ = dir; }
+  // The folder settings were last exported to or imported from, where the
+  // next export or import opens (#1059). Empty: none yet. Written at once.
+  juce::File settingsBackupDirectory() const { return backupDir_; }
+  void setSettingsBackupDirectory(const juce::File& dir);
   void setLoadTicks(bool on);
   // The language the program speaks: "" follows the system, "en" is English,
   // anything else is a code from availableLanguages(). The windows are built
@@ -3026,6 +3030,7 @@ private:
   FavouriteSort favouriteSort_ = FavouriteSort::Slot;
   juce::File cacheDir_; // empty: the default place
   juce::File packageDir_; // empty: none
+  juce::File backupDir_;  // empty: none yet
   // Next 10% threshold to tap at, 10 through 100. Reset by whoever starts a
   // load and advanced by the audio thread, so both sides use an atomic and
   // neither waits on the other.
