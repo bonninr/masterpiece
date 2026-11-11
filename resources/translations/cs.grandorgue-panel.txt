@@ -1,0 +1,3 @@
+"Press and release toggle" = "Přepnout stiskem i uvolněním"
+"Computer key shortcuts: %1" = "Klávesové zkratky počítače: %1"
+"Ready lamp: GrandOrgue's On lamp" = "Kontrolka připravenosti: kontrolka On v GrandOrgue"

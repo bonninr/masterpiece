@@ -15,6 +15,7 @@ const char* triggerName(MidiTrigger t) {
     case MidiTrigger::Momentary: return "momentary";
     case MidiTrigger::EngageOnly: return "on";
     case MidiTrigger::DisengageOnly: return "off";
+    case MidiTrigger::ToggleBoth: return "toggle-both";
     case MidiTrigger::Toggle: break;
   }
   return "toggle";
@@ -47,6 +48,7 @@ MidiTrigger triggerFrom(const std::string& s) {
   if (s == "momentary") return MidiTrigger::Momentary;
   if (s == "on") return MidiTrigger::EngageOnly;
   if (s == "off") return MidiTrigger::DisengageOnly;
+  if (s == "toggle-both") return MidiTrigger::ToggleBoth;
   return MidiTrigger::Toggle;
 }
 
@@ -187,6 +189,14 @@ const char* targetName(MidiTargetKind k) {
     case MidiTargetKind::ReverbWet: return "reverb-wet";
     case MidiTargetKind::StripMute: return "strip-mute";
     case MidiTargetKind::StripSolo: return "strip-solo";
+    case MidiTargetKind::MasterVolume: return "master-volume";
+    case MidiTargetKind::MetronomeOn: return "metronome";
+    case MidiTargetKind::MetronomeTempo: return "metronome-tempo";
+    case MidiTargetKind::MetronomeBeats: return "metronome-beats";
+    case MidiTargetKind::PitchStep: return "pitch-step";
+    case MidiTargetKind::Panic: return "panic";
+    case MidiTargetKind::ConsoleDisplay: return "console-display";
+    case MidiTargetKind::StepperCurrent: return "stepper-current";
     case MidiTargetKind::None: break;
   }
   return "none";
@@ -241,6 +251,14 @@ MidiTargetKind targetKindFrom(const std::string& s) {
   if (s == "reverb-wet") return MidiTargetKind::ReverbWet;
   if (s == "strip-mute") return MidiTargetKind::StripMute;
   if (s == "strip-solo") return MidiTargetKind::StripSolo;
+  if (s == "master-volume") return MidiTargetKind::MasterVolume;
+  if (s == "metronome") return MidiTargetKind::MetronomeOn;
+  if (s == "metronome-tempo") return MidiTargetKind::MetronomeTempo;
+  if (s == "metronome-beats") return MidiTargetKind::MetronomeBeats;
+  if (s == "pitch-step") return MidiTargetKind::PitchStep;
+  if (s == "panic") return MidiTargetKind::Panic;
+  if (s == "console-display") return MidiTargetKind::ConsoleDisplay;
+  if (s == "stepper-current") return MidiTargetKind::StepperCurrent;
   return MidiTargetKind::None;
 }
 
@@ -452,6 +470,16 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
       if (step & 2) probe.deviceId = MidiDeviceMap::kAnyDevice;
       it = bySource_.find(probe);
     }
+  // A program in a bank, by its number alone, when nothing names its bank: a
+  // piston learned on a program before banks were read still answers it.
+  if (it == bySource_.end() && source.kind == MidiSourceKind::ProgramChange && source.number > 127)
+    for (int step = 0; step < steps && it == bySource_.end(); ++step) {
+      MidiSource probe = source;
+      probe.number = programPart(source.number);
+      if (step & 1) probe.channel = 0;
+      if (step & 2) probe.deviceId = MidiDeviceMap::kAnyDevice;
+      it = bySource_.find(probe);
+    }
   // And a program range, last: a piston on one program beats a shoe moved by
   // all of them (#925).
   if (it == bySource_.end() && source.kind == MidiSourceKind::ProgramChange)
@@ -488,6 +516,7 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
     // kept under an id no switch can have.
     case MidiTargetKind::Setter:
     case MidiTargetKind::PedalCombinationsCoupled:
+    case MidiTargetKind::MetronomeOn:
       return switchAction(b, value);
     case MidiTargetKind::Switch: {
       // Each further switch on this message has its own trigger, so a
@@ -508,6 +537,7 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
     case MidiTargetKind::PairLevel:
     case MidiTargetKind::GroupLevel:
     case MidiTargetKind::ReverbWet:
+    case MidiTargetKind::MasterVolume:
     case MidiTargetKind::ContinuousControl: {
       // A note sets a control by its velocity as it is struck (#199: the
       // swell written into a sequencer's part as note velocities). Its
@@ -546,6 +576,7 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
     case MidiTargetKind::StepperForward10:
     case MidiTargetKind::StepperBack10:
     case MidiTargetKind::StepperDigit:
+    case MidiTargetKind::StepperCurrent:
     case MidiTargetKind::ConsoleNextPage:
     case MidiTargetKind::ConsolePrevPage:
     case MidiTargetKind::ConsoleNextLayout:
@@ -572,6 +603,10 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
     case MidiTargetKind::VoicingTuneUp:
     case MidiTargetKind::StripMute:
     case MidiTargetKind::StripSolo:
+    case MidiTargetKind::MetronomeTempo:
+    case MidiTargetKind::MetronomeBeats:
+    case MidiTargetKind::PitchStep:
+    case MidiTargetKind::Panic:
       // These fire on the press. Acting on the release too would move two
       // frames, or turn a page and turn it straight back -- exactly the
       // failure an organist would notice mid-piece and could not explain.
@@ -589,6 +624,7 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
       // The press and the release both: how long it is held is the point.
       action.engage = b.isOn(value);
       break;
+    case MidiTargetKind::ConsoleDisplay:  // sent only; nothing is received for it
     case MidiTargetKind::None:
       break;
   }
@@ -654,6 +690,17 @@ MidiAction MidiMap::switchAction(const MidiBinding& b, int value) const {
     if (!pressed) return {};  // nothing to do on release
     action.engage = b.trigger == MidiTrigger::EngageOnly;
     latchState_[b.targetId] = action.engage;
+    return action;
+  }
+  // Both values a change: the on value, and the off value too.
+  if (b.trigger == MidiTrigger::ToggleBoth) {
+    const int lo = std::min(b.lowValue, b.highValue), hi = std::max(b.lowValue, b.highValue);
+    const bool edge = b.exactValues ? value == b.highValue || value == b.lowValue : value >= hi || value <= lo;
+    if (!edge) return {};
+    bool& state = latchState_[b.targetId];
+    state = !state;
+    action.engage = state;
+    action.toggled = true;
     return action;
   }
   if (b.trigger == MidiTrigger::Toggle) {
@@ -892,6 +939,12 @@ std::string midiText(const std::vector<uint8_t>& bytes) {
   return s;
 }
 
+std::string programText(int number) {
+  std::string text = std::to_string(programPart(number) + 1);
+  if (number > 127) text += " bank " + std::to_string(bankMsbPart(number)) + ":" + std::to_string(bankLsbPart(number));
+  return text;
+}
+
 bool MidiMap::switchMessage(const MidiSend& s, bool on, RawMidi& out) {
   // A program change is a button that says which program: one when on, and
   // another when off if one is set (#485).
@@ -917,6 +970,7 @@ bool MidiMap::sendsOnOff(MidiTargetKind k) {
     case MidiTargetKind::PlayerDivisional:
     case MidiTargetKind::Setter:
     case MidiTargetKind::PedalCombinationsCoupled:
+    case MidiTargetKind::MetronomeOn:
       return true;
     default:
       return false;
@@ -925,7 +979,7 @@ bool MidiMap::sendsOnOff(MidiTargetKind k) {
 
 std::vector<uint8_t> MidiMap::sendBytes(const MidiSend& s, int state) {
   std::vector<uint8_t> out;
-  const bool onOff = s.targetKind != MidiTargetKind::ContinuousControl;
+  const bool onOff = !isContinuousTarget(s.targetKind);
   // A display takes its text from the object: displayBytes().
   if (s.display != MidiDisplay::None) return out;
   // A hex send holds a whole message for each state; a control has none.
@@ -947,6 +1001,20 @@ std::vector<uint8_t> MidiMap::sendBytes(const MidiSend& s, int state) {
     out = {cc, static_cast<uint8_t>(registered ? 101 : 99), static_cast<uint8_t>((p >> 7) & 127),
            cc, static_cast<uint8_t>(registered ? 100 : 98), static_cast<uint8_t>(p & 127),
            cc, 6, clamp7(value)};
+    return out;
+  }
+  // A program: one when on, another when off if one is set (#485), or one
+  // across the send's window for a control. A program in a bank goes out
+  // after its bank select, as GrandOrgue sends it (#1012).
+  if (s.kind == MidiSourceKind::ProgramChange) {
+    const int p = onOff ? (state != 0 ? s.number : s.offProgram) : s.low + ((s.high - s.low) * clamp7(state)) / 127;
+    if (p < 0) return out;
+    const auto ch = channelBits(s.channel);
+    if (p > 127)
+      out = {static_cast<uint8_t>(0xB0 | ch), 0, static_cast<uint8_t>(bankMsbPart(p)),
+             static_cast<uint8_t>(0xB0 | ch), 32, static_cast<uint8_t>(bankLsbPart(p))};
+    out.push_back(static_cast<uint8_t>(0xC0 | ch));
+    out.push_back(static_cast<uint8_t>(programPart(p)));
     return out;
   }
   RawMidi raw;
@@ -1322,7 +1390,7 @@ bool MidiMap::fromText(const std::string& text) {
         // field, which a reader from before it passes over.
         int offProgram = -1;
         if (snd.kind == MidiSourceKind::ProgramChange && sl >> offProgram)
-          snd.offProgram = offProgram < 0 ? -1 : std::min(offProgram, 127);
+          snd.offProgram = offProgram < 0 ? -1 : std::min(offProgram, (1 << 21) - 1);  // a bank's too
         if (sysExOk && snd.targetKind != MidiTargetKind::None && snd.kind != MidiSourceKind::None) {
           sends_.push_back(snd);
           continue;

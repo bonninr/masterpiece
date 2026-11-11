@@ -1246,7 +1246,6 @@ countries: nl be sr
 "Lamps and messages sent: %1" = "Verzonden lampjes en berichten: %1"
 "Events of other kinds, left out: %1" = "Gebeurtenissen van andere soorten, weggelaten: %1"
 "Objects of another organ, left out: %1" = "Objecten van een ander orgel, weggelaten: %1"
-"Computer key shortcuts, left out: %1" = "Sneltoetsen van de computer, weggelaten: %1"
 "Devices not connected now, taken as any console: %1" = "Apparaten die nu niet verbonden zijn, genomen als elke speeltafel: %1"
 "Learn on and off" = "Aan en uit leren"
 "Move it on..." = "Zet hem aan..."

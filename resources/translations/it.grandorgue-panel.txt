@@ -1,0 +1,3 @@
+"Press and release toggle" = "Commuta alla pressione e al rilascio"
+"Computer key shortcuts: %1" = "Scorciatoie da tastiera del computer: %1"
+"Ready lamp: GrandOrgue's On lamp" = "Spia di pronto: la spia On di GrandOrgue"

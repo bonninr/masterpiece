@@ -1,0 +1,3 @@
+"Press and release toggle" = "Omschakelen bij indrukken en loslaten"
+"Computer key shortcuts: %1" = "Sneltoetsen van de computer: %1"
+"Ready lamp: GrandOrgue's On lamp" = "Gereedlamp: de On-lamp van GrandOrgue"

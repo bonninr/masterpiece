@@ -2675,6 +2675,10 @@ private:
     bool registered = false;
   };
   std::array<ParameterChoice, 17 * 16> parameterChoice_{};
+  // The bank each console's channel last chose with controllers 0 and 32,
+  // msb << 7 | lsb, for the program changes that follow (#1012). The same
+  // rows. Audio thread only.
+  std::array<int, 17 * 16> programBank_{};
   std::unique_ptr<juce::Timer> releaseLog_;
   // How many manual assignments the last load had to discard from a saved
   // mapping. Shown to the player, because a mapping that changes under them
@@ -2921,6 +2925,10 @@ private:
   void powerButton(MidiTargetKind kind, bool pressed, bool hasRelease);
   void pumpReadyLamp(int numFrames);
   std::atomic<int> pendingRecorder_{0};
+  // GrandOrgue's panel buttons (#1012), carried out on the message thread:
+  // the cents the pitch buttons asked for since, and a panic.
+  std::atomic<int> pendingPitchCents_{0};
+  std::atomic<bool> pendingPanic_{false};
   juce::File lastButtonSave_;
   std::atomic<float> outPeak_[2]{{0.0f}, {0.0f}};
   float peakHeld_[2] = {0.0f, 0.0f};
@@ -3271,6 +3279,13 @@ private:
   // recalled or stored last, the setter while it is on, "pedal combinations
   // coupled" while it is on.
   int pistonLamp(MidiTargetKind kind, Id id) const;
+  // The master volume as a console's 0..127: full is 0 dB, nothing is
+  // silence, even in dB over the lower 40 (#1012).
+  void setMasterVolumeFromMidi(int value);
+  int masterVolumeForMidi() const;
+  // A console display's text (#1012): the organ, the temperament, the
+  // pitch, the transposer, the sequencer's frame, the metronome.
+  std::string consoleText(int which) const;
   // With stop changes sent on the output, the lamps of the combination
   // buttons learned on a note or a controller, as the stops' are: sent when
   // they change, and all of them after a load (#565). -1 sends on the next
