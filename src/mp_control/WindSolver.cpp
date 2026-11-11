@@ -31,6 +31,9 @@ constexpr double kPitchPerFractionalSag = 0.25;
 // than pitch does.
 constexpr double kAmpPerFractionalSag = 0.7;
 
+// The fraction of its working pressure below which a pipe fades to silence.
+constexpr double kSpeechFraction = 0.5;
+
 // A moving board (#812). One inch of water in pascals, and the atmosphere in
 // inches: a compartment whose volume grows by dV at a fixed amount of air
 // loses p_atm * dV / V of pressure, the same isothermal law as the 339 above.
@@ -81,8 +84,47 @@ void WindSolver::reset(const OrganModel& model) {
   boardValve_.clear();
   boardValveLink_.clear();
   if (boardWanted_) resetBoards(model);
+  resetControlValves(model);
   chooseStep();
   settle();
+}
+
+void WindSolver::resetControlValves(const OrganModel& model) {
+  // A valve a continuous control opens (#1028): Alessandria's blower fills its
+  // reservoir through one, on the control the blower motor drives. A
+  // reservoir's own regulator is left out: its control is the board's height,
+  // which is solved only with the boards on, and read anywhere else it would
+  // be a number nothing sets.
+  std::unordered_set<Id> regulators;
+  for (const auto& [id, wc] : model.wind)
+    if (wc.bellowsExtensionOutputControlId != 0) regulators.insert(wc.bellowsExtensionOutputControlId);
+  std::vector<Id> fed;
+  for (const ContinuousControlLinkage& l : model.controlLinkages)
+    if (regulators.count(l.sourceControlId) != 0) fed.push_back(l.destControlId);
+  regulators.insert(fed.begin(), fed.end());
+
+  controlValves_.clear();
+  linkOpening_.assign(resolved_.size(), 1.0);
+  for (size_t k = 0; k < resolved_.size(); ++k) {
+    const WindCompartmentLink& link = links_[resolved_[k].link];
+    if (link.valveControlTypeCode != 3 || link.valveControlId == 0) continue;
+    if (regulators.count(link.valveControlId) != 0) continue;
+    if (!boardValve_.empty() && boardValve_[k] >= 0) continue;
+    const auto c = model.continuousControls.find(link.valveControlId);
+    if (c == model.continuousControls.end()) continue;
+    ControlValve v;
+    v.link = k;
+    v.controlId = link.valveControlId;
+    v.low = std::min(c->second.minValue, c->second.maxValue);
+    v.high = std::max(c->second.minValue, c->second.maxValue);
+    if (v.high > v.low) controlValves_.push_back(v);
+  }
+}
+
+void WindSolver::setControlValve(size_t index, int value) {
+  const ControlValve& v = controlValves_[index];
+  linkOpening_[v.link] =
+      std::clamp(static_cast<double>(value - v.low) / static_cast<double>(v.high - v.low), 0.0, 1.0);
 }
 
 void WindSolver::resetBoards(const OrganModel& model) {
@@ -277,10 +319,103 @@ void WindSolver::chooseStep() {
 }
 
 void WindSolver::settleWith(const std::unordered_set<Id>& engagedSwitches) {
+  settleSwitches(engagedSwitches);
+  settleControlValves(engagedSwitches);
+}
+
+void WindSolver::settleControlValves(const std::unordered_set<Id>& engagedSwitches) {
+  // The valves a continuous control opens, where their controls stand at load
+  // (#1028). Alessandria's blower fills its reservoir through one; with the
+  // blower off at load that valve is shut and the dump valve open, and the
+  // reservoir loads empty. Air with a way out is gone; air the valves seal in
+  // stays: with the blower on, the same valve is still shut at load, its
+  // control not yet run up, and the sealed reservoir keeps its wind.
+  const bool anyShut = std::any_of(controlValves_.begin(), controlValves_.end(),
+                                   [this](const ControlValve& v) { return linkOpening_[v.link] < 1.0; });
+  if (!anyShut) return;
+
+  // Which compartments the valves as they stand join to a source or to the
+  // open air.
+  std::vector<char> reaches(order_.size(), 0);
+  std::vector<std::vector<int>> next(order_.size());
+  for (size_t k = 0; k < resolved_.size(); ++k) {
+    const ResolvedLink& r = resolved_[k];
+    const WindCompartmentLink& link = links_[r.link];
+    if (link.valveSwitchId != 0 &&
+        (engagedSwitches.count(link.valveSwitchId) != 0) != link.valveOpenWhenEngaged)
+      continue;
+    if (link.massFlowKgPerSec <= 0.0 || linkOpening_[k] <= 0.0) continue;
+    if (r.a >= 0 && r.b >= 0) {
+      next[static_cast<size_t>(r.a)].push_back(r.b);
+      next[static_cast<size_t>(r.b)].push_back(r.a);
+    } else if (r.a >= 0) {
+      reaches[static_cast<size_t>(r.a)] = 1;
+    } else if (r.b >= 0) {
+      reaches[static_cast<size_t>(r.b)] = 1;
+    }
+  }
+  std::vector<int> todo;
+  for (size_t j = 0; j < order_.size(); ++j)
+    if (reaches[j]) todo.push_back(static_cast<int>(j));
+  while (!todo.empty()) {
+    const int j = todo.back();
+    todo.pop_back();
+    for (const int o : next[static_cast<size_t>(j)])
+      if (!reaches[static_cast<size_t>(o)]) {
+        reaches[static_cast<size_t>(o)] = 1;
+        todo.push_back(o);
+      }
+  }
+
+  const std::vector<State> asLoaded = order_;
+  const std::vector<Board> boardsAsLoaded = boards_;
+  const int sweeps = lastSweeps_;
+  const long long steps = lastSteps_;
+  settleSolve(&engagedSwitches);  // settling_ is clear: the control valves as they stand
+  const std::vector<State> standing = std::move(order_);
+  order_ = asLoaded;
+  boards_ = boardsAsLoaded;
+  for (size_t j = 0; j < order_.size(); ++j)
+    if (reaches[j]) order_[j].pressure = standing[j].pressure;
+  lastSweeps_ += sweeps;
+  lastSteps_ += steps;
+}
+
+void WindSolver::settleSwitches(const std::unordered_set<Id>& engagedSwitches) {
   settle(&engagedSwitches);
+
+  // A chest the settle left without wind has its blower off at load (#1028):
+  // Alessandria starts its blower from a switch the player can leave off, and
+  // its Tuba chest has a motor of its own. Its working pressure is then the
+  // one it has with the blower running, which the settle with every valve
+  // open finds; the chest itself stays empty, so its pipes are silent until
+  // the blower fills it. A chest that has wind keeps the figure it has now.
+  constexpr double kNoWindInches = 1.0e-3;
+  const bool anyEmpty = std::any_of(order_.begin(), order_.end(), [](const State& st) {
+    return st.nominalInches < kNoWindInches;
+  });
+  if (!anyEmpty) return;
+  const std::vector<State> asLoaded = order_;
+  const std::vector<Board> boardsAsLoaded = boards_;
+  const int sweeps = lastSweeps_;
+  const long long steps = lastSteps_;
+  settle(nullptr);
+  std::vector<State> running = std::move(order_);
+  order_ = asLoaded;
+  boards_ = boardsAsLoaded;
+  for (size_t i = 0; i < order_.size(); ++i)
+    if (order_[i].nominalInches < kNoWindInches) order_[i].nominalInches = running[i].nominalInches;
+  lastSweeps_ += sweeps;
+  lastSteps_ += steps;
 }
 
 void WindSolver::settle(const std::unordered_set<Id>* engagedSwitches) {
+  settling_ = true;
+  settleSolve(engagedSwitches);
+  settling_ = false;
+}
+
+void WindSolver::settleSolve(const std::unordered_set<Id>* engagedSwitches) {
   // A windchest does not declare its own pressure, and it would be wrong if it
   // did: the pressure in a chest is whatever the supply holds it at against
   // its own leaks. Nancy declares five inches at the blower and nothing
@@ -410,17 +545,21 @@ bool WindSolver::solveSteady(const std::unordered_set<Id>* engagedSwitches) {
     double flowAtRef = 0.0, refDiff = 0.0;
   };
   std::vector<std::vector<End>> ends(order_.size());
-  for (const ResolvedLink& r : resolved_) {
+  for (size_t k = 0; k < resolved_.size(); ++k) {
+    const ResolvedLink& r = resolved_[k];
     const WindCompartmentLink& link = links_[r.link];
     if (engagedSwitches != nullptr && link.valveSwitchId != 0) {
       const bool on = engagedSwitches->count(link.valveSwitchId) != 0;
       if (on != link.valveOpenWhenEngaged) continue;  // valve shut
     }
-    if (link.massFlowKgPerSec <= 0.0 || link.refPressureInches <= 0.0) continue;
+    // A control valve where its control stands, outside a settle (#1028).
+    const double opening = !settling_ && k < linkOpening_.size() ? linkOpening_[k] : 1.0;
+    const double flow = link.massFlowKgPerSec * opening;
+    if (flow <= 0.0 || link.refPressureInches <= 0.0) continue;
     if (r.a >= 0)
-      ends[static_cast<size_t>(r.a)].push_back({r.b, r.fixedB, link.massFlowKgPerSec, link.refPressureInches});
+      ends[static_cast<size_t>(r.a)].push_back({r.b, r.fixedB, flow, link.refPressureInches});
     if (r.b >= 0)
-      ends[static_cast<size_t>(r.b)].push_back({r.a, r.fixedA, link.massFlowKgPerSec, link.refPressureInches});
+      ends[static_cast<size_t>(r.b)].push_back({r.a, r.fixedA, flow, link.refPressureInches});
   }
 
   std::vector<double> start(order_.size());
@@ -703,6 +842,9 @@ void WindSolver::integrate(double dt,
     // A valve its reservoir's board drives (#812), open as far as the board's
     // height and the set's linkage say.
     if (!boardValve_.empty() && boardValve_[k] >= 0) mul *= boardValveOpening(k);
+    // A valve its continuous control opens, as far as the control reads. Open
+    // while settling: the working pressure is the organ's with its blower on.
+    if (!settling_ && k < linkOpening_.size()) mul *= linkOpening_[k];
     const double flow =
         orificeFlow(link.massFlowKgPerSec * mul, link.refPressureInches, pa - pb);
     if (ia >= 0) {
@@ -774,6 +916,14 @@ WindSolver::Mod WindSolver::modFor(Id compartmentId) const {
   const double sag = sagFor(compartmentId);
   if (sag == 0.0) return m;
   m.ampMul = std::clamp(1.0 + kAmpPerFractionalSag * sag, 0.25, 2.0);
+  // Below half its working pressure a pipe runs out of wind to speak with,
+  // down to silence in an empty chest (#1028): a blower switched off leaves
+  // the organ mute once the reservoir drains. The line meets the curve above
+  // at half pressure, so an ordinary sag of a few percent is untouched.
+  const double fraction = 1.0 + sag;
+  if (fraction < kSpeechFraction)
+    m.ampMul = std::max(0.0, fraction) * (1.0 + kAmpPerFractionalSag * (kSpeechFraction - 1.0)) /
+               kSpeechFraction;
   // Semitones, then a ratio: a sag flattens the organ, and the amount is
   // deliberately conservative — see the header.
   const double semitones = kPitchPerFractionalSag * sag;

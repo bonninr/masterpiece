@@ -80,6 +80,18 @@ public:
   // 48% drop that has nothing to do with anything being played.
   void settleWith(const std::unordered_set<Id>& engagedSwitches);
 
+  // The valves a continuous control opens (ValveControlTypeCode 3), other than
+  // a reservoir's own regulator, found at reset. The caller reads each control
+  // once a block and passes its value in; a valve reads open until it does,
+  // and always while settling.
+  struct ControlValve {
+    size_t link = 0;  // position among the resolved links
+    Id controlId = 0;
+    int low = 0, high = 127;
+  };
+  const std::vector<ControlValve>& controlValves() const { return controlValves_; }
+  void setControlValve(size_t index, int value);
+
   // Tell the solver what is sounding, before advancing. Call once per block:
   // clear, then add the demand of each compartment from a table the caller
   // already has. The engine knows what is sounding; walking its voice pool
@@ -142,6 +154,15 @@ private:
   // Find each compartment's working pressure by running the system empty. A
   // windchest does not declare one — see the .cpp.
   void settle(const std::unordered_set<Id>* engagedSwitches = nullptr);
+  void settleSolve(const std::unordered_set<Id>* engagedSwitches);
+  // Every control valve reads open while this is set.
+  bool settling_ = false;
+  std::vector<ControlValve> controlValves_;
+  // Per resolved link, how far its control valve is open: 1 for every other link.
+  std::vector<double> linkOpening_;
+  void resetControlValves(const OrganModel& model);
+  void settleSwitches(const std::unordered_set<Id>& engagedSwitches);
+  void settleControlValves(const std::unordered_set<Id>& engagedSwitches);
   // The working pressures solved for directly: where every compartment's
   // inflow equals its outflow. Milliseconds, against seconds for integrating
   // up to the same point. False when it does not converge, and settle() then
