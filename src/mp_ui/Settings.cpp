@@ -356,24 +356,21 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
   sparse_.onChange = [this] { proc_.setSparseEvery(sparse_.getSelectedId()); };
 
   // Keeping the decoded samples, so the next load of the same organ is a read
-  // rather than twelve thousand decodes. One file by default: these run to
-  // gigabytes, and a cache per organ per settings combination would fill a
-  // disk without ever being asked to. Loading something else replaces it.
+  // rather than twelve thousand decodes. One file per organ (#1033), replaced
+  // when the organ's settings change: each organ played loads quickly the
+  // second time, and an organ can opt out in its own settings.
   addAndMakeVisible(cacheLabel_);
   styleLabel(cacheLabel_, TRANS("Sample cache"));
   addAndMakeVisible(cache_);
-  cache_.addItem(TRANS("One cache, replaced as organs change"), 1);
-  cache_.addItem(TRANS("One cache per organ (uses more disk)"), 2);
+  cache_.addItem(TRANS("On"), 2);
   cache_.addItem(TRANS("Off"), 3);
-  cache_.setSelectedId(proc_.cacheMode() == SampleLibrary::CacheMode::Off        ? 3
-                       : proc_.cacheMode() == SampleLibrary::CacheMode::PerOrgan ? 2
-                                                                                 : 1,
-                       juce::dontSendNotification);
+  cache_.setSelectedId(proc_.cacheMode() == SampleLibrary::CacheMode::Off ? 3 : 2, juce::dontSendNotification);
+  cache_.setTooltip(TRANS("On: each organ keeps one sample cache, so its next load is quick. A change to its "
+                          "loading settings rebuilds that cache in place. An organ's own settings can turn "
+                          "its cache on or off."));
   cache_.onChange = [this] {
-    const int id = cache_.getSelectedId();
-    proc_.setCacheMode(id == 3   ? SampleLibrary::CacheMode::Off
-                       : id == 2 ? SampleLibrary::CacheMode::PerOrgan
-                                 : SampleLibrary::CacheMode::Single);
+    proc_.setCacheMode(cache_.getSelectedId() == 3 ? SampleLibrary::CacheMode::Off
+                                                   : SampleLibrary::CacheMode::PerOrgan);
   };
 
   // When the cache of a new load is written: before the organ plays, as
@@ -648,6 +645,36 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
                              "installation files: turn streaming off for an organ that must play without them."));
   portable_.onClick = [this] { proc_.setKeepPortableCopy(portable_.getToggleState()); };
 
+  // A cache for the organs played most, none for one that is rarely played
+  // or very large (#1033).
+  addAndMakeVisible(organCacheLabel_);
+  styleLabel(organCacheLabel_, TRANS("Sample cache for this organ"));
+  addAndMakeVisible(organCache_);
+  organCache_.addItem(TRANS("As in Settings"), 1);
+  organCache_.addItem(TRANS("Its own cache"), 2);
+  organCache_.addItem(TRANS("No cache"), 3);
+  using OrganCache = MasterpieceProcessor::OrganCache;
+  organCache_.setSelectedId(proc_.organCache() == OrganCache::Own    ? 2
+                            : proc_.organCache() == OrganCache::None ? 3
+                                                                     : 1,
+                            juce::dontSendNotification);
+  organCache_.setTooltip(TRANS("Its own cache: this organ keeps a sample cache whatever the Sample cache "
+                               "setting says, so its next load is quick. No cache: this organ loads from its "
+                               "files every time and uses no disk for a cache. Takes effect at the next load."));
+  organCache_.onChange = [this] {
+    const int id = organCache_.getSelectedId();
+    proc_.setOrganCache(id == 2   ? MasterpieceProcessor::OrganCache::Own
+                        : id == 3 ? MasterpieceProcessor::OrganCache::None
+                                  : MasterpieceProcessor::OrganCache::AsProgram);
+  };
+  addAndMakeVisible(organCacheDelete_);
+  organCacheDelete_.onClick = [this] {
+    proc_.deleteOrganCache();
+    showOrganCache();
+    showCacheDir();
+  };
+  showOrganCache();
+
   addAndMakeVisible(memLimitLabel_);
   styleLabel(memLimitLabel_, TRANS("Memory limit for samples"));
   addAndMakeVisible(memLimit_);
@@ -839,10 +866,7 @@ void EnginePanel::revert() {
   proc_.setSparseEvery(openSparse_);
   sparse_.setSelectedId(openSparse_, juce::dontSendNotification);
   proc_.setCacheMode(openCache_);
-  cache_.setSelectedId(openCache_ == SampleLibrary::CacheMode::Off        ? 3
-                       : openCache_ == SampleLibrary::CacheMode::PerOrgan ? 2
-                                                                          : 1,
-                       juce::dontSendNotification);
+  cache_.setSelectedId(openCache_ == SampleLibrary::CacheMode::Off ? 3 : 2, juce::dontSendNotification);
   rate_.setSelectedId(openRate_ >= 47000.0 && openRate_ <= 49000.0   ? 2
                       : openRate_ >= 43000.0 && openRate_ <= 45000.0 ? 3
                                                                      : 1,
@@ -1164,6 +1188,18 @@ void EnginePanel::showCacheDir() {
                 : TRANS("No sample cache in this folder"));
 }
 
+void EnginePanel::showOrganCache() {
+  const auto file = proc_.organCacheFile();
+  juce::int64 bytes = 0;
+  if (file != juce::File())
+    bytes = file.getSize() + file.getSiblingFile(file.getFileName() + ".part").getSize();
+  organCacheDelete_.setEnabled(bytes > 0 && !proc_.cacheWriting());
+  organCacheDelete_.setTooltip(
+      bytes > 0 ? TRANS("This organ's sample cache: %1. The organ reads its samples again on its next load.")
+                      .replace("%1", juce::File::descriptionOfSizeInBytes(bytes))
+                : TRANS("No sample cache for this organ"));
+}
+
 void EnginePanel::showPackageDir() {
   const auto dir = proc_.packageDirectory();
   packageDirValue_.setText(dir.getFullPathName().isEmpty() ? TRANS("None") : dir.getFullPathName(),
@@ -1257,7 +1293,7 @@ void EnginePanel::applyPart() {
                    &rateLabel_, &rate_, &sparseLabel_, &sparse_, &releasesLabel_, &releases_,
                    &releaseLengthLabel_, &releaseLength_, &releaseShortLabel_, &releaseShort_, &releaseCutoffLabel_, &releaseCutoff_,
                    &stream_, &streamHead_, &releaseBufferLabel_, &releaseBuffer_, &mono_, &compress_,
-                   &compressLevel_, &programCouplers_, &goTremulantPitch_, &goSwellFilter_, &portable_, &organRootLabel_, &organRootValue_, &organRootChoose_,
+                   &compressLevel_, &programCouplers_, &goTremulantPitch_, &goSwellFilter_, &portable_, &organCacheLabel_, &organCache_, &organCacheDelete_, &organRootLabel_, &organRootValue_, &organRootChoose_,
                    &organRootDefault_, &memory_, &revert_, &keep_, &saveOrgan_, &saveGlobal_};
   const List organSimple{&profileLabel_, &profile_, &memory_, &revert_, &keep_, &saveOrgan_, &saveGlobal_};
   const List performance{&performanceLabel_, &performance_, &faster_, &realtime_, &everyProcessor_,
@@ -1389,6 +1425,14 @@ void EnginePanel::resized() {
   pair(releaseBufferLabel_, releaseBuffer_, 300);
   line(programCouplers_);
   line(portable_);
+  if (organCache_.isVisible()) {
+    auto row = r.removeFromTop(kRow);
+    organCacheLabel_.setBounds(row.removeFromLeft(180));
+    organCache_.setBounds(row.removeFromLeft(200));
+    row.removeFromLeft(8);
+    organCacheDelete_.setBounds(row.removeFromLeft(200));
+    r.removeFromTop(6);
+  }
   folder(organRootLabel_, organRootValue_, {{&organRootChoose_, 90}, {&organRootDefault_, 80}});
   // The cache note's row is kept while the organ's rows show, so nothing
   // jumps when it appears.

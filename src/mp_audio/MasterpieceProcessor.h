@@ -1400,6 +1400,12 @@ public:
   // loaded through the player's folder replaced the player's cache.
   static void setCacheDirectoryForTests(const juce::File& dir);
   juce::File cacheDirectorySetting() const { return cacheDir_; }
+  // The open organ's sample cache, one file per organ, replaced when it is
+  // rebuilt for other settings; an empty File with no organ open.
+  juce::File organCacheFile() const;
+  // Deletes the open organ's cache and the part of a write that stopped.
+  // False while a cache is being written, or with no organ open.
+  bool deleteOrganCache();
   // A folder the player keeps packages in, for a composite that plays other
   // organs' packages (#289): searched, with the folders directly in it, after
   // the organ's own folder. Empty: none. Set is written at once; use is for
@@ -1481,6 +1487,24 @@ public:
   // sample cache, plus a copy of its definition and console pictures, which
   // the next open uses when the originals are not there (#90). Saved with the
   // organ.
+  // This organ's own say on the sample cache (#1033): as the program's
+  // setting, a cache of its own whatever that says, or none. Saved with the
+  // organ; it takes effect at the next load.
+  enum class OrganCache { AsProgram, Own, None };
+  OrganCache organCache() const { return organCache_; }
+  void setOrganCache(OrganCache c) {
+    organCache_ = c;
+    markSettingsDirty();
+  }
+  // The cache an organ loads with: a portable copy needs its own, and a
+  // choice made on the command line holds for the session.
+  SampleLibrary::CacheMode organCacheMode() const {
+    if (keepPortable_) return SampleLibrary::CacheMode::PerOrgan;
+    if (cacheOverride_) return *cacheOverride_;
+    if (organCache_ == OrganCache::Own) return SampleLibrary::CacheMode::PerOrgan;
+    if (organCache_ == OrganCache::None) return SampleLibrary::CacheMode::Off;
+    return cacheMode_;
+  }
   bool keepsPortableCopy() const { return keepPortable_; }
   void setKeepPortableCopy(bool on) {
     keepPortable_ = on;
@@ -2139,8 +2163,9 @@ public:
   int sparseEvery() const { return sparseEvery_; }
 
   // The sample cache: a previous load of this organ at these settings, kept
-  // so the next one is a read instead of twelve thousand decodes. One file by
-  // default, replaced as organs change, because these run to gigabytes.
+  // so the next one is a read instead of twelve thousand decodes. One per
+  // organ by default, so every organ played loads quickly the second time
+  // (#1033); an organ can opt out in its own settings.
   //
   // One choice for the whole program, kept the moment it is made: it is
   // about the player's disk, and the same disk holds every organ's cache.
@@ -2835,6 +2860,7 @@ private:
   std::set<std::string> perspectivesLeftOut_;
   std::set<Id> excludedRanks_;
   bool keepPortable_ = false;
+  OrganCache organCache_ = OrganCache::AsProgram;
   std::string loadedStamp_;  // what the sample cache is keyed to, for the copy
   static juce::File portableRoot();
   void writePortableCopy(const juce::File& odf);
@@ -3193,7 +3219,7 @@ private:
   bool combinationsOnTop_ = false;
   int combinationsView_ = 0;
   std::atomic<bool> cacheWhilePlaying_{false};
-  SampleLibrary::CacheMode cacheMode_ = SampleLibrary::CacheMode::Single;
+  SampleLibrary::CacheMode cacheMode_ = SampleLibrary::CacheMode::PerOrgan;
   std::optional<SampleLibrary::CacheMode> cacheOverride_;
   int releaseCutoffDb_ = -90;
   bool releaseShortGain_ = false;

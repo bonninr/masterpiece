@@ -126,7 +126,7 @@ private:
   SampleLibrary::ReleaseChoice openReleases_ = SampleLibrary::ReleaseChoice::All;
   int openReleaseMs_ = 0;
   int openSparse_ = 1;
-  SampleLibrary::CacheMode openCache_ = SampleLibrary::CacheMode::Single;
+  SampleLibrary::CacheMode openCache_ = SampleLibrary::CacheMode::PerOrgan;
   // General config rather than per-organ state, but shown here because this
   // is the panel about loading. Reverted like the rest; each change writes
   // the global file at once.
@@ -193,7 +193,7 @@ private:
   juce::Label cacheDirValue_;
   juce::TextButton cacheDirChoose_{TRANS("Choose...")};
   juce::TextButton cacheDirDefault_{TRANS("Default")};
-  juce::TextButton cacheDelete_{TRANS("Delete the cache")};
+  juce::TextButton cacheDelete_{TRANS("Delete all caches")};
   std::unique_ptr<juce::FileChooser> cacheDirChooser_;
   void showCacheDir();
   juce::Label packageDirLabel_;
@@ -239,6 +239,11 @@ private:
   juce::ToggleButton realtime_{TRANS("Real-time render threads")};
   juce::ToggleButton everyProcessor_{TRANS("Render on every logical processor")};
   juce::ToggleButton portable_{TRANS("Keep a portable copy of this organ")};
+  // This organ's own sample cache choice (#1033).
+  juce::Label organCacheLabel_;
+  juce::ComboBox organCache_;
+  juce::TextButton organCacheDelete_{TRANS("Delete this organ's cache")};
+  void showOrganCache();
   juce::Label memLimitLabel_;
   juce::ComboBox memLimit_;
   // Fill the memory-limit choices around the current setting.
