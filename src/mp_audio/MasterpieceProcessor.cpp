@@ -1399,6 +1399,19 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         default: break;
       }
     }
+    // Bank Select, controllers 0 and 32, and the program change after it: the
+    // program in its bank (#1012). Bank 0 leaves the program its own number.
+    if ((source.kind == MidiSourceKind::ControlChange || source.kind == MidiSourceKind::ProgramChange) &&
+        source.channel >= 1 && source.channel <= 16) {
+      int& bank = programBank_[static_cast<size_t>((deviceId >= 0 && deviceId <= 16 ? deviceId : 0) * 16 +
+                                                   source.channel - 1)];
+      if (source.kind == MidiSourceKind::ProgramChange)
+        source.number = bankedProgram(bank >> 7, bank & 127, source.number);
+      else if (source.number == 0)
+        bank = (value & 127) << 7 | (bank & 127);
+      else if (source.number == 32)
+        bank = (bank & ~127) | (value & 127);
+    }
 
     const bool logging = logMidi_.load(std::memory_order_acquire);
     if (logging && source.kind != MidiSourceKind::None)
@@ -1550,6 +1563,9 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::StepperDigit:
           stepperDigit(static_cast<int>(action.targetId));
           continue;
+        case MidiTargetKind::StepperCurrent:
+          stepperGoto(std::max(player_.frame(), 1));
+          continue;
         case MidiTargetKind::PlayerGeneral:
           pressGeneral(static_cast<int>(action.targetId));
           continue;
@@ -1657,6 +1673,33 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::StripSolo:
           toggleStripFromMidi(action.kind, action.targetId);
           continue;
+        // GrandOrgue's own panel (#1012). The master volume as the system
+        // exclusive master volume sets it: full is 0 dB, nothing is silence,
+        // even in dB over the lower 40.
+        case MidiTargetKind::MasterVolume:
+          if (action.value >= 0) setMasterVolumeFromMidi(action.value);
+          continue;
+        // The metronome runs in this callback, so it is set here; its tempo
+        // and beats are kept with the general settings.
+        case MidiTargetKind::MetronomeOn:
+          metronome_.setEnabled(action.toggled ? !metronome_.enabled() : action.engage);
+          continue;
+        case MidiTargetKind::MetronomeTempo:
+          metronome_.setTempo(juce::jlimit(20.0, 300.0, metronome_.tempo() + static_cast<double>(action.targetId)));
+          globalDirty_.store(true, std::memory_order_release);
+          continue;
+        case MidiTargetKind::MetronomeBeats:
+          metronome_.setBeatsPerBar(juce::jlimit(0, 16, metronome_.beatsPerBar() + static_cast<int>(action.targetId)));
+          globalDirty_.store(true, std::memory_order_release);
+          continue;
+        // The pitch and the panic wait for the message thread.
+        case MidiTargetKind::PitchStep:
+          pendingPitchCents_.fetch_add(static_cast<int>(action.targetId), std::memory_order_acq_rel);
+          continue;
+        case MidiTargetKind::Panic:
+          pendingPanic_.store(true, std::memory_order_release);
+          continue;
+        case MidiTargetKind::ConsoleDisplay:
         case MidiTargetKind::Keyboard:
         case MidiTargetKind::None:
           break;
@@ -9998,6 +10041,9 @@ void MasterpieceProcessor::serviceMidiRequests() {
   }
   if (const int left = powerNotArmedSeconds_.exchange(0, std::memory_order_acq_rel); left > 0)
     juce::Logger::writeToLog("midi: quit/power-off button ignored, armed in " + juce::String(left) + " s");
+  if (const int cents = pendingPitchCents_.exchange(0, std::memory_order_acq_rel); cents != 0)
+    setMasterPitchHz(masterPitchHz() * std::pow(2.0, cents / 1200.0));
+  if (pendingPanic_.exchange(false, std::memory_order_acq_rel)) releaseAllKeys();
   if (const int64_t t = pendingTemperament_.exchange(0, std::memory_order_acq_rel); t > 0) {
     const Id target = static_cast<Id>(t - 1);
     if (target == 0) {
@@ -10118,7 +10164,7 @@ bool MasterpieceProcessor::saveTakeForSequencer(const juce::File& file, bool mar
           if (action.alsoDrives != nullptr)
             for (const auto& b : *action.alsoDrives)
               text << ", " << nameOf(b.targetId)
-                   << (b.trigger == MidiTrigger::Toggle          ? ""
+                   << (b.trigger == MidiTrigger::Toggle || b.trigger == MidiTrigger::ToggleBoth ? ""
                        : b.trigger == MidiTrigger::DisengageOnly ? " off"
                                                                  : " on");
           auto marker = juce::MidiMessage::textMetaEvent(6, text);
@@ -10404,12 +10450,25 @@ void MasterpieceProcessor::emitSends(bool sysExOnly) {
       now = recorder_.isPlaying() ? 1 : 0;
     else if (s.targetKind == MidiTargetKind::ContinuousControl)
       now = controls_.value(s.targetId);
+    else if (s.targetKind == MidiTargetKind::MasterVolume)
+      now = masterVolumeForMidi();
     else if (const int lamp = pistonLamp(s.targetKind, s.targetId); lamp >= 0)
       now = lamp;
-    else
+    // A button with nothing to show, brought over from GrandOrgue's panel
+    // (#1012): its lamp sent dark, once, as GrandOrgue sends it.
+    else if (s.targetKind != MidiTargetKind::ConsoleDisplay && MidiMap::isConsoleTarget(s.targetKind))
+      now = 0;
+    else if (s.targetKind != MidiTargetKind::ConsoleDisplay)
       continue;
-    // A display showing the object's name is written once, as the console starts over.
-    if (s.display != MidiDisplay::None && !s.showsValue()) now = 0;
+    // A display showing the object's name is written once, as the console
+    // starts over; one showing the program's state, whenever its text changes.
+    std::string text;
+    if (s.targetKind == MidiTargetKind::ConsoleDisplay) {
+      text = consoleText(static_cast<int>(s.targetId));
+      now = static_cast<int>(std::hash<std::string>{}(text) & 0x3fffffffu);
+    } else if (s.display != MidiDisplay::None && !s.showsValue()) {
+      now = 0;
+    }
     if (now == sentValues_[i]) continue;
     const bool quiet = sentValues_[i] == kTakeStateQuietly;
     sentValues_[i] = now;
@@ -10417,7 +10476,9 @@ void MasterpieceProcessor::emitSends(bool sysExOnly) {
     // To the output it names, or to every one (#1001).
     juce::MidiBuffer* into = sendBuffer(s.device);
     if (into == nullptr) continue;
-    if (s.display != MidiDisplay::None)
+    if (s.targetKind == MidiTargetKind::ConsoleDisplay)
+      addMessages(*into, MidiMap::displayBytes(s, text));
+    else if (s.display != MidiDisplay::None)
       addMessages(*into, MidiMap::displayBytes(s, MidiMap::displayText(s, displayNameOf(s.targetKind, s.targetId), now)));
     else
       addMessages(*into, MidiMap::sendBytes(s, now));
@@ -10455,6 +10516,46 @@ void MasterpieceProcessor::sendMidiNow(const std::vector<uint8_t>& bytes, const 
   }
 }
 
+void MasterpieceProcessor::setMasterVolumeFromMidi(int value) {
+  const int v = juce::jlimit(0, 127, value);
+  const float gain = v == 0 ? 0.0f : juce::Decibels::decibelsToGain(-40.0f * (1.0f - static_cast<float>(v) / 127.0f));
+  if (auto* p = apvts_.getParameter("masterGain")) {
+    p->setValueNotifyingHost(p->convertTo0to1(gain));
+    markMasterGainDirty();
+  }
+}
+
+int MasterpieceProcessor::masterVolumeForMidi() const {
+  const auto* p = apvts_.getRawParameterValue("masterGain");
+  const float gain = p != nullptr ? p->load(std::memory_order_relaxed) : 1.0f;
+  if (gain <= 0.0f) return 0;
+  const float db = juce::Decibels::gainToDecibels(gain, -1000.0f);
+  return juce::jlimit(0, 127, juce::roundToInt(127.0f * (1.0f + db / 40.0f)));
+}
+
+std::string MasterpieceProcessor::consoleText(int which) const {
+  switch (which) {
+    case kTextOrganName: return model_.organName;
+    case kTextTemperament: {
+      const std::string t = temperamentName();
+      return t.empty() ? std::string("Organ's own") : t;
+    }
+    case kTextPitch: return juce::String(masterPitchHz(), 1).toStdString() + " Hz";
+    case kTextTranspose: {
+      const int t = transpose();
+      return t > 0 ? "+" + std::to_string(t) : std::to_string(t);
+    }
+    case kTextFrame: {
+      char b[8];
+      std::snprintf(b, sizeof b, "%03d", player_.frame());
+      return b;
+    }
+    case kTextMetronomeTempo: return std::to_string(juce::roundToInt(metronome_.tempo()));
+    case kTextMetronomeBeats: return std::to_string(metronome_.beatsPerBar());
+    default: return {};
+  }
+}
+
 int MasterpieceProcessor::pistonLamp(MidiTargetKind kind, Id id) const {
   switch (kind) {
     case MidiTargetKind::PlayerGeneral: return player_.litGeneral() == static_cast<int>(id) ? 1 : 0;
@@ -10462,6 +10563,7 @@ int MasterpieceProcessor::pistonLamp(MidiTargetKind kind, Id id) const {
       return player_.litDivisional(playerDivisionalDivision(id)) == playerDivisionalPiston(id) ? 1 : 0;
     case MidiTargetKind::Setter: return captureMode() ? 1 : 0;
     case MidiTargetKind::PedalCombinationsCoupled: return pedalCoupled_.load() ? 1 : 0;
+    case MidiTargetKind::MetronomeOn: return metronome_.enabled() ? 1 : 0;
     default: return -1;
   }
 }
@@ -10585,6 +10687,26 @@ bool MasterpieceProcessor::applyKeyShortcut(const std::string& key) {
         case MidiTargetKind::StepperForward10: stepperJump(10); break;
         case MidiTargetKind::StepperBack10: stepperJump(-10); break;
         case MidiTargetKind::StepperDigit: stepperDigit(static_cast<int>(k.targetId)); break;
+        case MidiTargetKind::StepperCurrent: stepperGoto(std::max(player_.frame(), 1)); break;
+        case MidiTargetKind::TransposeUp: setTranspose(juce::jlimit(-12, 12, transpose() + 1)); break;
+        case MidiTargetKind::TransposeDown: setTranspose(juce::jlimit(-12, 12, transpose() - 1)); break;
+        case MidiTargetKind::TemperamentNext: stepTemperament(1); break;
+        case MidiTargetKind::TemperamentPrev: stepTemperament(-1); break;
+        // GrandOrgue's panel (#1012).
+        case MidiTargetKind::MasterVolume: setMasterVolumeFromMidi(masterVolumeForMidi() + k.step); break;
+        case MidiTargetKind::MetronomeOn: metronome_.setEnabled(!metronome_.enabled()); break;
+        case MidiTargetKind::MetronomeTempo:
+          metronome_.setTempo(metronome_.tempo() + static_cast<double>(k.targetId));
+          globalDirty_.store(true, std::memory_order_release);
+          break;
+        case MidiTargetKind::MetronomeBeats:
+          metronome_.setBeatsPerBar(juce::jlimit(0, 16, metronome_.beatsPerBar() + static_cast<int>(k.targetId)));
+          globalDirty_.store(true, std::memory_order_release);
+          break;
+        case MidiTargetKind::PitchStep:
+          setMasterPitchHz(masterPitchHz() * std::pow(2.0, static_cast<double>(k.targetId) / 1200.0));
+          break;
+        case MidiTargetKind::Panic: releaseAllKeys(); break;
         default: break;
       }
     }

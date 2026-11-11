@@ -119,6 +119,12 @@ void fillNumbers(juce::ComboBox& box, MidiSourceKind kind, int selected, bool of
                 : kind == MidiSourceKind::ProgramChange ? juce::String(n + 1)
                                                         : juce::String(n),
                 n + 1);
+  // A program in a bank (#1012), kept as it was learned or brought over.
+  if (kind == MidiSourceKind::ProgramChange && selected > 127) {
+    box.addItem(juce::String(programText(selected)), selected + 1);
+    box.setSelectedId(selected + 1, juce::dontSendNotification);
+    return;
+  }
   box.setSelectedId(juce::jlimit(0, 127, selected) + 1, juce::dontSendNotification);
 }
 
@@ -337,6 +343,7 @@ public:
       b.trigger = a == 2   ? MidiTrigger::Momentary
                   : a == 3 ? MidiTrigger::EngageOnly
                   : a == 4 ? MidiTrigger::DisengageOnly
+                  : a == 5 ? MidiTrigger::ToggleBoth
                            : MidiTrigger::Toggle;
       // On a bitfield row, On at holds the bit, and the values stay as they were.
       if (b.bit < 0) {
@@ -408,6 +415,7 @@ private:
     action_.clear(juce::dontSendNotification);
     if (kind_ == MidiTargetKind::Switch) {
       action_.addItem(TRANS("Each press toggles"), 1);
+      action_.addItem(TRANS("Press and release toggle"), 5);
       if (MidiEventDialog::heldOffered(kind_, source)) action_.addItem(TRANS("Held while pressed"), 2);
       action_.addItem(TRANS("Draws it"), 3);
       action_.addItem(TRANS("Cancels it"), 4);
@@ -420,6 +428,7 @@ private:
     const int want = t == MidiTrigger::Momentary       ? 2
                      : t == MidiTrigger::EngageOnly    ? 3
                      : t == MidiTrigger::DisengageOnly ? 4
+                     : t == MidiTrigger::ToggleBoth    ? 5
                                                        : 1;
     action_.setSelectedId(action_.indexOfItemId(want) >= 0 ? want : action_.getItemId(0),
                           juce::dontSendNotification);
@@ -721,7 +730,7 @@ juce::String describeSend(MidiTargetKind kind, const MidiSend& s) {
                            .replace("%1", juce::String(s.number));
       return t + ", " + (s.showsValue() ? TRANS("its value") : TRANS("its name"));
     }
-    case kSendProgram: what = TRANS("Program %1").replace("%1", juce::String(s.number + 1)); break;
+    case kSendProgram: what = TRANS("Program %1").replace("%1", juce::String(programText(s.number))); break;
     case kSendRpn: what = TRANS("RPN %1").replace("%1", juce::String(s.number)); break;
     case kSendNrpn: what = TRANS("NRPN %1").replace("%1", juce::String(s.number)); break;
     case kSendController: what = TRANS("CC %1").replace("%1", juce::String(s.number)); break;
@@ -857,8 +866,10 @@ public:
     fillNumbers(number_, s.kind, s.number);
     parameter_.setValue(juce::jlimit(0, 16383, s.number), juce::dontSendNotification);
     transpose_.setValue(s.number, juce::dontSendNotification);
-    offProgram_.setSelectedId(s.offProgram < 0 ? 1 : juce::jmin(127, s.offProgram) + 2,
-                              juce::dontSendNotification);
+    // A program in a bank (#1012) is offered as it is.
+    if (s.offProgram > 127 && offProgram_.indexOfItemId(s.offProgram + 2) < 0)
+      offProgram_.addItem(juce::String(programText(s.offProgram)), s.offProgram + 2);
+    offProgram_.setSelectedId(s.offProgram < 0 ? 1 : s.offProgram + 2, juce::dontSendNotification);
     shows_.setSelectedId(s.showsValue() ? 2 : 1, juce::dontSendNotification);
     high_.setValue(s.high, juce::dontSendNotification);
     low_.setValue(s.low, juce::dontSendNotification);
@@ -1459,7 +1470,13 @@ juce::String MidiEventDialog::describeBinding(const MidiBinding& b) {
                       : b.source.kind == MidiSourceKind::Rpn           ? TRANS("RPN %1")
                       : b.source.kind == MidiSourceKind::Nrpn          ? TRANS("NRPN %1")
                                                                        : TRANS("CC %1");
-  what = what.replace("%1", juce::String(b.source.number));
+  // A program received is named by its number as sent, with its bank when
+  // it has one (#1012).
+  const bool banked = b.source.kind == MidiSourceKind::ProgramChange && b.source.number > 127;
+  what = what.replace("%1", banked ? juce::String(programPart(b.source.number)) + " bank " +
+                                         juce::String(bankMsbPart(b.source.number)) + ":" +
+                                         juce::String(bankLsbPart(b.source.number))
+                                   : juce::String(b.source.number));
   if (b.source.kind == MidiSourceKind::ProgramChange && b.source.number == kProgramRange)
     what = TRANS("Programs %1 to %2")
                .replace("%1", juce::String(std::min(b.lowValue, b.highValue) + 1))
@@ -1475,7 +1492,8 @@ juce::StringArray MidiEventDialog::sendAndKeyLines(const MidiMap& map, MidiTarge
                         : s.kind == MidiSourceKind::Note          ? TRANS("Note %1")
                         : s.kind == MidiSourceKind::ProgramChange ? TRANS("Program %1")
                                                                   : TRANS("CC %1");
-    what = what.replace("%1", juce::String(s.number));
+    what = what.replace("%1", s.kind == MidiSourceKind::ProgramChange ? juce::String(programText(s.number))
+                                                                      : juce::String(s.number));
     if (s.kind != MidiSourceKind::SysEx) what << " " << TRANS("ch %1").replace("%1", juce::String(s.channel));
     out.add(TRANS("Sends %1").replace("%1", what));
   }

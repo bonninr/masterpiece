@@ -1245,7 +1245,6 @@ countries: cz
 "Lamps and messages sent: %1" = "Odesílané kontrolky a zprávy: %1"
 "Events of other kinds, left out: %1" = "Události jiných druhů, vynechány: %1"
 "Objects of another organ, left out: %1" = "Objekty jiného nástroje, vynechány: %1"
-"Computer key shortcuts, left out: %1" = "Klávesové zkratky počítače, vynechány: %1"
 "Devices not connected now, taken as any console: %1" = "Zařízení, která nyní nejsou připojena, brána jako libovolný hrací stůl: %1"
 "Learn on and off" = "Naučit zapnutí a vypnutí"
 "Move it on..." = "Zapněte jej..."

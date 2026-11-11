@@ -14089,13 +14089,16 @@ public:
         "[Stop099]\r\nMIDIEventType001=Note\r\nMIDIKey001=1\r\nNumberOfMIDIEvents=1\r\n";
     const mp::GrandOrgueMidiReport r = mp::importGrandOrgueMidi(cmb, m, map);
     MP_CHECK(r.ok && r.organName == "Test", "a GrandOrgue settings file, saved for Test");
-    MP_CHECK(r.bindings == 3 && r.keyboards == 1 && r.sends == 1,
-             "three bindings, one manual and one send taken: " + std::to_string(r.bindings) + " " +
+    MP_CHECK(r.bindings == 5 && r.keyboards == 1 && r.sends == 1,
+             "five events, one manual and one send taken: " + std::to_string(r.bindings) + " " +
                  std::to_string(r.keyboards) + " " + std::to_string(r.sends));
-    MP_CHECK(r.leftOut == 2, "the reversed note and the one-value controller are left out: " +
+    MP_CHECK(r.leftOut == 0, "the reversed note and the one-value controller are taken too: " +
                                  std::to_string(r.leftOut));
     MP_CHECK(r.otherObjects == 1, "a section this organ does not have is counted");
-    MP_CHECK(r.shortcuts == 1, "a computer key shortcut is counted");
+    MP_CHECK(r.shortcuts == 1, "a computer key shortcut is taken");
+    const auto keys = map.shortcutsForKey("A");
+    MP_CHECK(keys.size() == 1 && keys[0].targetKind == mp::MidiTargetKind::Switch && keys[0].targetId == principal,
+             "key A works the Principal");
     MP_CHECK(r.anyDevice == 2, "two devices not known here are taken as any console");
 
     // The stop follows note 90 on channel 2 from the Arduino, held as GrandOrgue holds it.
@@ -14136,6 +14139,166 @@ public:
   }
 };
 static GrandOrgueMidiImportTest g_grandOrgueMidiImport;
+
+// A console that GrandOrgue drives by program changes in banks and by NRPN,
+// with GrandOrgue's own panel learned too (#1012): every event comes over.
+class GrandOrgueMidiPanelImportTest final : public mp::test::Test {
+public:
+  GrandOrgueMidiPanelImportTest() : Test("functional.midi.grandorgue-import-panel", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "[Organ]\nChurchName=Test\nHasPedals=N\nNumberOfManuals=1\nNumberOfEnclosures=1\n"
+        "NumberOfWindchestGroups=1\nNumberOfRanks=1\n"
+        "[Enclosure001]\nName=Swell\n"
+        "[WindchestGroup001]\nName=Main\n"
+        "[Rank001]\nName=Principal 8\nFirstMidiNoteNumber=36\nNumberOfLogicalPipes=1\n"
+        "WindchestGroup=1\nPipe001=P8.wav\n"
+        "[Manual001]\nName=Great\nNumberOfLogicalKeys=1\nFirstAccessibleKeyMIDINoteNumber=36\n"
+        "NumberOfAccessibleKeys=1\nNumberOfStops=3\nStop001=1\nStop002=2\nStop003=3\n"
+        "[Stop001]\nName=Principal 8\nNumberOfRanks=1\nRank001=1\n"
+        "FirstAccessiblePipeLogicalKeyNumber=1\nNumberOfAccessiblePipes=1\n"
+        "[Stop002]\nName=Octave 4\nNumberOfRanks=1\nRank001=1\n"
+        "FirstAccessiblePipeLogicalKeyNumber=1\nNumberOfAccessiblePipes=1\n"
+        "[Stop003]\nName=Mixture\nNumberOfRanks=1\nRank001=1\n"
+        "FirstAccessiblePipeLogicalKeyNumber=1\nNumberOfAccessiblePipes=1\n";
+    const mp::GrandOrgueImportReport rep = mp::convertGrandOrgueText(organ);
+    MP_CHECK(rep.ok, "conversion failed: " + rep.error);
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(rep.xml, "test.organ", o, m, d), "converted definition must load");
+    const mp::Id principal = m.grandOrgueObjects.at("stop001").id;
+    const mp::Id octave = m.grandOrgueObjects.at("stop002").id;
+    const mp::Id mixture = m.grandOrgueObjects.at("stop003").id;
+    const mp::Id swell = m.grandOrgueObjects.at("enclosure001").id;
+
+    // Program 21 in bank 8:0 is GrandOrgue's 131093.
+    const std::string cmb =
+        "[Stop001]\nMIDIChannel001=1\nMIDIChannel002=1\nMIDIEventType001=ProgramChange\n"
+        "MIDIEventType002=ProgramRange\nMIDIKey001=131093\nMIDILowerLimit002=131095\n"
+        "MIDIUpperLimit002=131094\nNumberOfMIDIEvents=2\n"
+        "MIDISendChannel001=1\nMIDISendEventType001=ProgramRange\nMIDISendLowValue001=131095\n"
+        "MIDISendHighValue001=131094\nNumberOfMIDISendEvents=1\n"
+        "[Stop002]\nMIDIChannel001=1\nMIDIChannel002=1\nMIDIEventType001=NRPNOn\nMIDIEventType002=NRPN\n"
+        "MIDIKey001=30\nMIDIKey002=31\nMIDILowerLimit002=0\nMIDIUpperLimit001=127\nMIDIUpperLimit002=127\n"
+        "NumberOfMIDIEvents=2\nMIDISendChannel001=1\nMIDISendEventType001=NRPN\nMIDISendKey001=31\n"
+        "MIDISendLowValue001=0\nMIDISendHighValue001=127\nNumberOfMIDISendEvents=1\n"
+        "[Stop003]\nMIDIChannel001=2\nMIDIEventType001=ControlChangeOnOff\nMIDIKey001=20\n"
+        "MIDILowerLimit001=0\nMIDIUpperLimit001=127\nNumberOfMIDIEvents=1\n"
+        "[Enclosure001]\nMIDIChannel001=1\nMIDIEventType001=NRPN\nMIDIKey001=25\nMIDILowerLimit001=0\n"
+        "MIDIUpperLimit001=127\nNumberOfMIDIEvents=1\nMIDISendChannel001=1\nMIDISendEventType001=NRPN\n"
+        "MIDISendKey001=25\nNumberOfMIDISendEvents=1\n"
+        "[SetterGC]\nMIDIChannel001=1\nMIDIEventType001=ProgramChange\nMIDIKey001=5\nNumberOfMIDIEvents=1\n"
+        "[MetronomeBPMP10]\nMIDIChannel001=1\nMIDIEventType001=NRPNOn\nMIDIKey001=40\n"
+        "MIDIUpperLimit001=127\nNumberOfMIDIEvents=1\n"
+        "[SetterMasterVolume]\nMIDIChannel001=1\nMIDIEventType001=ControlChange\nMIDIKey001=7\n"
+        "MIDILowerLimit001=0\nMIDIUpperLimit001=127\nNumberOfMIDIEvents=1\n"
+        "[SetterOn]\nMIDIChannel001=1\nMIDIEventType001=ProgramChange\nMIDIKey001=9\nNumberOfMIDIEvents=1\n"
+        "MIDISendChannel001=1\nMIDISendEventType001=ProgramRange\nMIDISendLowValue001=10\n"
+        "MIDISendHighValue001=11\nNumberOfMIDISendEvents=1\n"
+        "[MetronomeBPM]\nMIDISendEventType001=HWLCD\nMIDISendKey001=3\nMIDISendLowValue001=2\n"
+        "NumberOfMIDISendEvents=1\n"
+        "[SetterCurrent]\nShortcutKey=40\n"
+        "[Organ]\nChurchName=Test\n";
+    mp::MidiMap map;
+    const mp::GrandOrgueMidiReport r = mp::importGrandOrgueMidi(cmb, m, map);
+    MP_CHECK(r.ok, "a GrandOrgue settings file");
+    MP_CHECK(r.leftOut == 0 && r.otherObjects == 0,
+             "nothing left out: " + std::to_string(r.leftOut) + " " + std::to_string(r.otherObjects));
+    MP_CHECK(r.bindings == 9, "nine events taken: " + std::to_string(r.bindings));
+    MP_CHECK(r.shortcuts == 1, "one key taken");
+
+    using K = mp::MidiSourceKind;
+    const int bank8 = mp::bankedProgram(8, 0, 0);
+    // The program change toggles the Principal; the range's upper program
+    // draws it, its lower one cancels it.
+    const mp::MidiAction pc = map.actionFor({K::ProgramChange, 1, bank8 + 20, 0}, 127);
+    MP_CHECK(pc.valid() && pc.targetId == principal && pc.toggled, "program 21 in bank 8 toggles the Principal");
+    MP_CHECK(!map.actionFor({K::ProgramChange, 1, 20, 0}, 127).valid(), "program 21 in bank 0 is another button");
+    const mp::MidiAction draw = map.actionFor({K::ProgramChange, 1, bank8 + 21, 0}, 127);
+    MP_CHECK(draw.valid() && draw.targetId == principal && draw.engage && !draw.toggled, "program 22 draws it");
+    const mp::MidiAction cancel = map.actionFor({K::ProgramChange, 1, bank8 + 22, 0}, 127);
+    MP_CHECK(cancel.valid() && cancel.targetId == principal && !cancel.engage, "program 23 cancels it");
+    const auto principalSends = map.sendsFor(mp::MidiTargetKind::Switch, principal);
+    MP_CHECK(principalSends.size() == 1, "the Principal's lamp is taken");
+    if (principalSends.size() == 1) {
+      const std::vector<uint8_t> lit{0xB0, 0, 8, 0xB0, 32, 0, 0xC0, 21};
+      const std::vector<uint8_t> dark{0xB0, 0, 8, 0xB0, 32, 0, 0xC0, 22};
+      MP_CHECK(mp::MidiMap::sendBytes(principalSends[0], 1) == lit, "lit: bank 8:0, program 22");
+      MP_CHECK(mp::MidiMap::sendBytes(principalSends[0], 0) == dark, "dark: bank 8:0, program 23");
+    }
+
+    // NRPN 30 at 127 flips the Octave; NRPN 31 holds it.
+    const mp::MidiAction flip = map.actionFor({K::Nrpn, 1, 30, 0}, 127);
+    MP_CHECK(flip.valid() && flip.targetId == octave && flip.toggled, "NRPN 30 toggles the Octave");
+    const mp::MidiAction held = map.actionFor({K::Nrpn, 1, 31, 0}, 127);
+    MP_CHECK(held.valid() && held.targetId == octave && held.engage, "NRPN 31 at 127 draws it");
+    MP_CHECK(!map.actionFor({K::Nrpn, 1, 31, 0}, 0).engage, "NRPN 31 at 0 cancels it");
+    const auto octaveSends = map.sendsFor(mp::MidiTargetKind::Switch, octave);
+    MP_CHECK(octaveSends.size() == 1 && octaveSends[0].parameter == mp::MidiParameter::NonRegistered &&
+                 octaveSends[0].number == 31,
+             "the Octave's lamp is NRPN 31");
+
+    // Controller 20 at 127 and at 0 each flip the Mixture.
+    const mp::MidiAction down = map.actionFor({K::ControlChange, 2, 20, 0}, 127);
+    const mp::MidiAction up = map.actionFor({K::ControlChange, 2, 20, 0}, 0);
+    MP_CHECK(down.valid() && down.targetId == mixture && down.engage, "the press flips the Mixture on");
+    MP_CHECK(up.valid() && up.targetId == mixture && !up.engage, "the release flips it off");
+    MP_CHECK(!map.actionFor({K::ControlChange, 2, 20, 0}, 64).valid(), "a value between does nothing");
+
+    // The swell on NRPN 25.
+    const mp::MidiAction shoe = map.actionFor({K::Nrpn, 1, 25, 0}, 64);
+    MP_CHECK(shoe.valid() && shoe.targetId == swell && shoe.value == 64, "NRPN 25 moves the swell");
+
+    // GrandOrgue's panel.
+    const mp::MidiAction gc = map.actionFor({K::ProgramChange, 1, 4, 0}, 127);
+    MP_CHECK(gc.valid() && gc.kind == mp::MidiTargetKind::PlayerGeneralCancel, "program 5 is General Cancel");
+    const mp::MidiAction tempo = map.actionFor({K::Nrpn, 1, 40, 0}, 127);
+    MP_CHECK(tempo.valid() && tempo.kind == mp::MidiTargetKind::MetronomeTempo && tempo.targetId == 10,
+             "NRPN 40 is the metronome's +10");
+    const mp::MidiAction volume = map.actionFor({K::ControlChange, 1, 7, 0}, 100);
+    MP_CHECK(volume.valid() && volume.kind == mp::MidiTargetKind::MasterVolume && volume.value == 100,
+             "controller 7 is the master volume");
+    MP_CHECK(r.readyLampLit == "C0 0A" && r.readyLampDark == "C0 09",
+             "the On lamp becomes the ready lamp: " + r.readyLampLit + " / " + r.readyLampDark);
+    MP_CHECK(!map.actionFor({K::ProgramChange, 1, 8, 0}, 127).valid(), "the On lamp's receive works nothing");
+    const auto display = map.sendsFor(mp::MidiTargetKind::ConsoleDisplay, mp::kTextMetronomeTempo);
+    MP_CHECK(display.size() == 1 && display[0].display == mp::MidiDisplay::Lcd && display[0].number == 3 &&
+                 display[0].low == 2,
+             "the tempo display is LCD 3 in colour 2");
+    const auto keys = map.shortcutsForKey("cursor down");
+    MP_CHECK(keys.size() == 1 && keys[0].targetKind == mp::MidiTargetKind::StepperCurrent,
+             "the down arrow recalls the current frame");
+
+    // All of it saved and read back.
+    mp::MidiMap again;
+    MP_CHECK(again.fromText(map.toText()), "the map reads back");
+    MP_CHECK(again.actionFor({K::ProgramChange, 1, bank8 + 21, 0}, 127).engage, "the banked program survives");
+    MP_CHECK(again.actionFor({K::ControlChange, 2, 20, 0}, 127).valid() &&
+                 again.actionFor({K::ControlChange, 2, 20, 0}, 0).valid(),
+             "the press-and-release toggle survives");
+    MP_CHECK(again.shortcutsForKey("cursor down").size() == 1, "the key survives");
+    MP_CHECK(again.sendsFor(mp::MidiTargetKind::ConsoleDisplay, mp::kTextMetronomeTempo).size() == 1,
+             "the display survives");
+  }
+};
+static GrandOrgueMidiPanelImportTest g_grandOrgueMidiPanelImport;
+
+// GrandOrgue's key codes in the program's words.
+class GrandOrgueKeyNamesTest final : public mp::test::Test {
+public:
+  GrandOrgueKeyNamesTest() : Test("functional.midi.grandorgue-key-names", Category::Functional) {}
+  void run() override {
+    MP_CHECK(mp::grandOrgueKeyName(37) == "cursor left", "37 is the left arrow");
+    MP_CHECK(mp::grandOrgueKeyName(65) == "A", "65 is A");
+    MP_CHECK(mp::grandOrgueKeyName(116) == "F5", "116 is F5");
+    MP_CHECK(mp::grandOrgueKeyName(98) == "numpad 2", "98 is numpad 2");
+    MP_CHECK(mp::grandOrgueKeyName(32) == "spacebar", "32 is the space bar");
+    MP_CHECK(mp::grandOrgueKeyName(17).empty(), "a modifier alone is no key");
+  }
+};
+static GrandOrgueKeyNamesTest g_grandOrgueKeyNames;
 
 // A GrandOrgue set has no perspectives; its windchest groups stand in for
 // them in the stop list, by their own names (#136).
@@ -16722,9 +16885,11 @@ public:
     proc.pushMidi(1, juce::MidiMessage::controllerEvent(1, 32, 0));
     proc.pushMidi(1, juce::MidiMessage::programChange(1, 5));
     block();
+    // Heard with its bank (#1012): bank 1:0, program 5.
     MP_CHECK(proc.takeHeardMidi(heard, value) && heard.kind == mp::MidiSourceKind::ProgramChange &&
-                 heard.number == 5,
-             "the program change is heard, past the Bank Select ahead of it");
+                 heard.number == mp::bankedProgram(1, 0, 5),
+             "the program change is heard with its bank, past the Bank Select ahead of it, got " +
+                 std::to_string(heard.number));
 
     proc.beginMidiListen();
     proc.pushMidi(1, juce::MidiMessage::noteOff(1, 60));

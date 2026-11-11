@@ -2382,6 +2382,10 @@ void MidiPanel::importFromGrandOrgue() {
           lines.add(TRANS("This file holds no MIDI settings from GrandOrgue."));
         } else {
           self->proc_.saveMidiMap();
+          // GrandOrgue's On lamp lights the console's ready lamp here.
+          const bool lamp = (!r.readyLampLit.empty() || !r.readyLampDark.empty()) &&
+                            self->proc_.setReadyLampMessages(juce::String(r.readyLampLit),
+                                                             juce::String(r.readyLampDark));
           if (!r.organName.empty())
             lines.add(TRANS("Saved by GrandOrgue for %1.").replace("%1", juce::String::fromUTF8(r.organName.c_str())));
           lines.add(TRANS("Stops, pistons and swells: %1 events").replace("%1", juce::String(r.bindings)));
@@ -2392,7 +2396,8 @@ void MidiPanel::importFromGrandOrgue() {
           if (r.otherObjects > 0)
             lines.add(TRANS("Objects of another organ, left out: %1").replace("%1", juce::String(r.otherObjects)));
           if (r.shortcuts > 0)
-            lines.add(TRANS("Computer key shortcuts, left out: %1").replace("%1", juce::String(r.shortcuts)));
+            lines.add(TRANS("Computer key shortcuts: %1").replace("%1", juce::String(r.shortcuts)));
+          if (lamp) lines.add(TRANS("Ready lamp: GrandOrgue's On lamp"));
           if (r.anyDevice > 0)
             lines.add(TRANS("Devices not connected now, taken as any console: %1").replace("%1", juce::String(r.anyDevice)));
         }

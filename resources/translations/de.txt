@@ -1245,7 +1245,6 @@ countries: de at ch li lu
 "Lamps and messages sent: %1" = "Gesendete Lampen und Meldungen: %1"
 "Events of other kinds, left out: %1" = "Ereignisse anderer Art, ausgelassen: %1"
 "Objects of another organ, left out: %1" = "Objekte einer anderen Orgel, ausgelassen: %1"
-"Computer key shortcuts, left out: %1" = "Tastenkürzel des Computers, ausgelassen: %1"
 "Devices not connected now, taken as any console: %1" = "Derzeit nicht verbundene Geräte, als beliebiger Spieltisch übernommen: %1"
 "Learn on and off" = "Ein und Aus lernen"
 "Move it on..." = "Jetzt einschalten..."

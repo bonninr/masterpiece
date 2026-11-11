@@ -1,0 +1,3 @@
+"Press and release toggle" = "Przełączanie przy naciśnięciu i zwolnieniu"
+"Computer key shortcuts: %1" = "Skróty klawiszowe komputera: %1"
+"Ready lamp: GrandOrgue's On lamp" = "Lampka gotowości: lampka On w GrandOrgue"

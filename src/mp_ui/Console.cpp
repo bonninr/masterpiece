@@ -1418,7 +1418,8 @@ void showSwitchMidiMenu(MasterpieceProcessor& proc, Id switchId,
         case MidiTrigger::Momentary: what << "  " << TRANS("(held)"); break;
         case MidiTrigger::EngageOnly: what << "  " << TRANS("(draws)"); break;
         case MidiTrigger::DisengageOnly: what << "  " << TRANS("(cancels)"); break;
-        case MidiTrigger::Toggle: what << "  " << TRANS("(toggles)"); break;
+        case MidiTrigger::Toggle:
+        case MidiTrigger::ToggleBoth: what << "  " << TRANS("(toggles)"); break;
       }
       menu.addSectionHeader(what);
     }
@@ -1608,7 +1609,7 @@ void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
       juce::String what =
           programs && b->source.number == kProgramRange
               ? TRANS("Programs %1 to %2").replace("%1", juce::String(lo + 1)).replace("%2", juce::String(hi + 1))
-          : programs                             ? TRANS("Program %1").replace("%1", juce::String(b->source.number + 1))
+          : programs                             ? TRANS("Program %1").replace("%1", juce::String(programText(b->source.number)))
           : b->source.kind != MidiSourceKind::Note ? TRANS("CC %1").replace("%1", juce::String(b->source.number))
           : b->source.number == kAnyNote           ? juce::String(TRANS("Velocity of any note"))
                                                    : TRANS("Velocity of note %1").replace("%1", juce::String(b->source.number));

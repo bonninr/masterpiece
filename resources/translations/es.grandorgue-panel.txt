@@ -1,0 +1,3 @@
+"Press and release toggle" = "Alternar al pulsar y al soltar"
+"Computer key shortcuts: %1" = "Atajos de teclado del ordenador: %1"
+"Ready lamp: GrandOrgue's On lamp" = "Lámpara de listo: la lámpara On de GrandOrgue"

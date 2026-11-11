@@ -124,6 +124,33 @@ enum class MidiTargetKind {
   // stripTarget(strip, the id its level target has).
   StripMute,
   StripSolo,
+  // GrandOrgue's own panel, as a console learned for it sends it (#1012):
+  // the master volume, driven like a shoe; the metronome on and off, its
+  // tempo a step (id = beats per minute, +1, -1, +10 or -10) and its beats in
+  // a bar a step (id = +1 or -1); the organ's pitch a step (id = cents);
+  // every key let go.
+  MasterVolume,
+  MetronomeOn,
+  MetronomeTempo,
+  MetronomeBeats,
+  PitchStep,
+  Panic,
+  // A console display that shows the program's state as text, sent again
+  // whenever the text changes: id = a ConsoleText.
+  ConsoleDisplay,
+  // The sequencer's current frame recalled again, GrandOrgue's Current.
+  StepperCurrent,
+};
+
+// What a ConsoleDisplay shows.
+enum ConsoleText : int {
+  kTextOrganName = 1,
+  kTextTemperament = 2,
+  kTextPitch = 3,
+  kTextTranspose = 4,
+  kTextFrame = 5,
+  kTextMetronomeTempo = 6,
+  kTextMetronomeBeats = 7,
 };
 
 // A mute or solo target's id: the strip's kind (0 rank, 1 division, 2 group,
@@ -154,6 +181,8 @@ inline int routedChannel(Id target) { return static_cast<int>(target % 32); }
 constexpr Id kSetterTarget = -1;
 // The same for the Pedal combinations coupler's latch.
 constexpr Id kPedalCouplerTarget = -2;
+// And the metronome's on button (#1012).
+constexpr Id kMetronomeTarget = -3;
 
 // PlayerDivisional's id, both ways.
 inline Id playerDivisionalTarget(Id divisionId, int piston) {
@@ -188,6 +217,20 @@ constexpr int kAnyNote = -1;
 // (#925): the programs from the binding's low to its high value move a shoe
 // or a crescendo across its travel, one program a step.
 constexpr int kProgramRange = -1;
+
+// A program change after a bank select (#1012): the bank's two controllers
+// above the program, as GrandOrgue counts them, msb << 14 | lsb << 7 |
+// program. Bank 0 is the program alone, so a console that sends no bank, or
+// bank 0, gives the numbers it always has.
+inline int bankedProgram(int msb, int lsb, int program) {
+  return (msb & 127) << 14 | (lsb & 127) << 7 | (program & 127);
+}
+inline int programPart(int number) { return number & 127; }
+inline int bankMsbPart(int number) { return (number >> 14) & 127; }
+inline int bankLsbPart(int number) { return (number >> 7) & 127; }
+// "21", or "21 bank 8:0" for a program in a bank: counted from 1, as a
+// console's manual counts them.
+std::string programText(int number);
 
 struct MidiSource {
   MidiSourceKind kind = MidiSourceKind::None;
@@ -228,6 +271,10 @@ enum class MidiTrigger {
   Momentary,       // held is on, released is off
   EngageOnly,      // this message only ever draws it
   DisengageOnly,   // and this one only ever pushes it back
+  // Its on value flips it, and so does its off value (#1012): GrandOrgue's
+  // on-off events, for a tab that sends one message going down and another
+  // coming up, each a change.
+  ToggleBoth,
 };
 
 struct MidiBinding {
@@ -471,6 +518,7 @@ public:
       case MidiTargetKind::StepperForward10:
       case MidiTargetKind::StepperBack10:
       case MidiTargetKind::StepperDigit:
+      case MidiTargetKind::StepperCurrent:
       case MidiTargetKind::ConsoleNextPage:
       case MidiTargetKind::ConsolePrevPage:
       case MidiTargetKind::ConsoleNextLayout:
@@ -501,6 +549,13 @@ public:
       case MidiTargetKind::VoicingTuneDown:
       case MidiTargetKind::VoicingTuneUp:
       case MidiTargetKind::ReverbWet:
+      case MidiTargetKind::MasterVolume:
+      case MidiTargetKind::MetronomeOn:
+      case MidiTargetKind::MetronomeTempo:
+      case MidiTargetKind::MetronomeBeats:
+      case MidiTargetKind::PitchStep:
+      case MidiTargetKind::Panic:
+      case MidiTargetKind::ConsoleDisplay:
         return true;
       default:
         return false;
@@ -511,7 +566,7 @@ public:
   static bool isContinuousTarget(MidiTargetKind k) {
     return k == MidiTargetKind::ContinuousControl || k == MidiTargetKind::RankLevel ||
            k == MidiTargetKind::DivisionLevel || k == MidiTargetKind::PairLevel || k == MidiTargetKind::GroupLevel ||
-           k == MidiTargetKind::ReverbWet;
+           k == MidiTargetKind::ReverbWet || k == MidiTargetKind::MasterVolume;
   }
   // A raw controller value through a binding's window and sense, 0..127.
   static int controlValue(const MidiBinding& b, int raw) {
@@ -523,9 +578,15 @@ public:
   // it is, and that program is free for a piston.
   static int controlValue(const MidiBinding& b, const MidiSource& s, int raw) {
     if (b.source.kind == MidiSourceKind::ProgramChange && b.source.number == kProgramRange) {
-      if (s.number < std::min(b.lowValue, b.highValue) || s.number > std::max(b.lowValue, b.highValue))
-        return -1;
-      raw = s.number;
+      // A range of plain programs takes a program in any bank by its number,
+      // as it did before banks were read.
+      const int n = std::max(b.lowValue, b.highValue) <= 127 ? programPart(s.number) : s.number;
+      if (n < std::min(b.lowValue, b.highValue) || n > std::max(b.lowValue, b.highValue)) return -1;
+      // Across the range, whatever its width: a range of banked programs is
+      // wider than a controller's 0..127.
+      const int lo = std::min(b.lowValue, b.highValue), hi = std::max(b.lowValue, b.highValue);
+      const int v = hi > lo ? ((n - lo) * 127) / (hi - lo) : n;
+      return b.invert ? 127 - v : v;
     }
     return controlValue(b, raw);
   }

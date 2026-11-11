@@ -1,0 +1,3 @@
+"Press and release toggle" = "Bascule à l'appui et au relâchement"
+"Computer key shortcuts: %1" = "Raccourcis clavier de l'ordinateur : %1"
+"Ready lamp: GrandOrgue's On lamp" = "Voyant prêt : le voyant On de GrandOrgue"

@@ -1245,7 +1245,6 @@ countries: it ch sm va
 "Lamps and messages sent: %1" = "Spie e messaggi inviati: %1"
 "Events of other kinds, left out: %1" = "Eventi di altri tipi, tralasciati: %1"
 "Objects of another organ, left out: %1" = "Oggetti di un altro organo, tralasciati: %1"
-"Computer key shortcuts, left out: %1" = "Scorciatoie da tastiera del computer, tralasciate: %1"
 "Devices not connected now, taken as any console: %1" = "Dispositivi non collegati ora, presi come qualsiasi consolle: %1"
 "Learn on and off" = "Apprendi acceso e spento"
 "Move it on..." = "Attivatelo..."

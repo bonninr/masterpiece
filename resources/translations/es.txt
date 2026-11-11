@@ -1245,7 +1245,6 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Lamps and messages sent: %1" = "Lámparas y mensajes enviados: %1"
 "Events of other kinds, left out: %1" = "Eventos de otros tipos, omitidos: %1"
 "Objects of another organ, left out: %1" = "Objetos de otro órgano, omitidos: %1"
-"Computer key shortcuts, left out: %1" = "Atajos de teclado del ordenador, omitidos: %1"
 "Devices not connected now, taken as any console: %1" = "Dispositivos no conectados ahora, tomados como cualquier consola: %1"
 "Learn on and off" = "Aprender encendido y apagado"
 "Move it on..." = "Actívelo..."
