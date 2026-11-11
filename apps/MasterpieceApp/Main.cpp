@@ -35,6 +35,11 @@
 #include "../../src/mp_api/SysexTransport.h"
 #endif
 
+#if JUCE_WINDOWS
+// user32, which JUCE links: the main window made the active one at start.
+extern "C" __declspec(dllimport) int __stdcall SetForegroundWindow(void* hwnd);
+#endif
+
 namespace {
 // True when the open device can actually produce sound. A saved setup can
 // name hardware that is gone — or select a type with no output at all while
@@ -373,6 +378,13 @@ public:
     mp::ui::restoreLinkedDocuments();
     win_ = std::make_unique<DocWindow>(*proc_, *devices_);
     win_->setVisible(true);
+    // Shown in front of the other programs, with the keyboard focus (#1030):
+    // on Windows a window made visible stays behind whatever was active, and
+    // bringing it to the top does not make it the active one.
+    win_->toFront(true);
+#if JUCE_WINDOWS
+    if (void* hwnd = win_->getWindowHandle()) SetForegroundWindow(hwnd);
+#endif
     // A phone or tablet plays full screen, with the system's bars hidden
     // until a swipe from the edge brings them back. Not on iOS: kiosk mode
     // sizes the window to JUCE's display, which stays upright on a turned
