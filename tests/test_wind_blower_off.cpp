@@ -15,6 +15,7 @@ namespace {
 using mp::test::Category;
 
 constexpr mp::Id kBlowerSwitch = 99;
+constexpr mp::Id kBlowerControl = 8999;
 
 // A blower at four inches feeding a chest through a valve its motor switch
 // opens, the chest leaking to the open air.
@@ -118,6 +119,69 @@ public:
     again.settleWith(on);
     MP_CHECK(again.nominalFor(3) == working && again.pressureFor(3) == working,
              "blower on at load: the same figures, bit for bit");
+
+    // The blower's valve on a continuous control, as Alessandria has it: the
+    // same working pressure, and the chest follows the control.
+    mp::OrganModel byControl = organ;
+    byControl.windLinks[0].valveSwitchId = 0;
+    byControl.windLinks[0].valveControlTypeCode = 3;
+    byControl.windLinks[0].valveControlId = kBlowerControl;
+    mp::ContinuousControl blowerControl;
+    blowerControl.controlId = kBlowerControl;
+    byControl.continuousControls[kBlowerControl] = blowerControl;
+    mp::WindSolver valve;
+    valve.reset(byControl);
+    valve.settleWith(off);
+    MP_CHECK(valve.controlValves().size() == 1, "the control valve is found");
+    MP_CHECK(std::abs(valve.nominalFor(3) - working) < 1.0e-6 * working,
+             "settled with the control valve open: " + num(valve.nominalFor(3)));
+    valve.setControlValve(0, 0);
+    run(valve, off, 60.0);
+    std::printf("    control valve shut: chest %.4f in, amp %.4f\n", valve.pressureFor(3), valve.modFor(3).ampMul);
+    MP_CHECK(valve.modFor(3).ampMul < 0.05, "the valve shut drains the chest: amp " + num(valve.modFor(3).ampMul));
+    valve.setControlValve(0, 127);
+    run(valve, off, 20.0);
+    std::printf("    control valve open: chest %.4f in, amp %.4f\n", valve.pressureFor(3), valve.modFor(3).ampMul);
+    MP_CHECK(std::abs(valve.modFor(3).ampMul - 1.0) < 0.01,
+             "the valve open fills it: amp " + num(valve.modFor(3).ampMul));
+
+    // Loaded with the control valve shut, the blower's control not run up: a
+    // chest with a way out to the open air loads empty, at the running
+    // blower's working pressure ...
+    mp::WindSolver shutAtLoad;
+    shutAtLoad.reset(byControl);
+    shutAtLoad.setControlValve(0, 0);
+    shutAtLoad.settleWith(off);
+    run(shutAtLoad, off, dt);
+    std::printf("    control valve shut at load: chest %.4f of %.4f in, amp %.4f\n", shutAtLoad.pressureFor(3),
+                shutAtLoad.nominalFor(3), shutAtLoad.modFor(3).ampMul);
+    MP_CHECK(std::abs(shutAtLoad.nominalFor(3) - working) < 1.0e-6 * working,
+             "shut at load: the working pressure is the running blower's: " + num(shutAtLoad.nominalFor(3)));
+    MP_CHECK(shutAtLoad.modFor(3).ampMul == 0.0, "shut at load, with a leak: silent");
+
+    // ... and a chest the shut valve seals keeps its wind.
+    mp::OrganModel sealed = byControl;
+    sealed.windLinks.pop_back();  // no leak
+    mp::WindSolver sealedOpen, sealedShut;
+    sealedOpen.reset(sealed);
+    sealedOpen.settleWith(off);
+    sealedShut.reset(sealed);
+    sealedShut.setControlValve(0, 0);
+    sealedShut.settleWith(off);
+    std::printf("    sealed chest: %.4f in with the valve open at load, %.4f in shut\n", sealedOpen.pressureFor(3),
+                sealedShut.pressureFor(3));
+    MP_CHECK(sealedShut.pressureFor(3) == sealedOpen.pressureFor(3) &&
+                 sealedShut.nominalFor(3) == sealedOpen.nominalFor(3),
+             "a sealed chest keeps its wind, bit for bit");
+    MP_CHECK(sealedShut.pressureFor(3) > 1.0, "the sealed chest has wind: " + num(sealedShut.pressureFor(3)));
+
+    // A reservoir's own regulator is no blower valve: its control is the
+    // board's height, solved only with the boards on.
+    mp::OrganModel regulated = byControl;
+    regulated.wind[3].bellowsExtensionOutputControlId = kBlowerControl;
+    mp::WindSolver board;
+    board.reset(regulated);
+    MP_CHECK(board.controlValves().empty(), "a regulator's valve is left to the board");
   }
 };
 static WindBlowerOffTest g_windBlowerOff;

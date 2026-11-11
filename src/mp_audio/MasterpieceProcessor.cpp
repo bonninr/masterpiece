@@ -447,6 +447,12 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 
   wind_.setBellowsBoard(graph_.engineSwitch.enableBellowsBoard);
   wind_.reset(model_);
+  // With the valves where the organ has them, as the load settled it: a reset
+  // alone settles with every valve open, which filled the chests of an organ
+  // whose blower is off (#1028).
+  for (size_t i = 0; i < wind_.controlValves().size(); ++i)
+    wind_.setControlValve(i, controls_.value(wind_.controlValves()[i].controlId));
+  wind_.settleWith(engagedSwitches_);
   convolver_.prepare(spec);
   voicingEq_.configure(voicingEqSettings_, sampleRate);
   voicingEq_.reset();
@@ -842,6 +848,10 @@ void MasterpieceProcessor::advanceWind(int numFrames) {
 
   wind_.clearDemand();
   wind_.addDemandDirect(windOrder_, windDemand_);
+  // The valves the organ opens with a continuous control, such as a blower's
+  // own (#1028).
+  for (size_t i = 0; i < wind_.controlValves().size(); ++i)
+    wind_.setControlValve(i, controls_.value(wind_.controlValves()[i].controlId));
   wind_.advance(static_cast<double>(numFrames) / sampleRate_,
                 graph_.engineSwitch, engagedSwitches_);
 
@@ -8711,6 +8721,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   // measure an organ that is switched off.
   phases.mark("model: stages");
   loadProgress_.beginPhase(LoadProgress::Phase::WiringConsole);
+  for (size_t i = 0; i < wind_.controlValves().size(); ++i)
+    wind_.setControlValve(i, controls_.value(wind_.controlValves()[i].controlId));
   wind_.settleWith(engagedSwitches_);
   if (wind_.active())
     juce::Logger::writeToLog(
