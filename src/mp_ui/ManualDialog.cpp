@@ -184,8 +184,13 @@ ManualDialog::ManualDialog(MasterpieceProcessor& p, Id keyboardId)
     // Learning a manual is two presses: the ends of the range. Anything in
     // between follows, and the transpose is worked out from where the organ's
     // own compass starts.
-    // The selected row is the one filled.
-    proc_.beginKeyboardLearn(keyboardId_, selected());
+    // The selected row is the one filled. Pressed again while its learn
+    // waits, the button ends it.
+    if (proc_.keyboardLearning() == keyboardId_)
+      proc_.cancelKeyboardLearn();
+    else
+      proc_.beginKeyboardLearn(keyboardId_, selected());
+    timerCallback();
   };
 
   addAndMakeVisible(deviceLabel_);
@@ -256,7 +261,12 @@ ManualDialog::ManualDialog(MasterpieceProcessor& p, Id keyboardId)
   startTimerHz(4);
 }
 
-ManualDialog::~ManualDialog() { stopTimer(); }
+ManualDialog::~ManualDialog() {
+  stopTimer();
+  // The learn is this window's: closed while it waits, it ends. Left waiting,
+  // the next two keys played anywhere became this manual's key range.
+  if (proc_.keyboardLearning() == keyboardId_) proc_.cancelKeyboardLearn();
+}
 
 int ManualDialog::selected() const { return list_.getSelectedRow(); }
 
