@@ -137,9 +137,10 @@ private:
 // player's as they typed it.
 juce::String voicingEqPresetName(const VoicingEqPreset& p);
 
-// The organ's voicing EQ: ten octave bands and an output gain, off by
-// default, applied as the sliders move and saved with the organ. Above them,
-// the presets: the program's ten and the player's own.
+// The organ's voicing EQ: ten bands and an output gain, off by default,
+// applied as the sliders move and saved with the organ. Over each band's fader
+// two small knobs, its frequency and its width. Above them, the presets: the
+// program's ten and the player's own.
 class VoicingEqPanel : public juce::Component, private juce::Timer {
 public:
   explicit VoicingEqPanel(MasterpieceProcessor& p);
@@ -166,7 +167,10 @@ private:
   juce::TextButton savePreset_{TRANS("Save as preset...")}, updatePreset_{TRANS("Update")},
       renamePreset_{TRANS("Rename...")}, deletePreset_{TRANS("Delete")}, midiPreset_{TRANS("MIDI...")};
   std::array<juce::Slider, VoicingEqSettings::kBands> bands_;
-  std::array<juce::Label, VoicingEqSettings::kBands> bandNames_;
+  // Each band's frequency and width, as small knobs over its fader.
+  std::array<juce::Slider, VoicingEqSettings::kBands> hz_, q_;
+  // The EQ the sliders and knobs show now.
+  VoicingEqSettings shown() const;
   juce::Slider gain_;
   juce::Label gainName_;
   juce::Rectangle<int> curveArea_;

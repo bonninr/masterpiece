@@ -3332,6 +3332,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       if (eq.fromLine(val.toStdString())) defaultEq_ = eq;
     } else if (key == "eqpreset") {
       eqPresets_.readLine(val.toStdString());
+    } else if (key == "eqpresetshape") {
+      eqPresets_.readShapeLine(val.toStdString());
     } else if (key == "eqpresetnext") {
       eqPresets_.readNext(val.getIntValue());
     } else if (key == "packagedir") {
