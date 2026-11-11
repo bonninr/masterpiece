@@ -954,7 +954,7 @@ void VoicingEqPanel::presetMidiMenu() {
                            MidiEventDialog::show(self->proc_, t.kind, t.id, t.name);
                            break;
                          case 2:
-                           m.unbindTarget(t.kind, t.id);
+                           self->proc_.editMidiMap([&](MidiMap& map) { map.unbindTarget(t.kind, t.id); });
                            self->proc_.saveMidiMap();
                            break;
                          default:

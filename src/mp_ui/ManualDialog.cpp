@@ -171,9 +171,11 @@ ManualDialog::ManualDialog(MasterpieceProcessor& p, Id keyboardId)
     const int row = selected();
     if (row < 0 || row >= static_cast<int>(mine.size())) return;
     proc_.keepRouting();
-    proc_.midiMap().removeKeyboardBindingsFor(keyboardId_);
-    for (int i = 0; i < static_cast<int>(mine.size()); ++i)
-      if (i != row) proc_.midiMap().addKeyboardBinding(mine[static_cast<size_t>(i)]);
+    proc_.editMidiMap([&](MidiMap& map) {
+      map.removeKeyboardBindingsFor(keyboardId_);
+      for (int i = 0; i < static_cast<int>(mine.size()); ++i)
+        if (i != row) map.addKeyboardBinding(mine[static_cast<size_t>(i)]);
+    });
     proc_.saveMidiMap();
     rebuildList();
   };
@@ -289,7 +291,7 @@ void ManualDialog::addBinding() {
     b.highKey = it->second.firstMidiNote + it->second.numKeys - 1;
   }
   proc_.keepRouting();
-  proc_.midiMap().addKeyboardBinding(b);
+  proc_.editMidiMap([&](MidiMap& map) { map.addKeyboardBinding(b); });
   proc_.saveMidiMap();
   list_.updateContent();
   list_.selectRow(model_->getNumRows() - 1);
@@ -316,8 +318,10 @@ void ManualDialog::applyEdits() {
   b.debounceMs = static_cast<int>(debounce_.getValue());
 
   proc_.keepRouting();
-  proc_.midiMap().removeKeyboardBindingsFor(keyboardId_);
-  for (const auto& x : mine) proc_.midiMap().addKeyboardBinding(x);
+  proc_.editMidiMap([&](MidiMap& map) {
+    map.removeKeyboardBindingsFor(keyboardId_);
+    for (const auto& x : mine) map.addKeyboardBinding(x);
+  });
   proc_.saveMidiMap();
   list_.repaint();
 }
@@ -520,9 +524,10 @@ private:
   }
 
   void removeAll() {
-    for (int ch = 1; ch <= 16; ++ch)
-      proc_.midiMap().unbindTarget(MidiTargetKind::RouteKeyboard,
-                                   routeKeyboardTarget(keyboardId_, ch));
+    proc_.editMidiMap([this](MidiMap& map) {
+      for (int ch = 1; ch <= 16; ++ch)
+        map.unbindTarget(MidiTargetKind::RouteKeyboard, routeKeyboardTarget(keyboardId_, ch));
+    });
     proc_.saveMidiMap();
     refresh();
   }
@@ -557,7 +562,7 @@ private:
         row->text.setText(pistonText(*b, manual_, ch), juce::dontSendNotification);
         row->remove.setTooltip(TRANS("Remove this piston"));
         row->remove.onClick = [this, source = b->source, target] {
-          proc_.midiMap().unbindOne(source, MidiTargetKind::RouteKeyboard, target);
+          proc_.editMidiMap([&](MidiMap& map) { map.unbindOne(source, MidiTargetKind::RouteKeyboard, target); });
           proc_.saveMidiMap();
           // The button is in the row being removed.
           juce::MessageManager::callAsync([safe = juce::Component::SafePointer(this)] {

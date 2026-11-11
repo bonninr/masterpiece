@@ -1511,7 +1511,7 @@ void ReverbPanel::midiMenu() {
     auto& m = self->proc_.midiMap();
     if (choice == 1) m.beginLearn(MidiTargetKind::ReverbWet, 0, false);
     if (choice == 2) {
-      m.unbindTarget(MidiTargetKind::ReverbWet, 0);
+      self->proc_.editMidiMap([](MidiMap& map) { map.unbindTarget(MidiTargetKind::ReverbWet, 0); });
       self->proc_.saveMidiMap();
     }
   });
@@ -2039,7 +2039,7 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
   addAndMakeVisible(saveMap_);
   saveMap_.onClick = [this] { proc_.saveMidiMap(); };
   addAndMakeVisible(clearMap_);
-  clearMap_.onClick = [this] { proc_.midiMap().clear(); };
+  clearMap_.onClick = [this] { proc_.editMidiMap([](MidiMap& map) { map.clear(); }); };
   addChildComponent(fromGrandOrgue_);
   fromGrandOrgue_.setTooltip(TRANS("The MIDI settings this organ has in GrandOrgue, from its settings file (.cmb)"));
   fromGrandOrgue_.onClick = [this] { importFromGrandOrgue(); };
@@ -2375,7 +2375,9 @@ void MidiPanel::importFromGrandOrgue() {
           bytes = std::move(plain);
         }
         const std::string text(static_cast<const char*>(bytes.getData()), bytes.getSize());
-        const GrandOrgueMidiReport r = importGrandOrgueMidi(text, self->proc_.organModel(), self->proc_.midiMap());
+        GrandOrgueMidiReport r;
+        self->proc_.editMidiMap(
+            [&](MidiMap& map) { r = importGrandOrgueMidi(text, self->proc_.organModel(), map); });
         juce::StringArray lines;
         if (!r.ok) {
           lines.add(TRANS("This file holds no MIDI settings from GrandOrgue."));
@@ -3686,7 +3688,7 @@ void VoicingPanel::midiMenu() {
         MidiEventDialog::show(self->proc_, t.kind, 0, t.name);
         break;
       case 2:
-        m.unbindTarget(t.kind, 0);
+        self->proc_.editMidiMap([&](MidiMap& map) { map.unbindTarget(t.kind, 0); });
         self->proc_.saveMidiMap();
         break;
       default:
@@ -4104,7 +4106,7 @@ void MixerPanel::faderMidiMenu(Fader& f) {
                        if ((choice - 1) % 2 == 0) {
                          m.beginLearn(kind, id, false);
                        } else {
-                         m.unbindTarget(kind, id);
+                         self->proc_.editMidiMap([k = kind, i = id](MidiMap& map) { map.unbindTarget(k, i); });
                          self->proc_.saveMidiMap();
                        }
                      });
