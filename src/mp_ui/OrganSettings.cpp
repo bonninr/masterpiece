@@ -1055,19 +1055,20 @@ void VoicingEqPanel::resized() {
 
 void VoicingEqPanel::paint(juce::Graphics& g) {
   g.fillAll(juce::Colour(0xff15171c));
-  // The resulting curve, 20 Hz to 20 kHz on a log scale, +-12 dB.
+  // 20 Hz to 20 kHz on a log scale, -96 dBFS at the bottom, 0 dBFS at the top.
+  // In blue the organ's spectrum before the EQ, each column the loudest bin
+  // under it; the light line the same spectrum after the EQ, the band's lift
+  // in green and its cut in orange between the two; where the spectrum is
+  // under -90 dBFS, from -90. With nothing sounding, the same around a flat
+  // line through the middle, on a scale of +-18 dB to the box.
   const auto a = curveArea_.toFloat();
   g.setColour(juce::Colour(0xff1f232b));
   g.fillRoundedRectangle(a, 4.0f);
-  g.setColour(juce::Colour(0xff3a4150));
-  g.drawHorizontalLine(juce::roundToInt(a.getCentreY()), a.getX(), a.getRight());
-  // The organ's spectrum now, on the same frequency scale: -96 dBFS at the
-  // bottom, 0 dBFS at the top. Each column shows the loudest bin under it.
+  const int columns = juce::jmax(2, juce::roundToInt(a.getWidth()));
+  std::vector<float> before(static_cast<size_t>(columns), -120.0f);
+  bool sounding = false;
   if (!spectrum_.empty() && proc_.getSampleRate() > 0.0) {
     const double binHz = proc_.getSampleRate() / mp::SpectrumTap::kFft;
-    const int columns = juce::jmax(2, juce::roundToInt(a.getWidth()));
-    juce::Path area;
-    area.startNewSubPath(a.getX(), a.getBottom());
     for (int c = 0; c < columns; ++c) {
       const double lo = 20.0 * std::pow(1000.0, static_cast<double>(c) / columns);
       const double hi = 20.0 * std::pow(1000.0, static_cast<double>(c + 1) / columns);
@@ -1075,28 +1076,50 @@ void VoicingEqPanel::paint(juce::Graphics& g) {
       size_t k1 = juce::jmax(k0, static_cast<size_t>(hi / binHz + 0.5));
       float level = -120.0f;
       for (size_t k = k0; k <= k1 && k < spectrum_.size(); ++k) level = juce::jmax(level, spectrum_[k]);
-      const float y = a.getBottom() - juce::jlimit(0.0f, 1.0f, (level + 96.0f) / 96.0f) * a.getHeight();
-      area.lineTo(a.getX() + a.getWidth() * static_cast<float>(c) / (columns - 1), y);
+      before[static_cast<size_t>(c)] = level;
+      sounding = sounding || level > -90.0f;
     }
+  }
+  const auto xOf = [&](int c) { return a.getX() + a.getWidth() * static_cast<float>(c) / (columns - 1); };
+  // Sounding, dBFS from -96 to 0; silent, dB from -18 to +18 about 0.
+  const float lo = sounding ? -96.0f : -18.0f, span = sounding ? 96.0f : 36.0f;
+  const auto yOf = [&](float db) { return a.getBottom() - juce::jlimit(0.0f, 1.0f, (db - lo) / span) * a.getHeight(); };
+  if (sounding) {
+    juce::Path area;
+    area.startNewSubPath(a.getX(), a.getBottom());
+    for (int c = 0; c < columns; ++c) area.lineTo(xOf(c), yOf(before[static_cast<size_t>(c)]));
     area.lineTo(a.getRight(), a.getBottom());
     area.closeSubPath();
     g.setColour(juce::Colour(0x5550a0e0));
     g.fillPath(area);
+    for (auto& b : before) b = juce::jmax(b, -90.0f);
+  } else {
+    std::fill(before.begin(), before.end(), 0.0f);
+    g.setColour(juce::Colour(0xff3a4150));
+    g.drawHorizontalLine(juce::roundToInt(yOf(0.0f)), a.getX(), a.getRight());
   }
+  // The EQ's lift or cut in each column, and the spectrum it makes.
   VoicingEqSettings eq = shown();
   eq.on = true;
-  juce::Path curve;
-  const int n = 160;
-  for (int i = 0; i <= n; ++i) {
-    const double hz = 20.0 * std::pow(1000.0, static_cast<double>(i) / n);
-    const double db = juce::jlimit(-18.0, 18.0, VoicingEq::responseDb(eq, hz));
-    const float x = a.getX() + a.getWidth() * static_cast<float>(i) / n;
-    const float y = a.getCentreY() - static_cast<float>(db / 18.0) * a.getHeight() * 0.5f;
-    if (i == 0) curve.startNewSubPath(x, y);
-    else curve.lineTo(x, y);
+  const bool on = on_.getToggleState();
+  const juce::Colour lift = on ? juce::Colour(0xa05cc46a) : juce::Colour(0x606a7180);
+  const juce::Colour cut = on ? juce::Colour(0xa0e0a050) : juce::Colour(0x606a7180);
+  juce::Path after;
+  for (int c = 0; c < columns; ++c) {
+    const double hz = 20.0 * std::pow(1000.0, (static_cast<double>(c) + 0.5) / columns);
+    const float delta = static_cast<float>(VoicingEq::responseDb(eq, hz));
+    const float from = before[static_cast<size_t>(c)];
+    const float yFrom = yOf(from), yTo = yOf(from + delta);
+    if (std::abs(yTo - yFrom) >= 0.5f) {
+      g.setColour(delta > 0.0f ? lift : cut);
+      g.fillRect(juce::Rectangle<float>(xOf(c), juce::jmin(yFrom, yTo), a.getWidth() / (columns - 1) + 0.5f,
+                                        std::abs(yTo - yFrom)));
+    }
+    if (c == 0) after.startNewSubPath(xOf(c), yTo);
+    else after.lineTo(xOf(c), yTo);
   }
-  g.setColour(on_.getToggleState() ? juce::Colour(0xffe0a050) : juce::Colour(0xff6a7180));
-  g.strokePath(curve, juce::PathStrokeType(2.0f));
+  g.setColour(on ? juce::Colour(0xffe8eaee) : juce::Colour(0xff8a91a0));
+  g.strokePath(after, juce::PathStrokeType(1.5f));
 }
 
 // -------------------------------------------------------- OrganSettingsWindow
