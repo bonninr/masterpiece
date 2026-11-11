@@ -154,6 +154,50 @@ public:
                                             std::to_string(panel.currentRow()));
       panel.stop();
       MP_CHECK(!map.learning(), "stopped");
+
+      // Draw and cancel (#1031): a console that draws with one message and
+      // cancels with another. Each tab is learned in two steps.
+      panel.unmappedOnlyButton().setToggleState(false, juce::dontSendNotification);
+      panel.drawCancelButton().setToggleState(true, juce::dontSendNotification);
+      auto triggers = [&](int row) {
+        std::string t;
+        for (const mp::MidiBinding* b : map.bindingsFor(mp::MidiTargetKind::Switch, panel.row(row).switchId))
+          t += std::to_string(b->source.number) +
+               (b->trigger == mp::MidiTrigger::EngageOnly      ? "on "
+                : b->trigger == mp::MidiTrigger::DisengageOnly ? "off "
+                                                               : "other ");
+        return t;
+      };
+      panel.start(0);
+      MP_CHECK(!panel.waitingForCancel() && panel.promptText().startsWith("Draw"),
+               "the first step asks for the draw: " + panel.promptText().toStdString());
+      press(40);
+      panel.poll();
+      MP_CHECK(panel.currentRow() == 0 && panel.waitingForCancel(), "the same row waits for its cancel");
+      MP_CHECK(panel.promptText().startsWith("Cancel"), "and says so: " + panel.promptText().toStdString());
+      MP_CHECK(triggers(0) == "40on ", "the draw is learned as draw only, got " + triggers(0));
+      // The draw pressed again on the cancel step: refused.
+      press(40);
+      panel.poll();
+      MP_CHECK(panel.currentRow() == 0 && panel.waitingForCancel() && triggers(0) == "40on ",
+               "the draw pressed again is refused, got " + triggers(0));
+      press(41);
+      panel.poll();
+      MP_CHECK(triggers(0) == "40on 41off " || triggers(0) == "41off 40on ",
+               "the row has its draw and its cancel, got " + triggers(0));
+      MP_CHECK(panel.currentRow() == 1 && !panel.waitingForCancel(), "on to the next row's draw");
+      MP_CHECK(panel.learnedCount() == 1, "one tab learned, got " + std::to_string(panel.learnedCount()));
+      panel.stop();
+      MP_CHECK(triggers(1).empty(), "Stop leaves the next row as it was, unmapped, got " + triggers(1));
+      // The tab works both ways.
+      press(41);
+      MP_CHECK(!proc.shownSwitchEngaged(first), "CC 41 cancels the stop");
+      press(40);
+      MP_CHECK(proc.shownSwitchEngaged(first), "CC 40 draws it");
+      press(40);
+      MP_CHECK(proc.shownSwitchEngaged(first), "CC 40 again leaves it drawn");
+      press(41);
+      MP_CHECK(!proc.shownSwitchEngaged(first), "CC 41 cancels it");
     }
     settings.deleteFile();
     midiFile.deleteFile();

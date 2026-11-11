@@ -46,6 +46,9 @@ public:
   int learnedCount() const { return learned_; }
   juce::String promptText() const { return prompt_.getText(); }
   juce::ToggleButton& unmappedOnlyButton() { return unmappedOnly_; }
+  juce::ToggleButton& drawCancelButton() { return drawCancel_; }
+  // With Draw and cancel ticked, whether the armed tab waits for its cancel.
+  bool waitingForCancel() const { return cancelStep_; }
 
   void paint(juce::Graphics& g) override;
   void resized() override;
@@ -69,6 +72,9 @@ private:
   std::vector<Row> rows_;
   int current_ = -1;
   bool armed_ = false;
+  // Draw and cancel (#1031): a tab learned in two steps, the message that
+  // draws it and then the one that cancels it. True on the second.
+  bool cancelStep_ = false;
   int learned_ = 0;
   // What the armed row had before it was armed: put back when its learn is
   // refused.
@@ -86,6 +92,7 @@ private:
   juce::TextButton stop_{TRANS("Stop")};
   juce::ToggleButton pistons_{TRANS("Pistons")};
   juce::ToggleButton unmappedOnly_{TRANS("Only tabs not mapped")};
+  juce::ToggleButton drawCancel_{TRANS("Draw and cancel")};
 };
 
 class LearnInTurnWindow : public juce::DocumentWindow {

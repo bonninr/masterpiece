@@ -1,0 +1,4 @@
+"Draw and cancel" = "Włączanie i wyłączanie"
+"For a console that sends one message to draw a tab and another to cancel it: each tab is learned twice" = "Dla kontuaru, który wysyła jeden komunikat do włączenia głosu i inny do jego wyłączenia: każdy głos jest uczony dwa razy"
+"Draw the tab for %1" = "Włącz głos %1"
+"Cancel the tab for %1" = "Wyłącz głos %1"

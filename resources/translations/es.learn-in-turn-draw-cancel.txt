@@ -1,0 +1,4 @@
+"Draw and cancel" = "Tirar y quitar"
+"For a console that sends one message to draw a tab and another to cancel it: each tab is learned twice" = "Para una consola que envía un mensaje para tirar un registro y otro para quitarlo: cada registro se aprende dos veces"
+"Draw the tab for %1" = "Tire el registro %1"
+"Cancel the tab for %1" = "Quite el registro %1"

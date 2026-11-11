@@ -1,0 +1,4 @@
+"Draw and cancel" = "Zapnout a vypnout"
+"For a console that sends one message to draw a tab and another to cancel it: each tab is learned twice" = "Pro konzoli, která posílá jednu zprávu pro zapnutí rejstříku a jinou pro jeho vypnutí: každý rejstřík se učí dvakrát"
+"Draw the tab for %1" = "Zapněte rejstřík %1"
+"Cancel the tab for %1" = "Vypněte rejstřík %1"

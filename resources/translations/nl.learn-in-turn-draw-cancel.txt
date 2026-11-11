@@ -1,0 +1,4 @@
+"Draw and cancel" = "Aantrekken en afstoten"
+"For a console that sends one message to draw a tab and another to cancel it: each tab is learned twice" = "Voor een speeltafel die het ene bericht stuurt om een register aan te trekken en een ander om het af te stoten: elk register wordt twee keer geleerd"
+"Draw the tab for %1" = "Trek het register %1 aan"
+"Cancel the tab for %1" = "Stoot het register %1 af"

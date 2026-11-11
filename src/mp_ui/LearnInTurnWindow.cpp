@@ -41,12 +41,18 @@ LearnInTurnPanel::LearnInTurnPanel(MasterpieceProcessor& p) : proc_(p) {
   stop_.onClick = [this] { stop(); };
   for (auto* b : {&start_, &skip_, &back_, &stop_}) addAndMakeVisible(*b);
 
-  for (auto* t : {&pistons_, &unmappedOnly_}) {
+  for (auto* t : {&pistons_, &unmappedOnly_, &drawCancel_}) {
     t->setColour(juce::ToggleButton::textColourId, kText);
     addAndMakeVisible(*t);
   }
   pistons_.setTooltip(TRANS("The organ's pistons follow its tabs in the list"));
   unmappedOnly_.setTooltip(TRANS("Tabs that already have a MIDI mapping are passed over"));
+  drawCancel_.setTooltip(TRANS("For a console that sends one message to draw a tab and another to cancel it: "
+                               "each tab is learned twice"));
+  // A change mid-run asks the armed tab again from its draw.
+  drawCancel_.onClick = [this] {
+    if (current_ >= 0) start(current_);
+  };
   pistons_.onClick = [this] {
     stop();
     rebuild();
@@ -122,31 +128,38 @@ void LearnInTurnPanel::start(int from) {
   release();
   proc_.cancelLearn();
   current_ = juce::jlimit(0, rowCount() - 1, from);
+  cancelStep_ = false;
   refused_.clear();
   arm();
 }
 
 void LearnInTurnPanel::arm() {
   auto& map = proc_.midiMap();
-  if (unmappedOnly_.getToggleState())
+  if (unmappedOnly_.getToggleState() && !cancelStep_)
     while (current_ >= 0 && current_ < rowCount() && mapped(rows_[static_cast<size_t>(current_)])) ++current_;
   if (current_ >= rowCount()) {
     finish();
     return;
   }
   const Row& r = rows_[static_cast<size_t>(current_)];
+  // A piston is pressed and let go: it has no cancel of its own.
+  const bool twoSteps = drawCancel_.getToggleState() && r.latching;
+  if (!twoSteps) cancelStep_ = false;
   {
     // The row waits with no mapping of its own: whatever is pressed is new
     // to it, even the tab it had, and a learn cancelled elsewhere leaves it
-    // empty. release() puts back what it had.
+    // empty. release() puts back what it had. Its cancel is learned beside
+    // the draw just taken.
     const MasterpieceProcessor::AudioLock lock(proc_);
     before_.clear();
     for (const MidiBinding* b : map.bindingsFor(MidiTargetKind::Switch, r.switchId)) before_.push_back(*b);
-    map.unbindTarget(MidiTargetKind::Switch, r.switchId);
+    if (!cancelStep_) map.unbindTarget(MidiTargetKind::Switch, r.switchId);
     // The plain Learn of the console's right-click menu: a tab toggles, a
-    // piston is held while pressed.
+    // piston is held while pressed. In two steps, the draw and the cancel.
     proc_.beginLearnAs(MidiTargetKind::Switch, r.switchId,
-                       r.latching ? MidiTrigger::Toggle : MidiTrigger::Momentary);
+                       twoSteps     ? (cancelStep_ ? MidiTrigger::DisengageOnly : MidiTrigger::EngageOnly)
+                       : r.latching ? MidiTrigger::Toggle
+                                    : MidiTrigger::Momentary);
   }
   armed_ = true;
   list_.selectRow(current_);
@@ -169,6 +182,7 @@ void LearnInTurnPanel::skip() {
   if (current_ < 0) return;
   release();
   ++current_;
+  cancelStep_ = false;
   refused_.clear();
   arm();
 }
@@ -178,6 +192,7 @@ void LearnInTurnPanel::back() {
   release();
   // Back passes over nothing: the row before is asked again, mapped or not.
   current_ = juce::jmax(0, current_ - 1);
+  cancelStep_ = false;
   refused_.clear();
   const bool only = unmappedOnly_.getToggleState();
   unmappedOnly_.setToggleState(false, juce::dontSendNotification);
@@ -189,12 +204,14 @@ void LearnInTurnPanel::stop() {
   if (current_ < 0) return;
   release();
   current_ = -1;
+  cancelStep_ = false;
   refused_.clear();
   showState();
 }
 
 void LearnInTurnPanel::finish() {
   current_ = -1;
+  cancelStep_ = false;
   refused_.clear();
   list_.deselectAllRows();
   showState();
@@ -219,9 +236,15 @@ void LearnInTurnPanel::poll() {
     return;
   }
   armed_ = false;
-  const MidiSource source = now.front()->source;
+  // The message just learned: the cancel, on a tab's second step.
+  const MidiBinding* learnedNow = now.front();
+  if (cancelStep_)
+    for (const MidiBinding* b : now)
+      if (b->trigger == MidiTrigger::DisengageOnly) learnedNow = b;
+  const MidiSource source = learnedNow->source;
   for (const auto& [taken, row] : taken_)
-    if (taken == source && row != current_) {
+    // On the cancel step, this tab's own draw pressed again is refused too.
+    if (taken == source && (row != current_ || cancelStep_)) {
       // The tab of an earlier row, pressed again to put it back: this row
       // gets back what it had and asks again; the earlier row keeps the tab.
       {
@@ -233,10 +256,17 @@ void LearnInTurnPanel::poll() {
       return;
     }
   taken_.emplace_back(source, current_);
-  ++learned_;
   proc_.saveMidiMap();
-  ++current_;
   refused_.clear();
+  // Its draw learned: the same tab waits for its cancel.
+  if (drawCancel_.getToggleState() && r.latching && !cancelStep_) {
+    cancelStep_ = true;
+    arm();
+    return;
+  }
+  cancelStep_ = false;
+  ++learned_;
+  ++current_;
   arm();
 }
 
@@ -244,7 +274,11 @@ void LearnInTurnPanel::showState() {
   const bool running = current_ >= 0 && current_ < rowCount();
   if (running) {
     const Row& r = rows_[static_cast<size_t>(current_)];
-    prompt_.setText((r.piston ? TRANS("Press the piston for %1") : TRANS("Press the tab for %1"))
+    const bool twoSteps = drawCancel_.getToggleState() && r.latching;
+    prompt_.setText((r.piston          ? TRANS("Press the piston for %1")
+                     : !twoSteps       ? TRANS("Press the tab for %1")
+                     : cancelStep_     ? TRANS("Cancel the tab for %1")
+                                       : TRANS("Draw the tab for %1"))
                         .replace("%1", rowLabel(r)),
                     juce::dontSendNotification);
   } else if (learned_ > 0) {
@@ -317,8 +351,9 @@ void LearnInTurnPanel::resized() {
     b->setBounds(buttons.removeFromLeft(112));
     buttons.removeFromLeft(6);
   }
-  pistons_.setBounds(options.removeFromLeft(120));
-  unmappedOnly_.setBounds(options.removeFromLeft(240));
+  pistons_.setBounds(options.removeFromLeft(100));
+  unmappedOnly_.setBounds(options.removeFromLeft(220));
+  drawCancel_.setBounds(options.removeFromLeft(200));
 }
 
 LearnInTurnWindow::LearnInTurnWindow(MasterpieceProcessor& p)
