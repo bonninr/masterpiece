@@ -1444,7 +1444,20 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
 
     // What a capture waiting takes this message for. One at a time; none
     // while a learn already taken waits to be written into the map.
-    const MidiCapture capture = liveCapture();
+    // A message that keeps coming back, three times or more with under half
+    // a second between, is a console's background traffic (#1029): no capture
+    // takes it, and it goes where it would with nothing waiting, so the learn
+    // waits for the button the player presses.
+    lastRecent_ = nullptr;
+    const bool repeated = source.kind != MidiSourceKind::None && repeatsQuickly(source, value);
+    MidiCapture capture = liveCapture();
+    if (repeated && capture != MidiCapture::None) {
+      if (logging) juce::Logger::writeToLog("midi:     repeated over and over, not learned");
+      capture = MidiCapture::None;
+    }
+    // A message a capture sees is the player's: the same tab learned for one
+    // stop after another starts its count again each time.
+    if (capture != MidiCapture::None && lastRecent_ != nullptr) lastRecent_->run = 0;
     const bool listening = capture == MidiCapture::Listen || capture == MidiCapture::ListenPair;
 
     // The noise filter: while learning, a key is held back until it has been
@@ -2065,6 +2078,32 @@ void MasterpieceProcessor::applyTakenCapture() {
   pistonLamps_.clear();
   midiMapDirty_.store(true, std::memory_order_release);
   takePending_.store(false, std::memory_order_release);
+}
+
+bool MasterpieceProcessor::repeatsQuickly(const MidiSource& source, int value) {
+  uint64_t key = static_cast<uint64_t>(source.kind) << 56 ^ static_cast<uint64_t>(source.channel & 31) << 48 ^
+                 static_cast<uint64_t>(static_cast<uint32_t>(source.number)) << 16 ^
+                 static_cast<uint64_t>(source.deviceId & 255) << 8 ^ static_cast<uint64_t>(value & 255);
+  key = key * 0x9E3779B97F4A7C15ull;
+  key ^= key >> 29;
+  if (key == 0) key = 1;
+  // Four slots from the hash; the one with the same key, or the oldest.
+  const size_t first = static_cast<size_t>(key >> 58);
+  RecentMessage* slot = nullptr;
+  for (size_t i = 0; i < 4; ++i) {
+    RecentMessage& r = recentMessages_[(first + i) & (recentMessages_.size() - 1)];
+    if (r.key == key) {
+      slot = &r;
+      break;
+    }
+    if (slot == nullptr || r.key == 0 || (slot->key != 0 && r.atMs < slot->atMs)) slot = &r;
+  }
+  // How many times in a row it came, each under kRepeatMs after the last.
+  const bool soon = slot->key == key && blockTimeMs_ - slot->atMs < kRepeatMs;
+  const int run = soon ? slot->run + 1 : 1;
+  *slot = {key, blockTimeMs_, run};
+  lastRecent_ = slot;
+  return run >= kRepeatRun;
 }
 
 void MasterpieceProcessor::holdForLearn(const MidiSource& source, int value) {

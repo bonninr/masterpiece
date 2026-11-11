@@ -228,6 +228,45 @@ public:
       check(boundTo(65), "a learn taken is written when another capture begins");
       check(proc.midiCapture() == MidiCapture::Listen, "and the new capture waits");
       proc.cancelMidiCapture();
+
+      // A console that sends a message over and over in the background, ten
+      // times a second (#1029): a learn passes it over and takes the button
+      // the player presses.
+      // The block size the clock counts by, set as a host sets it.
+      proc.setRateAndBufferSizeDetails(48000.0, 256);
+      const auto scan = [&] {
+        juce::MidiBuffer m;
+        m.addEvent(juce::MidiMessage::controllerEvent(1, 20, 127), 0);
+        block(m);
+        for (int i = 0; i < 18; ++i) block();  // 18 blocks of 256 at 48 kHz, about a tenth of a second
+      };
+      const auto boundToScan = [&] {
+        for (const mp::MidiBinding* b : proc.midiMap().bindingsFor(mp::MidiTargetKind::Switch, 1102))
+          if (b->source.kind == mp::MidiSourceKind::ControlChange && b->source.number == 20) return true;
+        return false;
+      };
+      for (int i = 0; i < 5; ++i) scan();
+      proc.beginLearn(mp::MidiTargetKind::Switch, 1102);
+      for (int i = 0; i < 10; ++i) scan();
+      proc.serviceMidiRequests();
+      check(proc.midiCapture() == MidiCapture::MapLearn, "the background message is not learned");
+      press(66);
+      scan();
+      proc.serviceMidiRequests();
+      check(boundTo(66) && !boundToScan(), "the button pressed is learned, the background message is not");
+      // The MIDI window's Listen passes it over too.
+      proc.beginMidiListen();
+      for (int i = 0; i < 10; ++i) scan();
+      mp::MidiSource heard;
+      int heardValue = 0;
+      check(!proc.takeHeardMidi(heard, heardValue), "Listen hears nothing in the background message");
+      proc.cancelMidiCapture();
+      // A message sent once is learned as before.
+      for (int i = 0; i < 400; ++i) block();
+      proc.beginLearn(mp::MidiTargetKind::Switch, 1102);
+      scan();
+      proc.serviceMidiRequests();
+      check(boundToScan(), "the same message sent once, after a pause, is learned");
     }
 
     std::string all;
