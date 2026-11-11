@@ -968,6 +968,7 @@ bool MidiMap::sendsOnOff(MidiTargetKind k) {
     case MidiTargetKind::RecorderPlay:
     case MidiTargetKind::PlayerGeneral:
     case MidiTargetKind::PlayerDivisional:
+    case MidiTargetKind::PlayerGeneralCancel:  // lit briefly at each press (#1058)
     case MidiTargetKind::Setter:
     case MidiTargetKind::PedalCombinationsCoupled:
     case MidiTargetKind::MetronomeOn:

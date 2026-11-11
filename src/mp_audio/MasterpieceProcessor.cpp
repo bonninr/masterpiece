@@ -6090,6 +6090,8 @@ void MasterpieceProcessor::pressGeneralCancel() {
   player_.generalCancel(playerScratch_);
   applyPlayerChanges();
   player_.registrationMoved();
+  // A quarter of a second lit, then dark again (#1058).
+  cancelLampSamples_.store(std::max(1, static_cast<int>(sampleRate_ * 0.25)), std::memory_order_relaxed);
 }
 
 void MasterpieceProcessor::pressDivisionalCancel(Id divisionId) {
@@ -8045,6 +8047,9 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   if (lampsAfterLoad_.exchange(false, std::memory_order_acq_rel)) sendLampsAfterLoad();
   emitSends();
   emitPistonLamps();
+  // The general cancel's lamp runs down after the sends that showed it.
+  if (const int left = cancelLampSamples_.load(std::memory_order_relaxed); left > 0)
+    cancelLampSamples_.store(std::max(0, left - buffer.getNumSamples()), std::memory_order_relaxed);
   split_.lamps(outgoing_, midiFeedback_ && (midiOut_ != nullptr || outgoingProbe));
 
   // LCD text, built on the message thread, joins the same outgoing stream so
@@ -10703,6 +10708,7 @@ int MasterpieceProcessor::pistonLamp(MidiTargetKind kind, Id id) const {
     case MidiTargetKind::PlayerDivisional:
       return player_.litDivisional(playerDivisionalDivision(id)) == playerDivisionalPiston(id) ? 1 : 0;
     case MidiTargetKind::Setter: return captureMode() ? 1 : 0;
+    case MidiTargetKind::PlayerGeneralCancel: return cancelLampSamples_.load(std::memory_order_relaxed) > 0 ? 1 : 0;
     case MidiTargetKind::PedalCombinationsCoupled: return pedalCoupled_.load() ? 1 : 0;
     case MidiTargetKind::MetronomeOn: return metronome_.enabled() ? 1 : 0;
     default: return -1;

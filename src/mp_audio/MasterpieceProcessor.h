@@ -2489,6 +2489,9 @@ private:
   // not count as the player moving them.
   bool applyingPistons_ = false;
   std::atomic<bool> pedalCoupled_{false};
+  // The general cancel's lamp: lit for this many samples more after a press,
+  // so a console lamp or display can follow the button (#1058).
+  std::atomic<int> cancelLampSamples_{0};
   std::atomic<bool> globalDirty_{false};
   CoupledDivisions coupledDivisions_;
   std::atomic<Id> pedalManual_{0};
