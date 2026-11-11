@@ -16885,9 +16885,11 @@ public:
     proc.pushMidi(1, juce::MidiMessage::controllerEvent(1, 32, 0));
     proc.pushMidi(1, juce::MidiMessage::programChange(1, 5));
     block();
+    // Heard with its bank (#1012): bank 1:0, program 5.
     MP_CHECK(proc.takeHeardMidi(heard, value) && heard.kind == mp::MidiSourceKind::ProgramChange &&
-                 heard.number == 5,
-             "the program change is heard, past the Bank Select ahead of it");
+                 heard.number == mp::bankedProgram(1, 0, 5),
+             "the program change is heard with its bank, past the Bank Select ahead of it, got " +
+                 std::to_string(heard.number));
 
     proc.beginMidiListen();
     proc.pushMidi(1, juce::MidiMessage::noteOff(1, 60));

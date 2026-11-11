@@ -1470,8 +1470,13 @@ juce::String MidiEventDialog::describeBinding(const MidiBinding& b) {
                       : b.source.kind == MidiSourceKind::Rpn           ? TRANS("RPN %1")
                       : b.source.kind == MidiSourceKind::Nrpn          ? TRANS("NRPN %1")
                                                                        : TRANS("CC %1");
-  what = what.replace("%1", b.source.kind == MidiSourceKind::ProgramChange ? juce::String(programText(b.source.number))
-                                                                           : juce::String(b.source.number));
+  // A program received is named by its number as sent, with its bank when
+  // it has one (#1012).
+  const bool banked = b.source.kind == MidiSourceKind::ProgramChange && b.source.number > 127;
+  what = what.replace("%1", banked ? juce::String(programPart(b.source.number)) + " bank " +
+                                         juce::String(bankMsbPart(b.source.number)) + ":" +
+                                         juce::String(bankLsbPart(b.source.number))
+                                   : juce::String(b.source.number));
   if (b.source.kind == MidiSourceKind::ProgramChange && b.source.number == kProgramRange)
     what = TRANS("Programs %1 to %2")
                .replace("%1", juce::String(std::min(b.lowValue, b.highValue) + 1))
