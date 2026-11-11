@@ -42,7 +42,7 @@ Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 EOF
 
 sudo dpkg --add-architecture "$ARCH"
-sudo apt-get update
+bash "$(dirname "$0")/ci-apt-mirror.sh"
 
 # Package names are gcc-<triple>, not <triple>-gcc; the latter is the binary
 # name and matches no package.
