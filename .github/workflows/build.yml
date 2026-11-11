@@ -194,7 +194,7 @@ jobs:
       - name: Dependencies (Linux)
         if: runner.os == 'Linux' && !matrix.arm
         run: |
-          sudo apt-get update
+          bash cmake/ci-apt-mirror.sh
           sudo apt-get install -y cmake ninja-build pkg-config \
             libasound2-dev libx11-dev libxrandr-dev libxinerama-dev \
             libxcursor-dev libxcomposite-dev libfreetype6-dev \
@@ -644,7 +644,7 @@ jobs:
       - name: Dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
+          bash cmake/ci-apt-mirror.sh
           sudo apt-get install -y cmake ninja-build pkg-config \
             libasound2-dev libx11-dev libxrandr-dev libxinerama-dev \
             libxcursor-dev libxcomposite-dev libfreetype6-dev \
@@ -959,6 +959,7 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "ndk;27.2.12479018" "cmake;3.22.1" "platforms;android-35" > /dev/null
           echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          bash cmake/ci-apt-mirror.sh
           sudo apt-get install -y ccache > /dev/null
 
       # Verovio's objects for both ABIs, kept as in the desktop jobs. Read by
