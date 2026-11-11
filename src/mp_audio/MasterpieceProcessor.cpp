@@ -2662,6 +2662,8 @@ bool MasterpieceProcessor::saveSettings() const {
     for (const auto& p : excludedPerspectives_) text << "skipperspective " << juce::String(p) << "\n";
     for (Id rank : excludedRanks_) text << "skiprank " << juce::String(rank) << "\n";
     if (keepPortable_) text << "portable 1\n";
+    if (organCache_ != OrganCache::AsProgram)
+      text << "organcache " << (organCache_ == OrganCache::Own ? 1 : 0) << "\n";
     if (combWindow_.w > 0)
       text << "combwindow " << combWindow_.x << " " << combWindow_.y << " "
            << combWindow_.w << " " << combWindow_.h << " "
@@ -2716,6 +2718,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   excludedPerspectives_.clear();
   excludedRanks_.clear();
   keepPortable_ = false;
+  organCache_ = OrganCache::AsProgram;
   // Tuning belongs to the organ it was chosen for.
   temperamentChoice_.clear();
   licenceConfirmed_ = false;
@@ -2871,6 +2874,10 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
     }
     if (key == "portable") {
       keepPortable_ = val.getIntValue() != 0;
+      continue;
+    }
+    if (key == "organcache") {
+      organCache_ = val.getIntValue() != 0 ? OrganCache::Own : OrganCache::None;
       continue;
     }
     if (key == "skiprank") {
@@ -3125,7 +3132,7 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
   auto sw = graph_.engineSwitch;
   // Settings written before the display mode existed: every one stays shown.
   simpleMode_.store(false);
-  cacheMode_ = SampleLibrary::CacheMode::Single;
+  cacheMode_ = SampleLibrary::CacheMode::PerOrgan;
   // The file holds them all, so a second read must not add them twice.
   eqPresets_.clearOwn();
   midiOutputNames_.clear();
@@ -3239,10 +3246,9 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       // "cache" is the line "Save as global defaults" wrote before the
       // choice was the program's; "samplecache" is written after the
       // defaults, so where both are present it is the one that holds.
-      const int v = val.getIntValue();
-      cacheMode_ = v == 0   ? SampleLibrary::CacheMode::Off
-                   : v == 2 ? SampleLibrary::CacheMode::PerOrgan
-                            : SampleLibrary::CacheMode::Single;
+      // The single shared cache is gone (#1033): an organ's cache was
+      // replaced by the next organ's, so it is read as one per organ.
+      cacheMode_ = val.getIntValue() == 0 ? SampleLibrary::CacheMode::Off : SampleLibrary::CacheMode::PerOrgan;
     } else if (key == "combinationsontop") {
       combinationsOnTop_ = val.getIntValue() != 0;
     } else if (key == "combinationsview") {
@@ -3951,6 +3957,20 @@ juce::File MasterpieceProcessor::cacheDirectory() const {
     if (cacheDir_.isDirectory()) return cacheDir_;
   }
   return defaultCacheDirectory();
+}
+
+juce::File MasterpieceProcessor::organCacheFile() const {
+  if (loadedOdf_ == juce::File()) return {};
+  // The name SampleLibrary::cachePath gives a cache per organ.
+  return cacheDirectory().getChildFile("samples-" + juce::String::fromUTF8(organKey().c_str()) + ".mpcache");
+}
+
+bool MasterpieceProcessor::deleteOrganCache() {
+  const auto file = organCacheFile();
+  if (file == juce::File() || samples_.cacheWriting()) return false;
+  const auto part = file.getSiblingFile(file.getFileName() + ".part");
+  const bool gone = file.deleteFile();
+  return part.deleteFile() && gone;
 }
 
 void MasterpieceProcessor::setCacheDirectory(const juce::File& dir) {
@@ -9168,8 +9188,9 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
       if (kept.isNotEmpty()) odfStamp = kept.toStdString();
     }
     // An organ kept playable without its files needs a cache of its own: the
-    // shared one is replaced by the next organ loaded.
-    samples_.setCacheMode(keepPortable_ ? SampleLibrary::CacheMode::PerOrgan : cacheMode());
+    // shared one is replaced by the next organ loaded. An organ's own choice
+    // comes next (#1033), then the program's.
+    samples_.setCacheMode(organCacheMode());
     samples_.setCacheIdentity(organKey(), odfStamp);
     loadedStamp_ = odfStamp;
 
