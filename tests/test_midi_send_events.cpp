@@ -166,6 +166,61 @@ public:
 
 MidiSendSetterLampTest midiSendSetterLampTest;
 
+// The general cancel sends as well (#1058): a press lights its lamp for a
+// quarter of a second, and it goes dark by itself.
+class MidiSendCancelLampTest final : public mp::test::Test {
+public:
+  MidiSendCancelLampTest() : Test("functional.midi.send-cancel-lamp", Category::Functional) {}
+
+  void run() override {
+    MP_CHECK(mp::MidiMap::hasSendState(K::PlayerGeneralCancel), "GC has a Send tab");
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-send-cancel-lamp");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const auto previous = mp::dataFolder();
+    mp::setDataFolder(dir);
+    {
+      const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+      mp::MasterpieceProcessor proc;
+      proc.prepareToPlay(48000.0, 256);
+      MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads");
+      std::vector<juce::MidiMessage> sent;
+      proc.outgoingProbe = [&sent](const juce::MidiBuffer& b) {
+        for (const auto meta : b) sent.push_back(meta.getMessage());
+      };
+      juce::AudioBuffer<float> buf(2, 256);
+      auto blocks = [&](int n) {
+        for (int i = 0; i < n; ++i) {
+          juce::MidiBuffer m;
+          buf.clear();
+          proc.processBlock(buf, m);
+        }
+      };
+      auto has = [&sent](int status, int number, int value) {
+        for (const auto& m : sent)
+          if (m.getRawDataSize() == 3 && m.getRawData()[0] == status && m.getRawData()[1] == number &&
+              m.getRawData()[2] == value)
+            return true;
+        return false;
+      };
+      auto s = lamp(K::PlayerGeneralCancel, mp::MidiSourceKind::ControlChange, 20);
+      proc.setObjectSends(K::PlayerGeneralCancel, 0, {s});
+      blocks(2);
+      sent.clear();
+      proc.pressGeneralCancel();
+      blocks(1);
+      MP_CHECK(has(0xB1, 20, 127), "a press lights the lamp, got " + std::to_string(sent.size()));
+      MP_CHECK(!has(0xB1, 20, 0), "and it stays lit for now");
+      blocks(60);  // 0.32 s at 48 kHz, over the quarter of a second
+      MP_CHECK(has(0xB1, 20, 0), "then it goes dark by itself");
+    }
+    mp::setDataFolder(previous);
+    dir.deleteRecursively();
+  }
+};
+
+MidiSendCancelLampTest midiSendCancelLampTest;
+
 }  // namespace
 
 #endif
