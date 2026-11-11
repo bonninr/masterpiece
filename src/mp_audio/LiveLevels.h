@@ -101,6 +101,17 @@ public:
     dirty_.store(false, std::memory_order_relaxed);
   }
 
+  // Divisions for ranks found in none at configure(): a set that plays its
+  // pipes through pallets names its stops' ranks only once the load knows
+  // which pipes it ships (#1054). A rank with a division keeps it, and the
+  // faders keep their levels. Called at load, while the audio is held.
+  void addRankDivisions(const std::vector<int>& rankDivision) {
+    for (size_t i = 0; i < rankDivision_.size() && i < rankDivision.size(); ++i)
+      if (rankDivision_[i] < 0 && rankDivision[i] >= 0 && rankDivision[i] < divisionCount())
+        rankDivision_[i] = rankDivision[i];
+    dirty_.store(true, std::memory_order_release);
+  }
+
   int rankCount() const { return static_cast<int>(rankDivision_.size()); }
   // A rank's division index, or -1 for a rank in none or out of range.
   int rankDivision(int i) const { return i >= 0 && i < rankCount() ? rankDivision_[static_cast<size_t>(i)] : -1; }

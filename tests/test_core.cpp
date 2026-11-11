@@ -20676,6 +20676,17 @@ public:
       MP_CHECK(!playable[2], "a stop with only its action noise is locked");
       MP_CHECK(!playable[3], "and so is one on the noises' switch");
 
+      // The ranks each stop reaches through its pallets (#1054, #1055): the
+      // Principal its rank, the Piccolo none, its noise being no pipework.
+      const auto& model = proc.organModel();
+      MP_CHECK(model.stops.at(1).palletRanks == std::vector<mp::Id>{7}, "the Principal reaches its rank");
+      MP_CHECK(model.stops.at(2).palletRanks.empty() && model.stops.at(3).palletRanks.empty(),
+               "a noise is no stop's rank");
+      MP_CHECK(mp::ranksOfStop(model, 1) == std::vector<mp::Id>{7}, "the voicing lists the Principal's rank");
+      MP_CHECK(proc.liveDivisionOfRank(proc.liveRankIndexOf(7)) == proc.liveDivisionIndexOf(1),
+               "and its division's fader reaches it");
+      MP_CHECK(proc.liveDivisionOfRank(proc.liveRankIndexOf(8)) == -1, "the noises answer to no division fader");
+
       proc.setSwitchEngaged(130, true);
       MP_CHECK(proc.stopEngaged(1) && proc.switchEngaged(101), "the Tutti draws the Principal");
       MP_CHECK(!proc.switchEngaged(102) && !proc.stopEngaged(2), "and leaves the locked Piccolo in");
