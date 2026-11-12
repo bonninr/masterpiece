@@ -89,12 +89,15 @@ public:
     if (dragging_) {
       dragging_ = false;
       owner_.dropRow(slot_, e.getEventRelativeTo(getParentComponent()).y);
-    } else if (e.mouseWasClicked() && !e.mods.isPopupMenu()) {
+    } else if (!e.source.hasMovedSignificantlySincePressed() && !e.mods.isPopupMenu()) {
+      // A press held a moment is still a click (#1047). JUCE calls a press
+      // over 300 ms a drag, and mouseWasClicked() then left the row shut.
       owner_.openSlot(slot_);
     }
   }
   void mouseDrag(const juce::MouseEvent& e) override {
-    if (!dragging_ && e.mouseWasDraggedSinceMouseDown() && e.getDistanceFromDragStartY() != 0 && owner_.canDrag()) {
+    if (!dragging_ && e.source.hasMovedSignificantlySincePressed() && e.getDistanceFromDragStartY() != 0 &&
+        owner_.canDrag()) {
       dragging_ = true;
       toFront(false);
     }
