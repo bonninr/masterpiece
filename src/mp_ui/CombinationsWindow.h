@@ -31,7 +31,8 @@ class FrameLabel : public juce::Label {
 public:
   std::function<void()> onClick;
   void mouseUp(const juce::MouseEvent& e) override {
-    if (onClick && !e.mouseWasDraggedSinceMouseDown()) onClick();
+    // Moved, not held: JUCE counts a press over 300 ms as a drag (#1047).
+    if (onClick && !e.source.hasMovedSignificantlySincePressed()) onClick();
   }
 };
 
