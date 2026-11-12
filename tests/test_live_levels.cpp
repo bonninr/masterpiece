@@ -684,6 +684,25 @@ public:
         MP_CHECK(metered.proc.stripLevel(Strip::Rank, 7) == 0.0f, "a strip out of range reads nothing");
       }
     }
+    // The master volume at -15 dB: the pair reads what leaves, as the output
+    // meter does, 15 dB down (#1047). Measured before the master it read the
+    // unity level and lit red over a quiet output.
+    {
+      Rig quiet(odf);
+      MP_CHECK(quiet.loaded, "the organ loads again");
+      if (auto* gp = quiet.proc.apvts().getParameter("masterGain"))
+        gp->setValueNotifyingHost(gp->convertTo0to1(juce::Decibels::decibelsToGain(-15.0f)));
+      quiet.proc.setStripMeters(true);
+      for (int i = 0; i < 100; ++i) quiet.block(i == 0 ? on : juce::MidiBuffer());
+      const float pair = quiet.proc.stripLevel(Strip::Pair, 0);
+      const float out = std::max(quiet.proc.outputPeak(0), quiet.proc.outputPeak(1));
+      const float rank = quiet.proc.stripLevel(Strip::Rank, 0);
+      MP_CHECK(out > 1.0e-4f && std::fabs(pair - out) < out * 0.1f,
+               "master at -15 dB: the pair reads the output: " + std::to_string(pair) + " against " +
+                   std::to_string(out));
+      MP_CHECK(pair < rank, "master at -15 dB: the pair below the rank it carries: " + std::to_string(pair) +
+                                " against " + std::to_string(rank));
+    }
     MP_CHECK(worst < 1.0e-6f, "metered, the output is the same within rounding: " + std::to_string(worst));
     MP_CHECK(sameAfter, "the meters off: bit-identical to an organ never metered");
     MP_CHECK(metered.proc.stripLevel(Strip::Rank, 0) == 0.0f, "the meters off: dark");
