@@ -3333,6 +3333,9 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   note_.updateText();
   note_.setEnabled(false);
   note_.onValueChange = [this] { loadCurrentIntoSliders(); };
+  // The key played with the test note reaches the note here however the
+  // window was opened (#1068); the timer does nothing while the tab is hidden.
+  startTimerHz(10);
   addAndMakeVisible(everyPipe_);
   everyPipe_.setTooltip(TRANS("Every pipe of the rank at once, to draw their levels or tunings across the compass"));
   everyPipe_.onClick = [this] { showEveryPipe(); };
@@ -3751,6 +3754,10 @@ void VoicingPanel::midiMenu() {
 // pipe's scope moves the note to the key played, unless the keys are left to
 // play its neighbours.
 void VoicingPanel::timerCallback() {
+  // Runs from construction: a window opened straight on this tab shows the
+  // panel before the window reaches the screen, and no visibilityChanged
+  // follows when it does (#1068).
+  if (!isShowing()) return;
   if (const uint32_t steps = proc_.voicingSteps(); steps != shownSteps_) {
     shownSteps_ = steps;
     loadCurrentIntoSliders();
@@ -3767,10 +3774,8 @@ void VoicingPanel::timerCallback() {
 void VoicingPanel::visibilityChanged() {
   if (isShowing()) {
     shownSteps_ = proc_.voicingSteps();
-    startTimerHz(10);
     return;
   }
-  stopTimer();
   // Away from the tab, the keys play the organ again.
   if (testNote_.getToggleState()) {
     testNote_.setToggleState(false, juce::dontSendNotification);
