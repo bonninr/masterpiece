@@ -3024,11 +3024,17 @@ public:
     }
   }
 
+  // A click on another pipe chooses it and leaves its value alone (#1070);
+  // a click or a drag from the pipe chosen sets it, and the drag its
+  // neighbours.
   void mouseDown(const juce::MouseEvent& e) override {
     grabKeyboardFocus();
     const int i = indexAt(e.x);
     if (i < 0) return;
-    choose(i);
+    if (i != selected_) {
+      choose(i);
+      return;
+    }
     lastIndex_ = i;
     lastValue_ = valueFromY(e.y);
     stroke(i, lastValue_, i, lastValue_);
@@ -3200,7 +3206,8 @@ public:
     addAndMakeVisible(selected_);
     styleLabel(selected_, "");
     addAndMakeVisible(help_);
-    styleNote(help_, TRANS("Drag across the pipes to set them; a double-click puts one back. "
+    styleNote(help_, TRANS("A click chooses a pipe. Click or drag from the pipe chosen to set it and its neighbours; "
+                           "a double-click puts one back. "
                            "The wheel and the arrow keys move the pipe chosen in steps. "
                            "With Test note on, the key played is marked. The rank's own trim is added to each pipe."));
     selectRank(rankId);
