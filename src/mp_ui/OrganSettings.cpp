@@ -769,7 +769,11 @@ VoicingEqPanel::VoicingEqPanel(MasterpieceProcessor& p) : proc_(p) {
     const double m = VoicingEqSettings::kMaxDb;
     styleFader(sl, {-m, -m * 0.75, -m * 0.5, -m * 0.25, 0.0, m * 0.25, m * 0.5, m * 0.75, m}, 0.0,
                &sl == &gain_ ? fader::kMaster : fader::kChannel);
-    sl.onValueChange = [this] { apply(); };
+    // A fader moved is heard: it turns the EQ on (#1069).
+    sl.onValueChange = [this] {
+      on_.setToggleState(true, juce::dontSendNotification);
+      apply();
+    };
     addAndMakeVisible(sl);
     if (name == nullptr) return;
     name->setText(text, juce::dontSendNotification);
@@ -788,7 +792,10 @@ VoicingEqPanel::VoicingEqPanel(MasterpieceProcessor& p) : proc_(p) {
     k.setSkewFactorFromMidPoint(mid);
     k.setDoubleClickReturnValue(true, home);
     k.setTooltip(tip);
-    k.onValueChange = [this] { apply(); };
+    k.onValueChange = [this] {
+      on_.setToggleState(true, juce::dontSendNotification);
+      apply();
+    };
     addAndMakeVisible(k);
   };
   for (size_t i = 0; i < static_cast<size_t>(VoicingEqSettings::kBands); ++i) {
