@@ -8267,8 +8267,13 @@ void MasterpieceProcessor::takeStripMeters() {
       if (g >= 0) stripPower_[groups + static_cast<size_t>(g)] += p;
     }
   });
+  // A pair is the end of the desk: it reads what leaves, after the organ's
+  // own trim and the master volume (#1047). Measured before them, a master
+  // at -15 dB left the pair lamps 15 dB above the output, lit red.
+  const float out = organTrimGain_ * *apvts_.getRawParameterValue("masterGain");
   for (size_t b = 0; b < pairPeak_.size(); ++b) {
-    stripPower_[pairs + b] = pairPeak_[b] * pairPeak_[b];
+    const float peak = pairPeak_[b] * out;
+    stripPower_[pairs + b] = peak * peak;
     pairPeak_[b] = 0.0f;
   }
   // Each reading stands until the next one: the lamps step, about four
