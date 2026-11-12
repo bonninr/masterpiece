@@ -222,4 +222,39 @@ public:
 };
 static BellowsBoardTest g_bellowsBoard;
 
+// A blower outlet of 0.4 m3 fed at 10 kg/s, as Pinerolo's is: at the smallest
+// step it chatters around its balance for ever. The settle with the boards
+// ends once nothing drifts, well before its sixty seconds, and the reservoir
+// holds the same pressure as with the full settle.
+class BellowsBoardSettleTest final : public mp::test::Test {
+public:
+  BellowsBoardSettleTest() : Test("functional.control.bellows-board-settle", Category::Functional) {}
+  void run() override {
+    mp::OrganModel m = reservoirOrgan();
+    mp::WindCompartment outlet;
+    outlet.compartmentId = 5;
+    outlet.infiniteVolume = false;
+    outlet.volumeM3 = 0.4;
+    m.wind[5] = outlet;
+    m.windLinks[0].firstCompartmentId = 5;
+    mp::WindCompartmentLink fan;
+    fan.firstCompartmentId = 2;
+    fan.secondCompartmentId = 5;
+    fan.massFlowKgPerSec = 10.0;
+    fan.refPressureInches = 1.0;
+    m.windLinks.push_back(fan);
+
+    mp::WindSolver wind;
+    wind.setBellowsBoard(true);
+    wind.reset(m);
+    wind.settleWith({});
+    const double seconds = static_cast<double>(wind.lastSettleSteps()) * wind.stepSeconds();
+    std::printf("    settle: %lld steps of %.3g s, %.1f s of air; reservoir %.4f in, board at %.1f\n",
+                wind.lastSettleSteps(), wind.stepSeconds(), seconds, wind.nominalFor(3), wind.extensionFor(3));
+    MP_CHECK(seconds < 30.0, "the settle ends before its limit: " + num(seconds) + " s");
+    MP_CHECK(std::abs(wind.nominalFor(3) - 4.0) < 0.05, "the reservoir holds its 4 inches: " + num(wind.nominalFor(3)));
+  }
+};
+static BellowsBoardSettleTest g_bellowsBoardSettle;
+
 }  // namespace

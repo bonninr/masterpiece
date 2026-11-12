@@ -504,6 +504,17 @@ void WindSolver::settleBoards(const std::unordered_set<Id>* engagedSwitches) {
   const long long steps = static_cast<long long>(kSettleSeconds / maxStep_);
   constexpr int kWindow = 1024;
   std::vector<double> lo(order_.size() + boards_.size()), hi(lo.size());
+  // The integrator has a floor of its own: at the smallest step a small
+  // compartment on a wide link chatters around its balance by a few
+  // ten-thousandths of an inch for ever, at rest as in play. Pinerolo's blower
+  // outlet does, and waiting for it to fall below the limit below ran the
+  // settle to its end, twelve million steps and seconds of load time. Settled
+  // also when no window's middle has moved over the last few windows and the
+  // swing has stopped shrinking: the boards are damped to critical here, so
+  // what is left is the step's own chatter.
+  constexpr int kLookBack = 8;
+  std::vector<std::vector<double>> mids;
+  std::vector<double> swings;
   for (long long i = 0; i < steps; ++i) {
     const int phase = static_cast<int>(i % kWindow);
     for (size_t j = 0; j < lo.size(); ++j) {
@@ -522,6 +533,18 @@ void WindSolver::settleBoards(const std::unordered_set<Id>* engagedSwitches) {
       double swing = 0.0;
       for (size_t j = 0; j < lo.size(); ++j) swing = std::max(swing, hi[j] - lo[j]);
       if (swing < 1.0e-4) break;
+      std::vector<double> mid(lo.size());
+      for (size_t j = 0; j < lo.size(); ++j) mid[j] = 0.5 * (lo[j] + hi[j]);
+      mids.push_back(std::move(mid));
+      swings.push_back(swing);
+      const size_t n = swings.size();
+      if (n > kLookBack && swing < 1.0e-2 && swing >= 0.95 * swings[n - 1 - kLookBack]) {
+        double drift = 0.0;
+        for (size_t j = 0; j < lo.size(); ++j)
+          for (size_t k = n - 1 - kLookBack; k < n - 1; ++k)
+            drift = std::max(drift, std::abs(mids[n - 1][j] - mids[k][j]));
+        if (drift < 1.0e-5) break;
+      }
     }
   }
   for (Board& b : boards_) b.uDot = 0.0;
