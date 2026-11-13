@@ -74,7 +74,8 @@ public:
         std::printf("        %s  %-24s %4d px of text, %4d px of button\n", code,
                     plain(button->getButtonText()).c_str(), letters, button->getWidth());
       }
-      MP_CHECK(buttons == 10, std::string(code) + ": the recorder has ten buttons");
+      // Eight for MIDI; Record audio, Stop and Folder... for audio.
+      MP_CHECK(buttons == 11, std::string(code) + ": the recorder has eleven buttons");
       if (std::string(code) == "en") english = needed;
       if (std::string(code) == "fr") french = needed;
 
