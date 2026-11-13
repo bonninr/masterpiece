@@ -2977,6 +2977,16 @@ public:
     g.fillAll(juce::Colour(0xff15171c));
     const auto plot = plotArea();
     g.setFont(juce::FontOptions(12.0f));
+    // The columns first, under the scale: the naturals' light, the sharps'
+    // dark, as on the keyboard.
+    for (int i = 0; i < static_cast<int>(pipes_.size()); ++i) {
+      const float w = columnWidth();
+      const float x = static_cast<float>(plot.getX()) + w * static_cast<float>(i);
+      const bool sharp = juce::MidiMessage::isMidiNoteBlack(notes_[static_cast<size_t>(i)]);
+      g.setColour(sharp ? juce::Colour(0xff0a0b0e) : juce::Colour(0xff272b34));
+      g.fillRect(juce::Rectangle<float>(x + 0.5f, static_cast<float>(plot.getY()), w - 1.0f,
+                                        static_cast<float>(plot.getHeight())));
+    }
     // The scale: the middle line is the pipe as the set has it.
     const float r = range();
     for (const float v : {-r, -r / 2, 0.0f, r / 2, r}) {
@@ -2999,17 +3009,16 @@ public:
       const float x = static_cast<float>(plot.getX()) + w * static_cast<float>(i);
       const auto column = juce::Rectangle<float>(x, static_cast<float>(plot.getY()), w, static_cast<float>(plot.getHeight()));
       const int note = notes_[static_cast<size_t>(i)];
-      // The black keys a shade darker, so the compass reads like a keyboard.
-      if (juce::MidiMessage::isMidiNoteBlack(note)) {
-        g.setColour(juce::Colour(0xff1b1e24));
-        g.fillRect(column);
-      }
+      // Coloured like the keyboard, so a note is found at a glance (#1092):
+      // the naturals' columns light, the sharps' dark, and the sharps' bars
+      // a deeper shade.
+      const bool sharp = juce::MidiMessage::isMidiNoteBlack(note);
       if (note == sounding) {
         g.setColour(juce::Colour(0xff2e4a3a));
         g.fillRect(column);
       }
       const float y = yOf(valueAt(i));
-      g.setColour(juce::Colour(0xffe8a33d));
+      g.setColour(sharp ? juce::Colour(0xffa86f22) : juce::Colour(0xffe8a33d));
       g.fillRect(juce::Rectangle<float>(x + 1.0f, std::min(y, zero), std::max(1.0f, w - 2.0f),
                                         std::max(1.0f, std::abs(y - zero))));
       if (i == selected_) {
