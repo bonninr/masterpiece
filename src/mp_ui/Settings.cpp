@@ -4039,7 +4039,7 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(filter_);
   filter_.setTextToShowWhenEmpty(TRANS("Filter, for example: Rear, tremmed, Pedal"),
                                  juce::Colours::grey);
-  filter_.setTooltip(TRANS("Shows only the ranks whose name holds this text"));
+  filter_.setTooltip(TRANS("Shows only the ranks whose name or division holds this text"));
   filter_.onTextChange = [this] { resized(); };
   addAndMakeVisible(narrow_);
   narrow_.setToggleState(proc_.narrowStrips(), juce::dontSendNotification);
@@ -4375,6 +4375,7 @@ void MixerPanel::refresh() {
   rankFaders_.clear();
   rankGroups_.clear();
   rankGroupAbove_.clear();
+  rankDivisions_.clear();
   rankHolder_.removeAllChildren();
   busHolder_.removeAllChildren();
   rankHolder_.addAndMakeVisible(ranksHeading_);
@@ -4435,13 +4436,15 @@ void MixerPanel::refresh() {
   });
   for (size_t i = 0; i < rankIds_.size(); ++i) {
     const int d = divisionOf(rankIds_[i]);
+    const auto division =
+        d >= 0 && d < static_cast<int>(divisionNames.size()) ? divisionNames[static_cast<size_t>(d)] : TRANS("Other");
+    rankDivisions_.push_back(division);
     if (i > 0 && divisionOf(rankIds_[i - 1]) == d) {
       rankGroupAbove_.push_back(-1);
       continue;
     }
     auto group = std::make_unique<juce::Label>();
-    styleLabel(*group, d >= 0 && d < static_cast<int>(divisionNames.size()) ? divisionNames[static_cast<size_t>(d)]
-                                                                            : TRANS("Other"));
+    styleLabel(*group, division);
     group->setColour(juce::Label::textColourId, juce::Colours::grey);
     rankHolder_.addAndMakeVisible(*group);
     rankGroupAbove_.push_back(static_cast<int>(rankGroups_.size()));
@@ -4475,7 +4478,10 @@ void MixerPanel::refresh() {
 
 bool MixerPanel::rankShown(size_t row) const {
   const auto text = filter_.getText().trim();
-  return text.isEmpty() || (row < rankFaders_.size() && rankFaders_[row].strip->name().containsIgnoreCase(text));
+  // The division too: its name heads the rank's run, and a set's rank names
+  // seldom say it (Friesach: "01. P Untersatz 32'").
+  return text.isEmpty() || (row < rankFaders_.size() && rankFaders_[row].strip->name().containsIgnoreCase(text)) ||
+         (row < rankDivisions_.size() && rankDivisions_[row].containsIgnoreCase(text));
 }
 
 void MixerPanel::resized() {

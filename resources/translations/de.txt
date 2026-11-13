@@ -554,7 +554,6 @@ countries: de at ch li lu
 "Slot %1  -  %2 rank(s), %3 pipe(s) adjusted" = "Speicher %1  -  %2 Reihe(n), %3 Pfeife(n) angepasst"
 "takes effect on the next note" = "wirkt ab der nächsten Note"
 "Output pairs" = "Ausgangspaare"
-"Shows only the ranks whose name holds this text" = "Zeigt nur die Register, deren Name diesen Text enthält"
 "1 (stereo)" = "1 (Stereo)"
 "%1 pairs" = "%1 Paare"
 "Pair %1" = "Paar %1"

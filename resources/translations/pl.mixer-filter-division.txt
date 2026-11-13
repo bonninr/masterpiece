@@ -1,0 +1,1 @@
+"Shows only the ranks whose name or division holds this text" = "Pokazuje tylko szeregi, których nazwa lub manuał zawiera ten tekst"

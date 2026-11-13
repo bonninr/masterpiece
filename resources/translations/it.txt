@@ -554,7 +554,6 @@ countries: it ch sm va
 "Slot %1  -  %2 rank(s), %3 pipe(s) adjusted" = "Posizione %1  -  %2 fila/e, %3 canna/e regolata/e"
 "takes effect on the next note" = "ha effetto dalla nota successiva"
 "Output pairs" = "Coppie di uscita"
-"Shows only the ranks whose name holds this text" = "Mostra solo i ranghi il cui nome contiene questo testo"
 "1 (stereo)" = "1 (stereo)"
 "%1 pairs" = "%1 coppie"
 "Pair %1" = "Coppia %1"

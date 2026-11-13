@@ -554,7 +554,6 @@ countries: fr be ca ch lu mc
 "Slot %1  -  %2 rank(s), %3 pipe(s) adjusted" = "Mémoire %1  -  %2 rang(s), %3 tuyau(x) modifié(s)"
 "takes effect on the next note" = "prend effet à la note suivante"
 "Output pairs" = "Paires de sorties"
-"Shows only the ranks whose name holds this text" = "Affiche seulement les rangs dont le nom contient ce texte"
 "1 (stereo)" = "1 (stéréo)"
 "%1 pairs" = "%1 paires"
 "Pair %1" = "Paire %1"

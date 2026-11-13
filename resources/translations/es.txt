@@ -554,7 +554,6 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Slot %1  -  %2 rank(s), %3 pipe(s) adjusted" = "Espacio %1  -  %2 hilera(s), %3 tubo(s) ajustado(s)"
 "takes effect on the next note" = "surte efecto en la siguiente nota"
 "Output pairs" = "Pares de salida"
-"Shows only the ranks whose name holds this text" = "Muestra solo las filas cuyo nombre contiene este texto"
 "1 (stereo)" = "1 (estéreo)"
 "%1 pairs" = "%1 pares"
 "Pair %1" = "Par %1"

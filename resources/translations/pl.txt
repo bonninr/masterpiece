@@ -554,7 +554,6 @@ countries: pl
 "Slot %1  -  %2 rank(s), %3 pipe(s) adjusted" = "Pamięć %1  -  szeregi: %2, skorygowane piszczałki: %3"
 "takes effect on the next note" = "zadziała od następnej nuty"
 "Output pairs" = "Pary wyjść"
-"Shows only the ranks whose name holds this text" = "Pokazuje tylko szeregi, których nazwa zawiera ten tekst"
 "1 (stereo)" = "1 (stereo)"
 "%1 pairs" = "Pary: %1"
 "Pair %1" = "Para %1"
