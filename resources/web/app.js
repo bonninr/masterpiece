@@ -374,6 +374,8 @@ function showProgram(p) {
   if (p === undefined || p === "lateBlocks") $("late").textContent = s.lateBlocks ? `${s.lateBlocks} late blocks` : "";
   if (p === undefined || p === "organState" || p === "loadProgress") showState();
   if (p === undefined || p === "roomOn") { const b = $("roomOn"); if (b) b.classList.toggle("lit", s.roomOn === 1); }
+  if (p === undefined || p === "audioRecorder") $("recAudio").classList.toggle("lit", s.audioRecorder === 1);
+  if (p === undefined || p === "midiRecorder") $("recMidi").classList.toggle("lit", s.midiRecorder === 1);
   if (p === undefined || p === "roomWet") { const w = $("roomWet"); if (w && document.activeElement !== w) w.value = s.roomWet; }
 }
 
@@ -599,6 +601,8 @@ $("transUp").addEventListener("click", () => setProgram("transpose", Math.min(12
 $("transDown").addEventListener("click", () => setProgram("transpose", Math.max(-12, (state.program.transpose || 0) - 1)));
 $("temperament").addEventListener("change", (e) => press("temperaments", Number(e.target.value)));
 $("eqpreset").addEventListener("change", (e) => { const i = Number(e.target.value); if (i >= 0) press("eqpresets", i); });
+$("recAudio").addEventListener("click", () => setProgram("audioRecorder", state.program.audioRecorder ? 0 : 1));
+$("recMidi").addEventListener("click", () => setProgram("midiRecorder", state.program.midiRecorder ? 0 : 1));
 $("panic").addEventListener("click", () => press("commands", 0));
 $("token").value = localStorage.getItem("mp-token") || "";
 $("token").addEventListener("change", (e) => localStorage.setItem("mp-token", e.target.value));

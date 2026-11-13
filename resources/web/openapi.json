@@ -63,6 +63,8 @@
         "eqPreset",
         "polyphony",
         "realtimeThreads",
+        "midiRecorder",
+        "audioRecorder",
         "metronome",
         "metronomeTempo",
         "roomOn",
