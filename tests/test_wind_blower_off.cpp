@@ -182,6 +182,39 @@ public:
     mp::WindSolver board;
     board.reset(regulated);
     MP_CHECK(board.controlValves().empty(), "a regulator's valve is left to the board");
+
+    // ... however far down it reaches (#1051). St Mary Portsea: the board's
+    // height feeds a "Regulator Base" through a linkage, and a double linkage
+    // joins that with the wind supply's level into the valve. With the
+    // boards off the valve stays open and the organ has its wind.
+    mp::OrganModel portsea = byControl;
+    constexpr mp::Id kHeight = 10, kBase = 27, kSupply = 26;
+    for (const mp::Id id : {kHeight, kBase, kSupply}) {
+      mp::ContinuousControl c;
+      c.controlId = id;
+      c.defaultValue = id == kHeight ? 127 : id == kSupply ? 73 : 0;
+      portsea.continuousControls[id] = c;
+    }
+    portsea.wind[3].bellowsExtensionOutputControlId = kHeight;
+    mp::ContinuousControlLinkage heightToBase;
+    heightToBase.sourceControlId = kHeight;
+    heightToBase.destControlId = kBase;
+    heightToBase.invert = true;
+    portsea.controlLinkages.push_back(heightToBase);
+    mp::ContinuousControlDoubleLinkage baseAndSupply;
+    baseAndSupply.destControlId = kBlowerControl;
+    baseAndSupply.firstControlId = kBase;
+    baseAndSupply.secondControlId = kSupply;
+    portsea.controlDoubleLinkages.push_back(baseAndSupply);
+    mp::WindSolver curtain;
+    curtain.reset(portsea);
+    MP_CHECK(curtain.controlValves().empty(), "a regulator two linkages down is left to the board");
+    curtain.settleWith(off);
+    run(curtain, off, 20.0);
+    std::printf("    regulator two linkages down: chest %.4f in, amp %.4f\n", curtain.pressureFor(3),
+                curtain.modFor(3).ampMul);
+    MP_CHECK(std::abs(curtain.modFor(3).ampMul - 1.0) < 0.01,
+             "its chest keeps its wind: amp " + num(curtain.modFor(3).ampMul));
   }
 };
 static WindBlowerOffTest g_windBlowerOff;

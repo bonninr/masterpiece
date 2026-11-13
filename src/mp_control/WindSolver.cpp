@@ -94,14 +94,22 @@ void WindSolver::resetControlValves(const OrganModel& model) {
   // reservoir through one, on the control the blower motor drives. A
   // reservoir's own regulator is left out: its control is the board's height,
   // which is solved only with the boards on, and read anywhere else it would
-  // be a number nothing sets.
+  // be a number nothing sets. Everything the board's height reaches counts,
+  // through any number of linkages and double linkages: St Mary Portsea's
+  // regulator valve is a double linkage of a "Regulator Base" the height
+  // feeds and the wind supply's level (#1051).
   std::unordered_set<Id> regulators;
   for (const auto& [id, wc] : model.wind)
     if (wc.bellowsExtensionOutputControlId != 0) regulators.insert(wc.bellowsExtensionOutputControlId);
-  std::vector<Id> fed;
-  for (const ContinuousControlLinkage& l : model.controlLinkages)
-    if (regulators.count(l.sourceControlId) != 0) fed.push_back(l.destControlId);
-  regulators.insert(fed.begin(), fed.end());
+  for (bool grew = !regulators.empty(); grew;) {
+    grew = false;
+    for (const ContinuousControlLinkage& l : model.controlLinkages)
+      if (regulators.count(l.sourceControlId) != 0 && regulators.insert(l.destControlId).second) grew = true;
+    for (const ContinuousControlDoubleLinkage& l : model.controlDoubleLinkages)
+      if ((regulators.count(l.firstControlId) != 0 || regulators.count(l.secondControlId) != 0) &&
+          regulators.insert(l.destControlId).second)
+        grew = true;
+  }
 
   controlValves_.clear();
   linkOpening_.assign(resolved_.size(), 1.0);
