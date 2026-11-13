@@ -10472,6 +10472,24 @@ juce::File MasterpieceProcessor::pressRecorderButton(bool record, const juce::Fi
   return saved;
 }
 
+juce::File MasterpieceProcessor::startAudioRecording() {
+  if (audioRecorder_.isRecording()) return audioRecorder_.file();
+  const juce::String organ = juce::File::createLegalFileName(
+      model_.organName.empty() ? juce::String("Masterpiece") : juce::String::fromUTF8(model_.organName.c_str()));
+  const juce::File folder = audioRecordingFolder();
+  folder.createDirectory();
+  const juce::File file =
+      folder.getChildFile(organ + " " + juce::Time::getCurrentTime().formatted("%Y-%m-%d %H-%M-%S") + ".wav")
+          .getNonexistentSibling();
+  // The device's rate, not the organ's: this is what is leaving.
+  if (!audioRecorder_.start(file, getSampleRate(), getTotalNumOutputChannels())) {
+    juce::Logger::writeToLog("recorder: could not write an audio recording in " + folder.getFullPathName());
+    return {};
+  }
+  juce::Logger::writeToLog("recorder: recording audio to " + file.getFullPathName());
+  return file;
+}
+
 // A console's lamps after a load: the lamps of the organ before stayed as
 // they were, and a stop the new organ starts with drawn was never lit, since
 // a lamp was sent only when its switch moved (#565). Every lamp is sent once,

@@ -1,0 +1,5 @@
+"Record audio" = "Registra audio"
+"Folder..." = "Cartella..."
+"Keep the recordings in" = "Salva le registrazioni in"
+"Recordings go to %1" = "Le registrazioni vanno in %1"
+"Could not write a file in %1" = "Impossibile scrivere un file in %1"

@@ -557,6 +557,64 @@ public:
 };
 static MidiArchiveLimitsTest g_midiArchiveLimits;
 
+// Record audio starts at once (#1080): a file named for the organ, the date
+// and the time, in the folder the player chose.
+class AudioRecordDatedTest final : public mp::test::Test {
+public:
+  AudioRecordDatedTest() : Test("functional.audio.audio-record-dated", Category::Functional) {}
+  void run() override {
+    const juce::File folder =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp audio record dated");
+    folder.deleteRecursively();
+    folder.createDirectory();
+    juce::File global;
+    juce::String before;
+    bool existed = false;
+    {
+      mp::MasterpieceProcessor proc;
+      global = proc.globalSettingsFile();
+      existed = global.existsAsFile();
+      before = existed ? global.loadFileAsString() : juce::String();
+      global.getParentDirectory().createDirectory();
+      // The rate the host sets: the recording is written at it.
+      proc.setRateAndBufferSizeDetails(48000.0, 256);
+      proc.prepareToPlay(48000.0, 256);
+      MP_CHECK(proc.loadOrgan(fixture(), 0, true).ok, "the organ loads");
+      MP_CHECK(proc.audioRecordingFolder() == mp::MasterpieceProcessor::recordingsFolder() ||
+                   proc.audioRecordingFolder() == proc.dialogFolder("recording"),
+               "a folder never chosen is the recordings folder");
+      proc.rememberDialogFolder("recording", folder);
+      MP_CHECK(proc.audioRecordingFolder() == folder, "the folder chosen is used");
+
+      const juce::File first = proc.startAudioRecording();
+      MP_CHECK(proc.audioRecorder().isRecording(), "Record starts at once");
+      MP_CHECK(first.getParentDirectory() == folder, "in the folder chosen: " + first.getFullPathName().toStdString());
+      const juce::String name = first.getFileNameWithoutExtension();
+      const juce::String stamp = name.getLastCharacters(19);
+      bool dated = first.hasFileExtension("wav") && name.length() > 20 && name[name.length() - 20] == ' ';
+      for (int i = 0; i < stamp.length(); ++i) {
+        const juce::juce_wchar c = stamp[i];
+        const bool sep = i == 4 || i == 7 || i == 13 || i == 16;
+        dated = dated && (i == 10 ? c == ' ' : sep ? c == '-' : juce::CharacterFunctions::isDigit(c));
+      }
+      MP_CHECK(dated, "named for the organ, the date and the time: " + first.getFileName().toStdString());
+      MP_CHECK(proc.startAudioRecording() == first, "Record again while recording: the same file");
+      for (int i = 0; i < 40; ++i) render(proc);
+      proc.audioRecorder().stop();
+      MP_CHECK(first.getSize() > 44, "the file holds the audio: " + std::to_string(first.getSize()) + " bytes");
+
+      const juce::File second = proc.startAudioRecording();
+      proc.audioRecorder().stop();
+      MP_CHECK(second != juce::File() && second != first && first.existsAsFile(),
+               "a second recording, even in the same second, keeps the first");
+    }
+    if (existed) global.replaceWithText(before);
+    else global.deleteFile();
+    folder.deleteRecursively();
+  }
+};
+static AudioRecordDatedTest g_audioRecordDated;
+
 }  // namespace
 
 #endif  // MP_TEST_HAS_AUDIO
