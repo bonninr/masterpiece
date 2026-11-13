@@ -24,11 +24,12 @@ async function get(path) {
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
   return r.json();
 }
-async function send(method, path, body) {
+// `said` gives the words for an error this request can meet.
+async function send(method, path, body, said = {}) {
   const r = await fetch(url(path), { method, headers: headers(), body: body ? JSON.stringify(body) : "{}" });
   if (!r.ok) {
     const e = (await r.json().catch(() => ({}))).error || r.status;
-    flash(e === "not-allowed" ? "Changes are not allowed, or the token is wrong (Access, below)" : `Refused: ${e}`);
+    flash(said[e] || (e === "not-allowed" ? "Changes are not allowed, or the token is wrong (Access, below)" : `Refused: ${e}`));
   }
 }
 const setValue = (type, i, value) => send("PUT", `${type}/${i}/value`, { value });
@@ -140,7 +141,10 @@ function organButtons() {
 }
 function openOrgan(o) {
   flash(`Opening ${o.name}`);
-  press("organs", o.index);
+  send("POST", `organs/${o.index}/press`, null, {
+    "no-organ": `${o.name}: its files are not on this computer`,
+    busy: "An organ is loading. Choose again once it is ready."});
+  fillSelects();  // the picker shows the organ loaded until the next one is
 }
 
 // Every switch and control the organ has, its internal ones too, loaded when
@@ -595,6 +599,8 @@ function connect() {
       state.program[c.property] = c.value;
       if (c.property === "session" && c.value !== state.session) return reload();
       if (c.property === "organState" && c.value === 2 && state.session !== c.session) return reload();
+      // Nothing built yet: the empty page says a load has begun.
+      if (c.property === "organState" && state.session < 0) build();
       return showProgram(c.property);
     }
     if (state.program.organState !== 2) return;  // nothing built yet: the ready event builds it

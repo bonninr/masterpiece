@@ -48,6 +48,7 @@ body.solo-sequencer #frame { grid-column: 1 / -1; order: -1; font-size: 40px; te
 details { margin-left: auto; }
 details label, details a { margin: 6px 0; display: flex; color: var(--dim); }
 .empty { color: var(--dim); padding: 30px; grid-column: 1 / -1; text-align: center; }
+.empty .organs, .empty .dim { justify-content: center; margin-top: 16px; }
 details.all { margin: 0; }
 details.all summary { cursor: pointer; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; font-size: 14px; font-weight: 600; }
 details.all input[type=search] { width: 100%; margin: 10px 0; background: var(--off); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; font: inherit; }
