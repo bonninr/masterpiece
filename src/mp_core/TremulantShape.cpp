@@ -89,6 +89,15 @@ double cyclesOf(const std::vector<double>& cents, const std::vector<double>* lvl
   double best = 1.0;
   for (const double c : candidates)
     if (c > best && held(c) >= 0.6 * total) best = c;
+  // One cycle holds most of its power in its first few lines. A loop whose
+  // power is spread wide repeats nothing: squeezed into one tremulant cycle it
+  // would warble, so it plays the tremulant's sine. Recorded one-cycle loops
+  // hold 94 % or more there.
+  if (best == 1.0) {
+    double low = 0.0;
+    for (int k = 1; k <= std::min(top, 8); ++k) low += p[static_cast<size_t>(k)];
+    if (low < 0.6 * total) return 0.0;
+  }
   return best;
 }
 
@@ -133,6 +142,7 @@ bool buildTremulantShape(const float* pitch, const float* level, size_t frames,
   // The cycles in the loop, from the channel that moves.
   const double cycles = cyclesOf(centsSpread >= 1.0e-4 ? cents : lvl,
                                  centsSpread >= 1.0e-4 && level != nullptr && lvlSpread >= 1.0e-7 ? &lvl : nullptr);
+  if (!(cycles > 0.0)) return false;
   const double period = static_cast<double>(n) / cycles;
   if (period < TremulantShape::kPoints / 4) return false;
 

@@ -152,6 +152,24 @@ public:
       MP_CHECK(worstOne < 0.003, "the level table keeps its swing: " + std::to_string(worstOne));
     }
 
+    // A loop that repeats nothing: noise in both channels. Squeezed into one
+    // cycle it would warble at every beat, so it makes no shape and the pipe
+    // plays its tremulant's sine.
+    {
+      constexpr size_t kNoise = 72000, kNs = 1000, kNe = 71000;
+      std::vector<float> np(kNoise), nl(kNoise);
+      uint32_t seed = 777u;
+      for (size_t i = 0; i < kNoise; ++i) {
+        seed = seed * 1664525u + 1013904223u;
+        np[i] = static_cast<float>((static_cast<double>(seed >> 8) / 16777216.0 - 0.5) * 0.004);
+        seed = seed * 1664525u + 1013904223u;
+        nl[i] = static_cast<float>(0.1 + (static_cast<double>(seed >> 8) / 16777216.0 - 0.5) * 0.02);
+      }
+      mp::TremulantShape noisy;
+      MP_CHECK(!mp::buildTremulantShape(np.data(), nl.data(), kNoise, kNs, kNe, noisy),
+               "a loop of noise makes no shape");
+    }
+
     // Nothing that moves, and a loop too short for a cycle.
     std::vector<float> still(kFrames, 0.0f);
     mp::TremulantShape none;

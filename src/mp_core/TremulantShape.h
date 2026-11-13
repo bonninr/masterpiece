@@ -55,7 +55,8 @@ struct TremulantShape {
 // cycles in the loop, one or hundreds, are counted from its spectrum and
 // averaged into one; the table's phase is counted from the file's start, so
 // files that start together stay together. False when the loop is too short
-// to hold a cycle or nothing in it moves.
+// to hold a cycle, nothing in it moves, or nothing in it repeats: such a pipe
+// plays its tremulant's sine.
 bool buildTremulantShape(const float* pitch, const float* level, size_t frames,
                          size_t loopStart, size_t loopEnd, TremulantShape& out);
 
