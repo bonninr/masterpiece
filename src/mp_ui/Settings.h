@@ -471,6 +471,10 @@ private:
   juce::Label powerHeading_;
   juce::TextButton learnQuit_{TRANS("Learn quit")};
   juce::TextButton learnPowerOff_{TRANS("Learn power off")};
+  // The power-off button needs the Remote control tab's permission (#1101):
+  // said under the buttons while it is off.
+  juce::Label powerOffNeeds_;
+  bool powerOffAllowed() const;
   juce::Label lampLabel_;
   juce::ComboBox lampKind_, lampChannel_, lampNumber_;
   void pushReadyLamp();

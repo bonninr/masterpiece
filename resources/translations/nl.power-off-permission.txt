@@ -1,0 +1,1 @@
+"To shut the computer down with this button, turn on \"Allow quitting Masterpiece and shutting the computer down\" in Remote control." = "Om de computer met deze knop uit te zetten, schakelt u „Masterpiece afsluiten en de computer uitzetten toestaan” in onder Bediening op afstand."
