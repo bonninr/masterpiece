@@ -10,27 +10,93 @@ namespace {
 
 constexpr double kTwoPi = 6.283185307179586;
 
-// The strongest of harmonics 1..8 of a mean-removed series, as a cycle count.
-// Read at about 4096 points of the loop: eight harmonics need far fewer, and
-// a loop of several seconds would otherwise cost seconds over a whole organ.
-int strongestHarmonic(const std::vector<double>& x) {
+// Each harmonic 1..top+1 of a mean-removed series, by its power, added to
+// `sum` as a share of the series' power over 1..top. Read at about 4096
+// points of the loop with a rotating phasor, so a loop of several seconds
+// costs a few milliseconds.
+void addSpectrum(const std::vector<double>& x, int top, std::vector<double>& sum) {
   const size_t n = x.size();
   const size_t stride = std::max<size_t>(1, n / 4096);
-  int best = 1;
-  double bestPower = -1.0;
-  for (int k = 1; k <= 8; ++k) {
-    if (static_cast<size_t>(k) * 64 > n) break;
-    double re = 0.0, im = 0.0;
+  std::vector<double> power(static_cast<size_t>(top) + 2, 0.0);
+  double total = 0.0;
+  for (int k = 1; k <= top + 1; ++k) {
+    const double w = kTwoPi * static_cast<double>(k) * static_cast<double>(stride) / static_cast<double>(n);
+    const double cw = std::cos(w), sw = std::sin(w);
+    double c = 1.0, s = 0.0, re = 0.0, im = 0.0;
     for (size_t j = 0; j < n; j += stride) {
-      const double w = kTwoPi * static_cast<double>(k) * static_cast<double>(j) / static_cast<double>(n);
-      re += x[j] * std::cos(w);
-      im -= x[j] * std::sin(w);
+      re += x[j] * c;
+      im -= x[j] * s;
+      const double nc = c * cw - s * sw;
+      s = s * cw + c * sw;
+      c = nc;
     }
-    const double power = re * re + im * im;
-    if (power > bestPower) {
-      bestPower = power;
-      best = k;
+    power[static_cast<size_t>(k)] = re * re + im * im;
+    if (k <= top) total += power[static_cast<size_t>(k)];
+  }
+  if (total <= 0.0) return;
+  for (int k = 1; k <= top; ++k) sum[static_cast<size_t>(k)] += power[static_cast<size_t>(k)] / total;
+}
+
+// The cycles in a loop, from the spectra of the channels that move.
+//
+// A loop may hold one cycle or many: a file cut from a recording loops over
+// seconds, dozens of cycles, and not always a whole number of them. A count
+// k is the loop's when the harmonics at its multiples hold most of both
+// channels' power together; the largest such count is the cycle. One channel
+// alone misleads: a pitch that hardly moves is mostly noise, and its strongest
+// line can be the third harmonic of a cycle its level shows plainly (#1074).
+//
+// The candidates are the spectrum's peaks, each placed between its line and
+// the stronger neighbour by their amplitudes, and their divisors. Below four
+// cycles a count is whole: a loop that short is cut to whole cycles.
+double cyclesOf(const std::vector<double>& cents, const std::vector<double>* lvl) {
+  constexpr int kMaxCycles = 512;
+  const size_t n = cents.size();
+  const int top = static_cast<int>(std::min<size_t>(kMaxCycles, n / 64));
+  if (top < 2) return 1.0;
+  std::vector<double> p(static_cast<size_t>(top) + 2, 0.0);
+  addSpectrum(cents, top, p);
+  if (lvl != nullptr) addSpectrum(*lvl, top, p);
+  double total = 0.0;
+  for (int k = 1; k <= top; ++k) total += p[static_cast<size_t>(k)];
+  if (total <= 0.0) return 1.0;
+
+  // The power at the multiples of a count: the line each falls on, or the
+  // two it falls between.
+  const auto held = [&](double kf) {
+    double e = 0.0;
+    for (int m = 1; m * kf <= top + 0.5; ++m) {
+      const int lo = static_cast<int>(std::floor(m * kf));
+      const int hi = static_cast<int>(std::ceil(m * kf));
+      if (lo >= 1 && lo <= top) e += p[static_cast<size_t>(lo)];
+      if (hi != lo && hi >= 1 && hi <= top) e += p[static_cast<size_t>(hi)];
     }
+    return e;
+  };
+
+  std::vector<double> candidates;
+  for (int h = 2; h <= top; ++h) {
+    const auto u = static_cast<size_t>(h);
+    if (p[u] < p[u - 1] || p[u] < p[u + 1] || p[u] <= 0.02 * total) continue;
+    const double a = std::sqrt(p[u]), lo = std::sqrt(p[u - 1]), hi = std::sqrt(p[u + 1]);
+    const double side = std::max(lo, hi);
+    const double kf = static_cast<double>(h) + (hi >= lo ? 1.0 : -1.0) * (side / (a + side));
+    for (int d = 1; kf / d >= 1.0; ++d) {
+      const double c = kf / d;
+      candidates.push_back(c >= 4.0 ? c : std::round(c));
+    }
+  }
+  double best = 1.0;
+  for (const double c : candidates)
+    if (c > best && held(c) >= 0.6 * total) best = c;
+  // One cycle holds most of its power in its first few lines. A loop whose
+  // power is spread wide repeats nothing: squeezed into one tremulant cycle it
+  // would warble, so it plays the tremulant's sine. Recorded one-cycle loops
+  // hold 94 % or more there.
+  if (best == 1.0) {
+    double low = 0.0;
+    for (int k = 1; k <= std::min(top, 8); ++k) low += p[static_cast<size_t>(k)];
+    if (low < 0.6 * total) return 0.0;
   }
   return best;
 }
@@ -74,8 +140,10 @@ bool buildTremulantShape(const float* pitch, const float* level, size_t frames,
   if (centsSpread < 1.0e-4 && lvlSpread < 1.0e-7) return false;
 
   // The cycles in the loop, from the channel that moves.
-  const int cycles = strongestHarmonic(centsSpread >= 1.0e-4 ? cents : lvl);
-  const double period = static_cast<double>(n) / static_cast<double>(cycles);
+  const double cycles = cyclesOf(centsSpread >= 1.0e-4 ? cents : lvl,
+                                 centsSpread >= 1.0e-4 && level != nullptr && lvlSpread >= 1.0e-7 ? &lvl : nullptr);
+  if (!(cycles > 0.0)) return false;
+  const double period = static_cast<double>(n) / cycles;
   if (period < TremulantShape::kPoints / 4) return false;
 
   // Every frame of the loop into the point of the cycle it falls on, counted
@@ -117,7 +185,7 @@ bool buildTremulantShape(const float* pitch, const float* level, size_t frames,
     peakC = std::max(peakC, std::fabs(c[u]));
   }
   out.pitchPeakCents = peakC;
-  out.cyclesInLoop = cycles;
+  out.cyclesInLoop = static_cast<int>(std::lround(cycles));
   out.pitchCapped = peakC > TremulantShape::kMaxPitchCents;
   const double toUnits = out.pitchCapped ? (peakC > 0.0 ? 1.0 / peakC : 0.0)
                                          : 1.0 / kTremulantWaveformPitchCents;

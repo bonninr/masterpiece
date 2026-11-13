@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -85,6 +86,89 @@ public:
     float cappedPeak = 0.0f;
     for (float v : capped.pitch) cappedPeak = std::max(cappedPeak, std::fabs(v));
     MP_CHECK(std::fabs(cappedPeak - 1.0f) < 1.0e-3f, "to the standard depth: " + std::to_string(cappedPeak));
+
+    // A loop cut from a recording: seconds long, many cycles, not always a
+    // whole number of them (#1074). 5.9 Hz at 48 kHz over 3 s is 17.7
+    // cycles; the shape is still one cycle of the file, at its full swing.
+    for (const double hz : {6.0, 5.9}) {
+      constexpr size_t kLong = 160000, kLs = 8000, kLe = 8000 + 144000;
+      const double per = 48000.0 / hz;
+      const auto longCents = [&](double t) {
+        const double x = 2.0 * kPi * t / per;
+        return 10.0 * std::sin(x) + 2.0 * std::sin(2.0 * x);
+      };
+      std::vector<float> lp(kLong), ll(kLong);
+      for (size_t i = 0; i < kLong; ++i) {
+        lp[i] = static_cast<float>(std::pow(2.0, longCents(static_cast<double>(i)) / 1200.0) - 1.0);
+        // A level with two humps a cycle: its second harmonic above its first.
+        const double x = 2.0 * kPi * static_cast<double>(i) / per;
+        ll[i] = static_cast<float>(0.01 * std::cos(x) + 0.03 * std::cos(2.0 * x));
+      }
+      mp::TremulantShape longShape;
+      MP_CHECK(mp::buildTremulantShape(lp.data(), ll.data(), kLong, kLs, kLe, longShape),
+               "a long loop makes a shape");
+      const int want = static_cast<int>(std::lround(3.0 * hz));
+      MP_CHECK(longShape.cyclesInLoop == want, "the loop's " + std::to_string(want) +
+                                                   " cycles found: " + std::to_string(longShape.cyclesInLoop));
+      double worstLong = 0.0, worstLevel = 0.0;
+      for (int k = 0; k < 64; ++k) {
+        const double phase = k / 64.0;
+        worstLong = std::max(worstLong, std::fabs(longShape.pitchAt(phase) * mp::kTremulantWaveformPitchCents -
+                                                  longCents(phase * per)));
+        const double x = 2.0 * kPi * phase;
+        worstLevel = std::max(worstLevel, std::fabs(longShape.ampAt(phase) -
+                                                    (0.01 * std::cos(x) + 0.03 * std::cos(2.0 * x))));
+      }
+      MP_CHECK(worstLong < 0.5, "at " + std::to_string(hz) + " Hz the pitch table follows one cycle to " +
+                                    std::to_string(worstLong) + " cents");
+      MP_CHECK(worstLevel < 0.003, "and the level table to " + std::to_string(worstLevel));
+    }
+
+    // One cycle whose pitch hardly moves, its strongest line the third
+    // harmonic, and whose level moves plainly once: one cycle, as the level
+    // shows (#1074). Counted from the pitch alone it was three, and the
+    // level's swing averaged away.
+    {
+      constexpr size_t kOne = 6000, kOs = 1000, kOe = 5410;  // 4410 frames: 5 Hz at 22050
+      const double per = 4410.0;
+      std::vector<float> op(kOne), ol(kOne);
+      uint32_t seed = 12345u;
+      for (size_t i = 0; i < kOne; ++i) {
+        seed = seed * 1664525u + 1013904223u;
+        const double noise = (static_cast<double>(seed >> 8) / 16777216.0 - 0.5) * 0.4;
+        const double x = 2.0 * kPi * static_cast<double>(i) / per;
+        const double c = 0.3 * std::sin(x) + 1.2 * std::sin(3.0 * x) + noise;
+        op[i] = static_cast<float>(std::pow(2.0, c / 1200.0) - 1.0);
+        ol[i] = static_cast<float>(0.1 + 0.05 * std::cos(x));
+      }
+      mp::TremulantShape one;
+      MP_CHECK(mp::buildTremulantShape(op.data(), ol.data(), kOne, kOs, kOe, one), "a one-cycle loop makes a shape");
+      MP_CHECK(one.cyclesInLoop == 1, "its one cycle found: " + std::to_string(one.cyclesInLoop));
+      double worstOne = 0.0;
+      for (int k = 0; k < 64; ++k) {
+        const double phase = k / 64.0;
+        worstOne = std::max(worstOne, std::fabs(one.ampAt(phase) - 0.05 * std::cos(2.0 * kPi * phase)));
+      }
+      MP_CHECK(worstOne < 0.003, "the level table keeps its swing: " + std::to_string(worstOne));
+    }
+
+    // A loop that repeats nothing: noise in both channels. Squeezed into one
+    // cycle it would warble at every beat, so it makes no shape and the pipe
+    // plays its tremulant's sine.
+    {
+      constexpr size_t kNoise = 72000, kNs = 1000, kNe = 71000;
+      std::vector<float> np(kNoise), nl(kNoise);
+      uint32_t seed = 777u;
+      for (size_t i = 0; i < kNoise; ++i) {
+        seed = seed * 1664525u + 1013904223u;
+        np[i] = static_cast<float>((static_cast<double>(seed >> 8) / 16777216.0 - 0.5) * 0.004);
+        seed = seed * 1664525u + 1013904223u;
+        nl[i] = static_cast<float>(0.1 + (static_cast<double>(seed >> 8) / 16777216.0 - 0.5) * 0.02);
+      }
+      mp::TremulantShape noisy;
+      MP_CHECK(!mp::buildTremulantShape(np.data(), nl.data(), kNoise, kNs, kNe, noisy),
+               "a loop of noise makes no shape");
+    }
 
     // Nothing that moves, and a loop too short for a cycle.
     std::vector<float> still(kFrames, 0.0f);
