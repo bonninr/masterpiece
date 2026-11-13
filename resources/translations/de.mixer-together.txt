@@ -1,0 +1,2 @@
+"Move together" = "Gemeinsam bewegen"
+"Moving one rank's fader moves every rank on show by the same amount" = "Der Regler einer Reihe bewegt alle angezeigten Reihen um denselben Betrag"

@@ -1,0 +1,2 @@
+"Move together" = "Samen bewegen"
+"Moving one rank's fader moves every rank on show by the same amount" = "De schuif van één rij beweegt alle getoonde rijen met dezelfde hoeveelheid"

@@ -1,0 +1,2 @@
+"Move together" = "Déplacer ensemble"
+"Moving one rank's fader moves every rank on show by the same amount" = "Le curseur d'un rang déplace tous les rangs affichés de la même valeur"

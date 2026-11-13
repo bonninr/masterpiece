@@ -4050,6 +4050,8 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
       for (auto& f : *list) f.strip->setNarrow(narrow_.getToggleState());
     resized();
   };
+  addAndMakeVisible(together_);
+  together_.setTooltip(TRANS("Moving one rank's fader moves every rank on show by the same amount"));
   addAndMakeVisible(save_);
   save_.onClick = [this] { proc_.saveSettings(); };
   addAndMakeVisible(bass_);
@@ -4122,10 +4124,24 @@ void MixerPanel::addFader(std::vector<Fader>& into, MidiTargetKind kind, Id id, 
   into.push_back(std::move(f));
   Fader& made = into.back();
   ChannelStrip& strip = *made.strip;
-  strip.onLevel = [this, &into, i = into.size() - 1](int value) { setFaderLevel(into[i], value); };
+  strip.onLevel = [this, &into, i = into.size() - 1](int value) {
+    const int before = faderLevel(into[i]);
+    setFaderLevel(into[i], value);
+    if (&into == &rankFaders_ && together_.getToggleState()) moveShownRanks(i, value - before);
+  };
   strip.onMute = [this, s, index](bool on) { proc_.setLiveMuted(s, index, on); };
   strip.onSolo = [this, s, index](bool on) { proc_.setLiveSoloed(s, index, on); };
   strip.midi.onClick = [this, &into, i = into.size() - 1] { faderMidiMenu(into[i]); };
+}
+
+void MixerPanel::moveShownRanks(size_t moved, int delta) {
+  if (delta == 0) return;
+  for (size_t j = 0; j < rankFaders_.size(); ++j) {
+    if (j == moved || !rankShown(j)) continue;
+    const int level = juce::jlimit(0, LiveLevels::kTop, faderLevel(rankFaders_[j]) + delta);
+    setFaderLevel(rankFaders_[j], level);
+    rankFaders_[j].strip->setLevel(level);
+  }
 }
 
 int MixerPanel::faderLevel(const Fader& f) const {
@@ -4488,6 +4504,8 @@ void MixerPanel::resized() {
   {
     auto filterRow = r.removeFromTop(kRow);
     narrow_.setBounds(filterRow.removeFromRight(150));
+    filterRow.removeFromRight(kGap);
+    together_.setBounds(filterRow.removeFromRight(150));
     filterRow.removeFromRight(kGap);
     filter_.setBounds(filterRow.reduced(0, 1));
   }
