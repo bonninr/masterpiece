@@ -3687,6 +3687,16 @@ private:
   // Inputs held and the note id their pipes sound under; reserved at load.
   std::unordered_map<Id, uint64_t> divisionInputNotes_;
   std::vector<ResolvedPipe> divisionInputScratch_;
+  // A division the keys play directly still closes its own input switch for
+  // each note, and pipes hung on that switch speak while it is closed: the
+  // key-action noises of Friesach (#967). (division * 256 + note) -> switch,
+  // for the inputs that carry pipes; the notes holding each one, reserved at
+  // load.
+  void openDirectInput(int division, int note, int velocity, uint64_t noteId);
+  void releaseDirectInputs(uint64_t noteId);
+  void releaseAllDirectInputs();
+  std::unordered_map<int, Id> directInputs_;
+  std::vector<std::pair<uint64_t, Id>> directInputHeld_;
   // The keyboard an unassigned channel falls back to when the organ declares
   // no assignment code. Resolved once at load.
   Id fallbackKeyboard_ = 0;
