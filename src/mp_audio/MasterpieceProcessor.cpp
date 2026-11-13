@@ -532,6 +532,7 @@ void MasterpieceProcessor::releaseResources() {
   soundingNotes_.clear();
   takenNotes_.reset();
   releaseAllCoupledInputs();
+  releaseAllDirectInputs();
   sustainedKeys_.clear();
   sustainDown_ = false;
 }
@@ -4817,6 +4818,7 @@ void MasterpieceProcessor::stopNoteByKey(int key, int velocity) {
   rel.velocity = velocity;
   // What the couplers opened for this note goes with it.
   releaseCoupledInputs(it->second.id);
+  releaseDirectInputs(it->second.id);
   voices_.noteOff(it->second.id, rel);
   setKeyDown(it->second.keyboard, it->second.playedNote, false);
   const Id releasedOn = it->second.keyboard;
@@ -4931,6 +4933,10 @@ bool MasterpieceProcessor::startVoicesForKey(Id keyboard, int midiNote,
     // wiring opens the pipe from there.
     const bool coupled = engageCoupledInput(reached, noteId, velocity);
     if (coupled) continue;
+    // A division played straight from the keys whose input switch still
+    // carries pipes (key-action noises): the key closes that switch too.
+    if (strike && !directInputs_.empty())
+      openDirectInput(divisionId, reached.midiNote, velocity, noteId);
     if (strike && hasKeyNoises_)
       playKeyNoises(divisionId, reached.midiNote, StopRankEntry::kOnEngage, velocity);
     resolveScratch_.clear();
@@ -5187,6 +5193,7 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
   const auto already = soundingNotes_.find(noteKeyId);
   if (already != soundingNotes_.end()) {
     releaseCoupledInputs(already->second.id);
+    releaseDirectInputs(already->second.id);
     voices_.noteOff(already->second.id, NoteRelease{});
     setKeyDown(already->second.keyboard, already->second.playedNote, false);
     soundingNotes_.erase(already);
@@ -5197,8 +5204,10 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
   // Neither the top nor the bottom yet: that is decided once the chord has
   // settled (settleExtremes), so a melody coupler takes the top note only.
   const int extreme = 0;
+  // With no stop drawn a key still closes its division's inputs, for an organ
+  // whose key-action noises hang on them (#967).
   const bool anyStarted =
-      !engagedStops_.empty() &&
+      (!engagedStops_.empty() || !directInputs_.empty()) &&
       startVoicesForKey(keyboard, midiNote, velocity, noteId, engagedStops_, extreme, true);
 
   // Held whether or not anything sounds yet. A key pressed before its stop is
@@ -6960,6 +6969,41 @@ void MasterpieceProcessor::releaseAllCoupledInputs() {
   }
 }
 
+void MasterpieceProcessor::openDirectInput(int division, int note, int velocity, uint64_t noteId) {
+  const auto it = directInputs_.find(division * 256 + note);
+  if (it == directInputs_.end()) return;
+  const Id sw = it->second;
+  bool held = false;
+  for (const auto& [id, s] : directInputHeld_) {
+    if (s != sw) continue;
+    if (id == noteId) return;  // the same key reaching it twice
+    held = true;
+  }
+  if (directInputHeld_.size() == directInputHeld_.capacity()) return;  // never allocate here
+  directInputHeld_.emplace_back(noteId, sw);
+  if (held) return;  // another key holds it open already
+  palletVelocity_ = velocity;
+  palletMoved(sw, true);
+}
+
+void MasterpieceProcessor::releaseDirectInputs(uint64_t noteId) {
+  for (size_t i = 0; i < directInputHeld_.size();) {
+    if (directInputHeld_[i].first != noteId) {
+      ++i;
+      continue;
+    }
+    const Id sw = directInputHeld_[i].second;
+    directInputHeld_.erase(directInputHeld_.begin() + static_cast<std::ptrdiff_t>(i));
+    const bool stillHeld = std::any_of(directInputHeld_.begin(), directInputHeld_.end(),
+                                       [sw](const auto& h) { return h.second == sw; });
+    if (!stillHeld) palletMoved(sw, false);
+  }
+}
+
+void MasterpieceProcessor::releaseAllDirectInputs() {
+  while (!directInputHeld_.empty()) releaseDirectInputs(directInputHeld_.back().first);
+}
+
 void MasterpieceProcessor::flushCoupledInputs() {
   // A move made here reflows the held notes, which can ask for more moves:
   // they join the queue and this loop makes them.
@@ -7311,6 +7355,19 @@ void MasterpieceProcessor::buildDivisionInputs() {
       juce::Logger::writeToLog("load: " + juce::String(static_cast<int>(fedDivisions.size())) +
                                " division(s) played from the keys through their division inputs");
     }
+  }
+  // The other divisions are played from the keys directly. Their inputs are
+  // closed by the note itself, for the inputs that carry pipes.
+  directInputs_.clear();
+  directInputHeld_.clear();
+  for (const auto& in : model_.divisionInputs)
+    if (in.switchId != 0 && divisionInputBySwitch_.count(in.switchId) == 0 &&
+        palletPipes_.count(in.switchId) != 0)
+      directInputs_[static_cast<int>(in.divisionId) * 256 + in.midiNote] = in.switchId;
+  if (!directInputs_.empty()) {
+    directInputHeld_.reserve(1024);
+    juce::Logger::writeToLog("load: " + juce::String(static_cast<int>(directInputs_.size())) +
+                             " division input(s) carry pipes of their own, opened by the keys");
   }
   couplers_.setSwitchFedKeyboards(std::move(fedKeyboards));
   keyboardOfDivision_.clear();
@@ -8030,6 +8087,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     });
     soundingNotes_.clear();
     releaseAllCoupledInputs();
+    releaseAllDirectInputs();
     sustainedKeys_.clear();
   }
   // The organ's timed linkages move by the time this block covers: a stop's
