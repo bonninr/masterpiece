@@ -1,0 +1,5 @@
+"Record audio" = "Audio opnemen"
+"Folder..." = "Map..."
+"Keep the recordings in" = "Opnamen bewaren in"
+"Recordings go to %1" = "Opnamen gaan naar %1"
+"Could not write a file in %1" = "Kan geen bestand schrijven in %1"

@@ -1696,6 +1696,16 @@ public:
   juce::File serviceArchive(bool now = false);
   // Captures what leaves, minus the metronome. See AudioRecorder.
   AudioRecorder& audioRecorder() { return audioRecorder_; }
+  // Where an audio recording goes (#1080): the folder the player chose, or
+  // Documents/Masterpiece/Recordings.
+  juce::File audioRecordingFolder() const {
+    const juce::File chosen = dialogFolder("recording");
+    return chosen != juce::File() ? chosen : recordingsFolder();
+  }
+  // Message thread. Starts an audio recording at once, in a file named for
+  // the organ, the date and the time. Returns the file, or none when it could
+  // not be opened for writing; while one runs, the one running.
+  juce::File startAudioRecording();
   Convolver& convolver() { return convolver_; }
 
   // The peak limiter on the final output: after the master fader, before

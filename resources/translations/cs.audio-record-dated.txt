@@ -1,0 +1,5 @@
+"Record audio" = "Nahrát zvuk"
+"Folder..." = "Složka..."
+"Keep the recordings in" = "Ukládat nahrávky do"
+"Recordings go to %1" = "Nahrávky se ukládají do %1"
+"Could not write a file in %1" = "Do %1 nelze zapsat soubor"

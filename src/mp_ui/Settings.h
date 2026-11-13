@@ -339,11 +339,15 @@ private:
   // useful together: the MIDI file is the performance and can be replayed
   // through a different registration, the WAV is what it sounded like.
   juce::Label audioHeading_;
-  juce::TextButton audioRecord_{TRANS("Record audio...")};
+  // Starts at once, in a dated file in the recordings folder (#1080).
+  juce::TextButton audioRecord_{TRANS("Record audio")};
   juce::TextButton audioStop_{TRANS("Stop")};
+  juce::TextButton audioFolder_{TRANS("Folder...")};
   juce::Label audioStatus_;
   juce::Label audioNote_;
   std::unique_ptr<juce::FileChooser> audioChooser_;
+  // The last Record could not open its file; shown until the next try.
+  bool audioFailed_ = false;
 };
 
 // MIDI: what the console sends and what comes back, plus the learned mapping.

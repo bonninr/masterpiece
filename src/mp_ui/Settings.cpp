@@ -1723,7 +1723,7 @@ RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
 
   addAndMakeVisible(audioHeading_);
   styleLabel(audioHeading_, TRANS("Audio"));
-  for (auto* b : {&audioRecord_, &audioStop_}) addAndMakeVisible(*b);
+  for (auto* b : {&audioRecord_, &audioStop_, &audioFolder_}) addAndMakeVisible(*b);
   addAndMakeVisible(audioStatus_);
   styleLabel(audioStatus_, "");
   addAndMakeVisible(audioNote_);
@@ -1734,25 +1734,22 @@ RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
                   "the block it has already finished."));
 
   audioRecord_.onClick = [this] {
-    audioChooser_ = std::make_unique<juce::FileChooser>(
-        TRANS("Record the organ to"), proc_.dialogFolder("recording"), "*.wav");
-    audioChooser_->launchAsync(
-        juce::FileBrowserComponent::saveMode |
-            juce::FileBrowserComponent::canSelectFiles |
-            juce::FileBrowserComponent::warnAboutOverwriting,
-        [this](const juce::FileChooser& fc) {
-          const auto f = fc.getResult();
-          proc_.rememberDialogFolder("recording", f);
-          if (f.getFullPathName().isEmpty()) return;
-          // The device's rate, not the organ's: this is what is leaving.
-          if (!proc_.audioRecorder().start(f.withFileExtension(".wav"),
-                                           proc_.getSampleRate(),
-                                           proc_.getTotalNumOutputChannels()))
-            audioStatus_.setText(TRANS("Could not open that file for writing"),
-                                 juce::dontSendNotification);
-        });
+    audioFailed_ = proc_.startAudioRecording() == juce::File();
+    timerCallback();
   };
   audioStop_.onClick = [this] { proc_.audioRecorder().stop(); };
+  audioFolder_.onClick = [this] {
+    audioChooser_ = std::make_unique<juce::FileChooser>(TRANS("Keep the recordings in"),
+                                                        proc_.audioRecordingFolder());
+    audioChooser_->launchAsync(juce::FileBrowserComponent::openMode |
+                                   juce::FileBrowserComponent::canSelectDirectories,
+                               [this](const juce::FileChooser& fc) {
+                                 const auto f = fc.getResult();
+                                 if (f.isDirectory()) proc_.rememberDialogFolder("recording", f);
+                                 audioFailed_ = false;
+                                 timerCallback();
+                               });
+  };
 
   startTimerHz(8);
 }
@@ -1859,14 +1856,19 @@ void RecorderPanel::timerCallback() {
 
   auto& a = proc_.audioRecorder();
   const bool on = a.isRecording();
+  if (on) audioFailed_ = false;
+  const juce::String folder = proc_.audioRecordingFolder().getFullPathName();
   audioStatus_.setText(
       on ? TRANS("Recording %1 - %2 s")
                .replace("%1", a.file().getFileName())
                .replace("%2", juce::String(a.secondsRecorded(), 1))
-         : TRANS("Not recording"),
+      : audioFailed_ ? TRANS("Could not write a file in %1").replace("%1", folder)
+                     : TRANS("Recordings go to %1").replace("%1", folder),
       juce::dontSendNotification);
+  audioStatus_.setTooltip(on ? a.file().getFullPathName() : folder);
   audioRecord_.setEnabled(!on);
   audioStop_.setEnabled(on);
+  audioFolder_.setEnabled(!on);
 }
 
 // Places a row of buttons, each as wide as its own text. A row that is
@@ -1898,7 +1900,7 @@ int RecorderPanel::preferredWidth() {
   for (auto row : {std::initializer_list<juce::TextButton*>{&record_, &play_, &stop_},
                    std::initializer_list<juce::TextButton*>{&save_, &load_, &clear_, &midi_},
                    std::initializer_list<juce::TextButton*>{&saveForSequencer_},
-                   std::initializer_list<juce::TextButton*>{&audioRecord_, &audioStop_}})
+                   std::initializer_list<juce::TextButton*>{&audioRecord_, &audioStop_, &audioFolder_}})
     widest = juce::jmax(widest, rowWidth(row, font));
   return widest + 2 * kMargin;
 }
@@ -1926,8 +1928,8 @@ void RecorderPanel::resized() {
   r.removeFromTop(kGap * 2);
   audioHeading_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(2);
-  placeRow(r.removeFromTop(kRow), {&audioRecord_, &audioStop_});
-  r.removeFromTop(kGap);
+  h = placeRow(r.removeFromTop(kRow), {&audioRecord_, &audioStop_, &audioFolder_});
+  r.removeFromTop(h - kRow + kGap);
   audioStatus_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
   audioNote_.setBounds(r);

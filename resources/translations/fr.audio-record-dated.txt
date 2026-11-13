@@ -1,0 +1,5 @@
+"Record audio" = "Enregistrer l'audio"
+"Folder..." = "Dossier..."
+"Keep the recordings in" = "Conserver les enregistrements dans"
+"Recordings go to %1" = "Les enregistrements vont dans %1"
+"Could not write a file in %1" = "Impossible d'écrire un fichier dans %1"
