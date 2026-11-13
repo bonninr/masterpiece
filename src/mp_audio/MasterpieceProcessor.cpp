@@ -7312,30 +7312,46 @@ void MasterpieceProcessor::buildDivisionInputs() {
     std::unordered_map<Id, std::vector<Id>> keysOf;
     for (const auto& [switchId, key] : model_.keyboardKeys) keysOf[key.keyboardId].push_back(switchId);
 
-    std::unordered_set<Id> fedDivisions;
-    for (const auto& [keyboardId, keys] : keysOf) {
+    // The division each input switch belongs to, and the divisions some
+    // keyboard plays as its own.
+    std::unordered_map<Id, Id> divisionOfInput;
+    for (const auto& in : model_.divisionInputs) divisionOfInput.emplace(in.switchId, in.divisionId);
+    auto primaryOf = [&](Id keyboardId) {
       Id division = 0;
       if (const auto kb = model_.keyboards.find(keyboardId); kb != model_.keyboards.end())
         division = kb->second.primaryDivisionHint;
       if (division == 0) division = couplers_.primaryDivisionFor(keyboardId);
-      const auto inputs = inputsOf.find(division);
-      if (division == 0 || inputs == inputsOf.end()) continue;
+      return division;
+    };
+    std::unordered_set<Id> primaries;
+    for (const auto& [keyboardId, keys] : keysOf) primaries.insert(primaryOf(keyboardId));
+
+    std::unordered_set<Id> fedDivisions;
+    for (const auto& [keyboardId, keys] : keysOf) {
+      const Id division = primaryOf(keyboardId);
+      if (division == 0 || inputsOf.count(division) == 0) continue;
+      // Every division whose inputs the keys reach. A division no keyboard
+      // plays as its own (a set of reeds behind a ventil, wired from the
+      // manual's keys) is played through its inputs too (#1067).
+      std::unordered_set<Id> reached;
       std::unordered_set<Id> seen(keys.begin(), keys.end());
       std::vector<Id> todo(keys.begin(), keys.end());
-      bool reaches = false;
-      while (!todo.empty() && !reaches && seen.size() < 200000) {
+      while (!todo.empty() && seen.size() < 200000) {
         const Id at = todo.back();
         todo.pop_back();
         const auto next = feeds.find(at);
         if (next == feeds.end()) continue;
         for (Id to : next->second) {
-          if (inputs->second.count(to) != 0) { reaches = true; break; }
+          if (const auto in = divisionOfInput.find(to); in != divisionOfInput.end())
+            reached.insert(in->second);
           if (seen.insert(to).second) todo.push_back(to);
         }
       }
-      if (!reaches) continue;
+      if (reached.count(division) == 0) continue;
       fedKeyboards.insert(keyboardId);
       fedDivisions.insert(division);
+      for (Id d : reached)
+        if (primaries.count(d) == 0) fedDivisions.insert(d);
     }
     for (const auto& in : model_.divisionInputs)
       if (fedDivisions.count(in.divisionId) != 0)
