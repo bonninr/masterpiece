@@ -1724,6 +1724,9 @@ void MasterpieceEditor::startLoad(const juce::File& odf, bool graphicsOnly) {
   if (loading_) return;
   loading_ = true;
   closePageWindowsForLoad();
+  // Organ settings and the Every pipe window, open beside the console, show
+  // the organ being left.
+  closeModelessDialogs();
   console_.freeze();
   top_.setStatus(TRANS("Loading %1...").replace("%1", odf.getFileName()));
 

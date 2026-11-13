@@ -125,7 +125,15 @@ constexpr bool kLiveOnTop = true;
 // screen on a phone or tablet. Every dialog opens through here. A dialog that
 // names nothing to centre on, opened while a window kept above the others is
 // active, is centred on the main window (setDialogCentre).
-juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options);
+//
+// A dialog opened with `modal` false leaves the console in reach: it floats
+// above the program's other windows, as the Combinations window does, and is
+// deleted when it closes (#1091). Phones and tablets show every dialog the
+// same way.
+juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options, bool modal = true);
+// Closes every dialog opened with `modal` false. They show the organ that is
+// loaded, so a load closes them first.
+void closeModelessDialogs();
 // The size a resizable dialog opens at: the size it was last left at, never
 // smaller than its own, and no larger than `screen` when that is not empty.
 juce::Rectangle<int> reopenedDialogSize(juce::Rectangle<int> saved, juce::Rectangle<int> own,

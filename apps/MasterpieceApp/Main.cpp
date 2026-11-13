@@ -1298,6 +1298,18 @@ private:
 
     void showOrganSettings(mp::MasterpieceProcessor& proc, std::function<void()> onClosed = {},
                            const juce::String& tab = {}) {
+      // Open beside the console already: brought to the front, at the tab asked.
+      if (auto* open = organSettings_.getComponent(); open != nullptr && open->isVisible() && !onClosed) {
+        if (auto* panel = dynamic_cast<mp::ui::OrganSettingsWindow*>(open->getContentComponent());
+            panel != nullptr && tab.isNotEmpty())
+          panel->showTab(tab);
+        open->toFront(true);
+        return;
+      }
+      // Before an organ's first load the window decides how it loads, and
+      // the load waits for it to close: modal. Otherwise beside the console,
+      // so stops can be drawn and keys played while adjusting (#1091).
+      const bool modal = static_cast<bool>(onClosed);
       auto panel = std::make_unique<mp::ui::OrganSettingsWindow>(
           proc, [this] { editor_->reloadOrgan(); }, &devices_);
       panel->onClosed = std::move(onClosed);
@@ -1310,7 +1322,8 @@ private:
       opts.escapeKeyTriggersCloseButton = true;
       opts.useNativeTitleBar = true;
       opts.resizable = true;
-      mp::ui::launchDialog(opts);
+      auto* dialog = mp::ui::launchDialog(opts, modal);
+      if (!modal) organSettings_ = dialog;
     }
 
     void showWizard(mp::MasterpieceProcessor& proc) {
@@ -1333,6 +1346,7 @@ private:
    private:
     juce::AudioDeviceManager& devices_;
     mp::ui::MasterpieceEditor* editor_ = nullptr;
+    juce::Component::SafePointer<juce::DialogWindow> organSettings_;
   };
 
   std::unique_ptr<mp::MasterpieceProcessor> proc_;
