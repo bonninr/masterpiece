@@ -5166,6 +5166,13 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
   // wiring open whatever pallets it reaches -- which is how an organ with no
   // StopRank plays at all, and how every organ's key action sounds. This comes
   // before the no-stops check: key action speaks with nothing drawn.
+  // Logged, the division inputs this key closes are noted from here on.
+  const bool traceKey = logMidi_.load(std::memory_order_acquire);
+  if (traceKey) {
+    tracedInputCount_ = 0;
+    tracedPallets_ = 0;
+    tracedInputSounded_ = false;
+  }
   if (!keySwitchByKey_.empty()) {
     const auto ks = keySwitchByKey_.find(static_cast<int>(keyboard) * 256 + midiNote);
     if (ks != keySwitchByKey_.end()) {
@@ -5222,21 +5229,40 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
   // bottom of the chord until now.
   scheduleExtremes(keyboard);
 
+  // The inputs the couplers reach move when the outermost scope ends, which
+  // is here when the key came on its own: moved now, they are noted too.
+  if (traceKey && coupledDepth_ == 1) flushCoupledInputs();
+  // What the key closed is all noted by now: the inputs answer as the key
+  // switch moves.
+  const int traced = traceKey ? tracedInputCount_ : 0;
+  const bool tracedSounded = traceKey && tracedInputSounded_;
+  tracedInputCount_ = -1;
+
   if (engagedStops_.empty()) {
-    if (logMidi_.load(std::memory_order_acquire))
+    if (traceKey)
       juce::Logger::writeToLog(
           "midi:     NOTHING PLAYS: no stop is drawn, so no pipe can sound");
     return;
   }
 
-  if (logMidi_.load(std::memory_order_acquire)) {
+  if (traceKey) {
     // Which divisions, and what is drawn on them: "no pipe answered" is either
     // nothing drawn on THIS division or a division whose stops resolve to no
-    // pipe at this note, and those are different faults.
+    // pipe at this note, and those are different faults. A keyboard the organ
+    // plays through its division inputs reaches them by its key switch: those
+    // are listed as inputs, and their pipes count as answering.
     juce::String divs;
     for (const auto& r : expandScratch_)
       divs << (divs.isEmpty() ? "" : ",") << juce::String(r.divisionId) << "@"
            << juce::String(r.midiNote);
+    for (int i = 0; i < traced; ++i) {
+      const auto& t = tracedInputs_[static_cast<size_t>(i)];
+      divs << (divs.isEmpty() ? "" : ",") << juce::String(t.division) << "@" << juce::String(t.note)
+           << " (input)";
+    }
+    if (tracedPallets_ > 0)
+      divs << (divs.isEmpty() ? "" : ",") << juce::String(tracedPallets_) << " pallet(s)";
+    if (divs.isEmpty()) divs = "none";
     juce::String drawnOn;
     for (Id sid : engagedStops_) {
       const auto it = model_.stops.find(sid);
@@ -5248,7 +5274,7 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
         " note=" + juce::String(midiNote) + " -> division(s) " + divs +
         "; " + juce::String(static_cast<int>(engagedStops_.size())) +
         " stop(s) drawn on division(s) " + drawnOn + "; " +
-        (anyStarted ? "SOUNDING" : "NOTHING PLAYS: no pipe answered"));
+        (anyStarted || tracedSounded ? "SOUNDING" : "NOTHING PLAYS: no pipe answered"));
   }
 }
 
@@ -7414,8 +7440,15 @@ void MasterpieceProcessor::divisionInputMoved(Id switchId, bool engaged) {
   const uint64_t noteId = nextNoteId_++;
   divisionInputScratch_.clear();
   resolvePipesInto(model_, division, note, engagedStops_, &engagedSwitches_, divisionInputScratch_);
+  bool sounded = false;
   for (const auto& rp : divisionInputScratch_)
-    if (rp.pipe != nullptr) startPipeLayers(*rp.pipe, rp.rankId, note, palletVelocity_, noteId);
+    if (rp.pipe != nullptr && startPipeLayers(*rp.pipe, rp.rankId, note, palletVelocity_, noteId))
+      sounded = true;
+  if (tracedInputCount_ >= 0) {
+    if (tracedInputCount_ < static_cast<int>(tracedInputs_.size()))
+      tracedInputs_[static_cast<size_t>(tracedInputCount_++)] = {division, note};
+    if (sounded) tracedInputSounded_ = true;
+  }
   // Kept whether or not a pipe spoke: a stop drawn while the key is down
   // speaks under this id (applyStopChangeToHeldNotes).
   divisionInputNotes_[switchId] = noteId;
@@ -7729,6 +7762,10 @@ void MasterpieceProcessor::palletMoved(Id switchId, bool engaged) {
       any = true;
     }
   if (any) palletNotes_[switchId] = noteId;
+  if (any && tracedInputCount_ >= 0) {
+    ++tracedPallets_;
+    tracedInputSounded_ = true;
+  }
 }
 
 void MasterpieceProcessor::buildActionNoises() {

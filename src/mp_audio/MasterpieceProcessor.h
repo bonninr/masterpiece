@@ -3690,6 +3690,16 @@ private:
   // Inputs held and the note id their pipes sound under; reserved at load.
   std::unordered_map<Id, uint64_t> divisionInputNotes_;
   std::vector<ResolvedPipe> divisionInputScratch_;
+  // For the MIDI log: the division inputs a key closed while it was pressed,
+  // and whether a pipe answered through them. A count of -1 records nothing.
+  struct TracedInput {
+    int division = 0;
+    int note = 0;
+  };
+  std::array<TracedInput, 32> tracedInputs_{};
+  int tracedInputCount_ = -1;
+  int tracedPallets_ = 0;
+  bool tracedInputSounded_ = false;
   // A division the keys play directly still closes its own input switch for
   // each note, and pipes hung on that switch speak while it is closed: the
   // key-action noises of Friesach (#967). (division * 256 + note) -> switch,
