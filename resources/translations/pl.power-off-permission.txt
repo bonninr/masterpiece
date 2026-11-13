@@ -1,0 +1,1 @@
+"To shut the computer down with this button, turn on \"Allow quitting Masterpiece and shutting the computer down\" in Remote control." = "Aby wyłączać komputer tym przyciskiem, włącz „Zezwalaj na zamknięcie Masterpiece i wyłączenie komputera” w karcie Sterowanie zdalne."

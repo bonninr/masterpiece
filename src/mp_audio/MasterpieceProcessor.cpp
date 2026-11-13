@@ -10283,11 +10283,11 @@ void MasterpieceProcessor::serviceMidiRequests() {
   }
   if (const int p = pendingPower_.exchange(0, std::memory_order_acq_rel); p != 0) {
     // Shutting the computer down needs the same permission the control API's
-    // powerOff does (General settings, Remote): a learned button alone is
+    // powerOff does (Settings, Remote control): a learned button alone is
     // not enough. Quitting saves first and is always allowed.
     if (p == 2 && !remote_.allowPowerOff) {
       juce::Logger::writeToLog("midi: power-off button held, refused: shutting the computer down is not "
-                               "allowed (General settings, Remote)");
+                               "allowed (Settings, Remote control)");
       return;
     }
     juce::Logger::writeToLog(p == 2 ? "midi: power-off button held, shutting down"

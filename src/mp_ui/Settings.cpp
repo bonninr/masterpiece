@@ -2125,6 +2125,12 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
     b->setTooltip(TRANS("For a console with no screen. Obeyed once Masterpiece has run two minutes, and "
                         "only when the button is held three seconds; a button whose message has no "
                         "release is pressed twice within two seconds. Masterpiece saves before it quits."));
+  addChildComponent(powerOffNeeds_);
+  powerOffNeeds_.setText(TRANS("To shut the computer down with this button, turn on \"Allow quitting Masterpiece "
+                               "and shutting the computer down\" in Remote control."),
+                         juce::dontSendNotification);
+  powerOffNeeds_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  powerOffNeeds_.setMinimumHorizontalScale(0.7f);
 
   addAndMakeVisible(lampLabel_);
   styleLabel(lampLabel_, TRANS("Ready lamp"));
@@ -2265,6 +2271,7 @@ void MidiPanel::applyPart() {
   // The pistons' lines go with their heading, and "none yet" only when none.
   for (auto& v : pistonLines_) v->setVisible(part_ == Part::Organ && !shownSimple_);
   noPistons_.setVisible(part_ == Part::Organ && !shownSimple_ && pistonLines_.empty());
+  powerOffNeeds_.setVisible(part_ == Part::Events && !powerOffAllowed());
   saveMap_.setVisible(!shownSimple_ && part_ != Part::Events);
   clearMap_.setVisible(!shownSimple_ && part_ != Part::Events);
   fromGrandOrgue_.setVisible(part_ == Part::Organ);
@@ -2693,7 +2700,9 @@ void MidiPanel::timerCallback() {
   } else if (part_ == Part::Organ) {
     showSharedChannels();
   }
-  if (proc_.simpleMode() != shownSimple_) {
+  // The permission is set in another tab: the line follows it.
+  if (proc_.simpleMode() != shownSimple_ ||
+      (part_ == Part::Events && powerOffNeeds_.isVisible() == powerOffAllowed())) {
     applyPart();
     resized();
   }
@@ -2703,6 +2712,8 @@ void MidiPanel::timerCallback() {
   mapStatus_.setText(s, juce::dontSendNotification);
   showLearnState();
 }
+
+bool MidiPanel::powerOffAllowed() const { return proc_.remoteSettings().allowPowerOff; }
 
 void MidiPanel::pushScorePage() {
   ScorePageMessage m;
@@ -2826,6 +2837,11 @@ void MidiPanel::resized() {
     learnQuit_.setBounds(row.removeFromLeft(150).reduced(2, 0));
     row.removeFromLeft(6);
     learnPowerOff_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+    if (powerOffNeeds_.isVisible()) {
+      row = r.removeFromTop(kRow);
+      row.removeFromLeft(120);
+      powerOffNeeds_.setBounds(row);
+    }
     r.removeFromTop(4);
     row = r.removeFromTop(kRow);
     lampLabel_.setBounds(row.removeFromLeft(120));
