@@ -630,6 +630,10 @@ private:
   // Spread and All to pair 1 act on the rows on show.
   juce::TextEditor filter_;
   juce::ToggleButton narrow_{TRANS("Narrow strips")};
+  // On, a rank's fader moves every rank on show by the same amount, each
+  // from where it stands (#1090): the filter chooses them.
+  juce::ToggleButton together_{TRANS("Move together")};
+  void moveShownRanks(size_t moved, int delta);
   bool rankShown(size_t row) const;
   juce::TextButton save_{TRANS("Save for this organ")};
   juce::TextButton spread_{TRANS("Spread ranks evenly")};

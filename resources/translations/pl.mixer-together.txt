@@ -1,0 +1,2 @@
+"Move together" = "Przesuwaj razem"
+"Moving one rank's fader moves every rank on show by the same amount" = "Suwak jednego rzędu przesuwa wszystkie widoczne rzędy o tę samą wartość"

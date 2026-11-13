@@ -1,0 +1,2 @@
+"Move together" = "Posouvat společně"
+"Moving one rank's fader moves every rank on show by the same amount" = "Jezdec jedné řady posune všechny zobrazené řady o stejnou hodnotu"
