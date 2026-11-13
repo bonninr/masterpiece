@@ -576,6 +576,8 @@ public:
       existed = global.existsAsFile();
       before = existed ? global.loadFileAsString() : juce::String();
       global.getParentDirectory().createDirectory();
+      // The rate the host sets: the recording is written at it.
+      proc.setRateAndBufferSizeDetails(48000.0, 256);
       proc.prepareToPlay(48000.0, 256);
       MP_CHECK(proc.loadOrgan(fixture(), 0, true).ok, "the organ loads");
       MP_CHECK(proc.audioRecordingFolder() == mp::MasterpieceProcessor::recordingsFolder() ||
