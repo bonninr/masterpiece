@@ -58,6 +58,21 @@ bool ControlModel::ensure(Error& error) {
   return true;
 }
 
+// The organs are the player's favourites, not the loaded organ's: there with
+// no organ loaded and while one loads.
+bool ControlModel::ensureFor(Type type, Error& error) {
+  if (type == Type::Organ) {
+    error = Error::None;
+    return true;
+  }
+  return ensure(error);
+}
+
+juce::File ControlModel::organFile(int index) const {
+  const auto& f = proc_.favourites().organs.at(index + 1);
+  return f.empty() ? juce::File() : juce::File(text(f.target));
+}
+
 void ControlModel::rebuild() {
   builtFor_ = proc_.organLoads();
   const OrganModel& m = proc_.organModel();
@@ -241,7 +256,7 @@ int ControlModel::divisionIndex(int64_t divisionId) const {
 
 int ControlModel::count(Type type) {
   Error e;
-  if (!ensure(e)) return 0;
+  if (!ensureFor(type, e)) return 0;
   switch (type) {
     case Type::Program: return kProgramCount;
     case Type::Switch: return static_cast<int>(switches_.size());
@@ -268,6 +283,7 @@ int ControlModel::count(Type type) {
     case Type::Ranklevel: return static_cast<int>(ranks_.size());
     case Type::Mute:
     case Type::Solo: return stripCount();
+    case Type::Organ: return kFavouriteSlots;
   }
   return 0;
 }
@@ -337,6 +353,11 @@ int ControlModel::valueOf(Type type, int index) {
       const auto id = static_cast<Id>(windchests_[static_cast<size_t>(index)].id);
       const double nominal = proc_.wind().nominalFor(id);
       return nominal > 0.0 ? juce::roundToInt(proc_.wind().pressureFor(id) / nominal * 1000.0) : 1000;
+    }
+    case Type::Organ: {
+      // The loaded organ, by the path its favourite holds; not while another loads.
+      const juce::File f = organFile(index);
+      return f != juce::File() && !proc_.organLoading() && f == proc_.loadedOrganFile() ? 1 : 0;
     }
     default:
       return 0;
@@ -552,6 +573,10 @@ juce::var ControlModel::object(Type type, int index) {
                                  juce::String(note / 12 - 1));
       break;
     }
+    case Type::Organ:
+      // The name the player gave it; its path stays on this computer.
+      o->setProperty("name", text(proc_.favourites().organs.at(index + 1).name));
+      break;
     case Type::Program:
       break;
   }
@@ -580,11 +605,12 @@ juce::var ControlModel::holds(const std::vector<PlayerCombinations::Change>& cha
 bool ControlModel::consoleObject(Type type, int index) const {
   if (type == Type::Switch) return switches_[static_cast<size_t>(index)].console;
   if (type == Type::Control) return controls_[static_cast<size_t>(index)].console;
+  if (type == Type::Organ) return !proc_.favourites().organs.at(index + 1).empty();
   return true;
 }
 
 juce::var ControlModel::list(Type type, Error& error, bool all) {
-  if (!ensure(error)) return {};
+  if (!ensureFor(type, error)) return {};
   if (type == Type::Program) return program();
   auto* o = new juce::DynamicObject();
   juce::var v(o);
@@ -602,7 +628,7 @@ juce::var ControlModel::list(Type type, Error& error, bool all) {
 }
 
 juce::var ControlModel::describe(Type type, int index, Error& error) {
-  if (!ensure(error)) return {};
+  if (!ensureFor(type, error)) return {};
   if (index < 0 || index >= count(type)) {
     error = Error::OutOfRange;
     return {};
@@ -611,7 +637,7 @@ juce::var ControlModel::describe(Type type, int index, Error& error) {
 }
 
 bool ControlModel::get(Type type, int index, int& value, Error& error) {
-  if (!ensure(error)) return false;
+  if (!ensureFor(type, error)) return false;
   const TypeInfo* info = typeInfo(type);
   if (info == nullptr || (type != Type::Program && !info->hasValue)) {
     error = Error::UnknownType;
@@ -626,7 +652,7 @@ bool ControlModel::get(Type type, int index, int& value, Error& error) {
 }
 
 juce::var ControlModel::dump(Type type, Error& error) {
-  if (!ensure(error)) return {};
+  if (!ensureFor(type, error)) return {};
   const TypeInfo* info = typeInfo(type);
   if (info == nullptr || !info->hasValue) {
     error = Error::UnknownType;
@@ -798,6 +824,15 @@ Error ControlModel::press(Type type, int index) {
         case Command::ScorePageBack: proc_.turnScorePage(false); break;
       }
       return Error::None;
+    case Type::Organ: {
+      // As the Open window: a set on a drive not plugged in opens its kept copy.
+      const juce::File f = organFile(index);
+      if (f == juce::File() || (!f.existsAsFile() && !MasterpieceProcessor::portableCopyFor(f).existsAsFile()))
+        return Error::NoOrgan;
+      if (!proc_.onLoadOrganRequest) return Error::NotAllowed;
+      proc_.onLoadOrganRequest(f);
+      return Error::None;
+    }
     default:
       return Error::ReadOnly;
   }

@@ -9,7 +9,7 @@ const $ = (id) => document.getElementById(id);
 // desk works the pistons or the sequencer (#784).
 const SOLO = ["combinations", "sequencer"];
 const state = { session: -1, divisions: [], switches: [], controls: [], generals: [], divisionals: [],
-  eqpresets: [], temperaments: [], program: {}, el: { switch: [], control: [], general: [], divisional: [] },
+  eqpresets: [], temperaments: [], organs: [], program: {}, el: { switch: [], control: [], general: [], divisional: [] },
   all: { switch: [], control: [], rank: [] } };
 
 function headers() {
@@ -24,11 +24,12 @@ async function get(path) {
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
   return r.json();
 }
-async function send(method, path, body) {
+// `said` gives the words for an error this request can meet.
+async function send(method, path, body, said = {}) {
   const r = await fetch(url(path), { method, headers: headers(), body: body ? JSON.stringify(body) : "{}" });
   if (!r.ok) {
     const e = (await r.json().catch(() => ({}))).error || r.status;
-    flash(e === "not-allowed" ? "Changes are not allowed, or the token is wrong (Access, below)" : `Refused: ${e}`);
+    flash(said[e] || (e === "not-allowed" ? "Changes are not allowed, or the token is wrong (Access, below)" : `Refused: ${e}`));
   }
 }
 const setValue = (type, i, value) => send("PUT", `${type}/${i}/value`, { value });
@@ -64,7 +65,9 @@ function el(tag, attrs = {}, ...children) {
 async function load() {
   // While an organ loads, the lists answer "busy": the page shows the load and
   // its progress, and builds when the event stream says the organ is ready.
-  const [id0, prog0] = await Promise.all([get(""), get("program")]);
+  // The favourite organs answer with no organ loaded and while one loads.
+  const [id0, prog0, organs] = await Promise.all([get(""), get("program"), get("organs").catch(() => ({ items: [] }))]);
+  state.organs = organs.items || [];
   if (prog0.organState !== 2) {
     state.session = -1;
     state.program = prog0;
@@ -98,7 +101,7 @@ function build() {
   if (!state.switches.length && !state.controls.length) {
     main.append(state.program.organState === 1
       ? el("div", { class: "empty" }, "Loading the organ: ", el("span", { id: "loadpct" }, ""))
-      : el("div", { class: "empty" }, "No organ loaded."));
+      : el("div", { class: "empty" }, "No organ loaded.", organButtons()));
     fillSelects();
     return;
   }
@@ -126,6 +129,22 @@ function build() {
   main.append(allPanel());
   fillSelects();
   refreshAll();
+}
+
+// The favourite organs, one button each, for a console started with none.
+function organButtons() {
+  if (!state.organs.length)
+    return el("div", { class: "dim" }, "Favourite organs added in the Open window appear here.");
+  const box = el("div", { class: "stops pistons organs" });
+  for (const o of state.organs) box.append(el("button", { title: `Load ${o.name}`, onclick: () => openOrgan(o) }, o.name));
+  return box;
+}
+function openOrgan(o) {
+  flash(`Opening ${o.name}`);
+  send("POST", `organs/${o.index}/press`, null, {
+    "no-organ": `${o.name}: its files are not on this computer`,
+    busy: "An organ is loading. Choose again once it is ready."});
+  fillSelects();  // the picker shows the organ loaded until the next one is
 }
 
 // Every switch and control the organ has, its internal ones too, loaded when
@@ -344,6 +363,11 @@ function fillSelects() {
   };
   fill($("temperament"), state.temperaments, state.program.temperament);
   fill($("eqpreset"), [{ index: -1, name: "Edited or off" }, ...state.eqpresets], state.program.eqPreset ?? -1);
+  // The organ loaded, or a first line to choose from when it is no favourite.
+  const lit = state.organs.find((o) => o.value === 1);
+  const first = lit ? [] : [{ index: -1, name: state.organs.length ? "Choose an organ" : "No favourites" }];
+  fill($("organs"), [...first, ...state.organs], lit ? lit.index : -1);
+  $("organs").disabled = !state.organs.length;
 }
 
 // ---- showing values -------------------------------------------------------
@@ -575,6 +599,8 @@ function connect() {
       state.program[c.property] = c.value;
       if (c.property === "session" && c.value !== state.session) return reload();
       if (c.property === "organState" && c.value === 2 && state.session !== c.session) return reload();
+      // Nothing built yet: the empty page says a load has begun.
+      if (c.property === "organState" && state.session < 0) build();
       return showProgram(c.property);
     }
     if (state.program.organState !== 2) return;  // nothing built yet: the ready event builds it
@@ -601,6 +627,10 @@ $("transUp").addEventListener("click", () => setProgram("transpose", Math.min(12
 $("transDown").addEventListener("click", () => setProgram("transpose", Math.max(-12, (state.program.transpose || 0) - 1)));
 $("temperament").addEventListener("change", (e) => press("temperaments", Number(e.target.value)));
 $("eqpreset").addEventListener("change", (e) => { const i = Number(e.target.value); if (i >= 0) press("eqpresets", i); });
+$("organs").addEventListener("change", (e) => {
+  const o = state.organs.find((o) => o.index === Number(e.target.value));
+  if (o) openOrgan(o);
+});
 $("recAudio").addEventListener("click", () => setProgram("audioRecorder", state.program.audioRecorder ? 0 : 1));
 $("recMidi").addEventListener("click", () => setProgram("midiRecorder", state.program.midiRecorder ? 0 : 1));
 $("panic").addEventListener("click", () => press("commands", 0));

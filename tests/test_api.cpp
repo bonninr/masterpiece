@@ -275,6 +275,76 @@ public:
 };
 static ApiHttpTest g_apiHttp;
 
+// The favourite organs, listed and loaded from a client (#1097): there with no
+// organ loaded, names only over the network, a press asks the program to open it.
+class ApiOrgansTest final : public mp::test::Test {
+public:
+  ApiOrgansTest() : Test("functional.api.organs", Category::Functional) {}
+  void run() override {
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    ControlModel m(proc);
+    Error e;
+    MP_CHECK(m.count(Type::Organ) == mp::kFavouriteSlots, "one object per favourite slot");
+    MP_CHECK(static_cast<int>(m.list(Type::Organ, e)["listed"]) == 0 && e == Error::None,
+             "no favourites, none listed, with no organ loaded");
+
+    const juce::File gone = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                .getChildFile("mp-no-such-drive")
+                                .getChildFile("Gone.Organ_Hauptwerk_xml");
+    proc.favourites().organs.set(3, {"Test organ", fixture().getFullPathName().toStdString()});
+    proc.favourites().organs.set(5, {"Unplugged organ", gone.getFullPathName().toStdString()});
+    const juce::var list = m.list(Type::Organ, e);
+    MP_CHECK(static_cast<int>(list["listed"]) == 2 && list["items"][0]["name"].toString() == "Test organ" &&
+                 static_cast<int>(list["items"][0]["index"]) == 2 && static_cast<int>(list["items"][1]["index"]) == 4,
+             "the two favourites, by slot - 1");
+    MP_CHECK(!juce::JSON::toString(list).contains(fixture().getFileName()), "no file names or paths");
+    int v = -1;
+    MP_CHECK(m.get(Type::Organ, 2, v, e) && v == 0, "not loaded yet");
+
+    MP_CHECK(m.press(Type::Organ, 2) == Error::NotAllowed, "refused while the program takes no load requests");
+    juce::File asked;
+    proc.onLoadOrganRequest = [&asked](const juce::File& f) { asked = f; };
+    MP_CHECK(m.press(Type::Organ, 0) == Error::NoOrgan && asked == juce::File(), "an empty slot opens nothing");
+    MP_CHECK(m.press(Type::Organ, 4) == Error::NoOrgan && asked == juce::File(), "nor one whose file is not there");
+    MP_CHECK(m.press(Type::Organ, 64) == Error::OutOfRange, "64 slots");
+    MP_CHECK(m.press(Type::Organ, 2) == Error::None && asked == fixture(), "a favourite's file is asked for");
+
+    // The program opens it; the favourite then reads 1.
+    MP_CHECK(proc.loadOrgan(fixture(), 0, true).ok, "the organ loads");
+    MP_CHECK(m.get(Type::Organ, 2, v, e) && v == 1, "the loaded favourite reads 1");
+    MP_CHECK(m.get(Type::Organ, 4, v, e) && v == 0, "the other 0");
+
+    ApiServer server(proc);
+    server.setExecutor([](std::function<void()> fn) { fn(); });
+    ServerSettings s;
+    s.enabled = true;
+    s.port = 0;
+    s.loopbackOnly = true;
+    juce::String error;
+    MP_CHECK(server.apply(s, error) && server.running(), "the server starts");
+    httplib::Client cli("127.0.0.1", server.port());
+    cli.set_read_timeout(5, 0);
+    auto r = cli.Get("/api/v1/organs");
+    MP_CHECK(r && r->status == 200 && r->body.find("Test organ") != std::string::npos &&
+                 r->body.find(fixture().getFileName().toStdString()) == std::string::npos,
+             "listed over HTTP, by name only");
+    asked = juce::File();
+    r = cli.Post("/api/v1/organs/2/press", "{}", "application/json");
+    MP_CHECK(r && r->status == 200 && asked == fixture(), "pressed over HTTP");
+    r = cli.Post("/api/v1/organs/4/press", "{}", "application/json");
+    MP_CHECK(r && r->status == 409 && body(r)["error"].toString() == "no-organ", "a missing file answers no-organ");
+    s.allowChanges = false;
+    server.apply(s, error);
+    asked = juce::File();
+    r = cli.Post("/api/v1/organs/2/press", "{}", "application/json");
+    MP_CHECK(r && r->status == 403 && asked == juce::File(), "read only opens nothing");
+    server.stop();
+    proc.onLoadOrganRequest = nullptr;
+  }
+};
+static ApiOrgansTest g_apiOrgans;
+
 // A request hands its work to the message thread and answers busy when that
 // thread is held up, as it is at the end of a long organ load. The work still
 // queued must then never run: it writes into the request's own variables,

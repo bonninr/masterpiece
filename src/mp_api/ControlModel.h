@@ -96,6 +96,10 @@ private:
   Error quitOrPowerOff(bool powerOff);
   // Builds the lists for the organ now loaded; nothing while one loads.
   bool ensure(Error& error);
+  // ensure(), except for the types that do not depend on the organ loaded.
+  bool ensureFor(Type type, Error& error);
+  // A favourite organ's file, or none for an empty slot.
+  juce::File organFile(int index) const;
   void rebuild();
   int divisionIndex(int64_t divisionId) const;
   juce::var object(Type type, int index);
