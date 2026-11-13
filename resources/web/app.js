@@ -9,7 +9,7 @@ const $ = (id) => document.getElementById(id);
 // desk works the pistons or the sequencer (#784).
 const SOLO = ["combinations", "sequencer"];
 const state = { session: -1, divisions: [], switches: [], controls: [], generals: [], divisionals: [],
-  eqpresets: [], temperaments: [], program: {}, el: { switch: [], control: [], general: [], divisional: [] },
+  eqpresets: [], temperaments: [], organs: [], program: {}, el: { switch: [], control: [], general: [], divisional: [] },
   all: { switch: [], control: [], rank: [] } };
 
 function headers() {
@@ -64,7 +64,9 @@ function el(tag, attrs = {}, ...children) {
 async function load() {
   // While an organ loads, the lists answer "busy": the page shows the load and
   // its progress, and builds when the event stream says the organ is ready.
-  const [id0, prog0] = await Promise.all([get(""), get("program")]);
+  // The favourite organs answer with no organ loaded and while one loads.
+  const [id0, prog0, organs] = await Promise.all([get(""), get("program"), get("organs").catch(() => ({ items: [] }))]);
+  state.organs = organs.items || [];
   if (prog0.organState !== 2) {
     state.session = -1;
     state.program = prog0;
@@ -98,7 +100,7 @@ function build() {
   if (!state.switches.length && !state.controls.length) {
     main.append(state.program.organState === 1
       ? el("div", { class: "empty" }, "Loading the organ: ", el("span", { id: "loadpct" }, ""))
-      : el("div", { class: "empty" }, "No organ loaded."));
+      : el("div", { class: "empty" }, "No organ loaded.", organButtons()));
     fillSelects();
     return;
   }
@@ -126,6 +128,19 @@ function build() {
   main.append(allPanel());
   fillSelects();
   refreshAll();
+}
+
+// The favourite organs, one button each, for a console started with none.
+function organButtons() {
+  if (!state.organs.length)
+    return el("div", { class: "dim" }, "Favourite organs added in the Open window appear here.");
+  const box = el("div", { class: "stops pistons organs" });
+  for (const o of state.organs) box.append(el("button", { title: `Load ${o.name}`, onclick: () => openOrgan(o) }, o.name));
+  return box;
+}
+function openOrgan(o) {
+  flash(`Opening ${o.name}`);
+  press("organs", o.index);
 }
 
 // Every switch and control the organ has, its internal ones too, loaded when
@@ -344,6 +359,11 @@ function fillSelects() {
   };
   fill($("temperament"), state.temperaments, state.program.temperament);
   fill($("eqpreset"), [{ index: -1, name: "Edited or off" }, ...state.eqpresets], state.program.eqPreset ?? -1);
+  // The organ loaded, or a first line to choose from when it is no favourite.
+  const lit = state.organs.find((o) => o.value === 1);
+  const first = lit ? [] : [{ index: -1, name: state.organs.length ? "Choose an organ" : "No favourites" }];
+  fill($("organs"), [...first, ...state.organs], lit ? lit.index : -1);
+  $("organs").disabled = !state.organs.length;
 }
 
 // ---- showing values -------------------------------------------------------
@@ -601,6 +621,10 @@ $("transUp").addEventListener("click", () => setProgram("transpose", Math.min(12
 $("transDown").addEventListener("click", () => setProgram("transpose", Math.max(-12, (state.program.transpose || 0) - 1)));
 $("temperament").addEventListener("change", (e) => press("temperaments", Number(e.target.value)));
 $("eqpreset").addEventListener("change", (e) => { const i = Number(e.target.value); if (i >= 0) press("eqpresets", i); });
+$("organs").addEventListener("change", (e) => {
+  const o = state.organs.find((o) => o.index === Number(e.target.value));
+  if (o) openOrgan(o);
+});
 $("recAudio").addEventListener("click", () => setProgram("audioRecorder", state.program.audioRecorder ? 0 : 1));
 $("recMidi").addEventListener("click", () => setProgram("midiRecorder", state.program.midiRecorder ? 0 : 1));
 $("panic").addEventListener("click", () => press("commands", 0));

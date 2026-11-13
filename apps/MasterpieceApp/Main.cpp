@@ -463,6 +463,14 @@ public:
       }
       systemRequestedQuit();
     };
+    // A favourite organ chosen in the web console (#1097), opened once the
+    // request has been answered: the load holds the message thread a while.
+    proc_->onLoadOrganRequest = [this](const juce::File& organ) {
+      juce::Logger::writeToLog("control API: opening " + organ.getFileName());
+      juce::MessageManager::callAsync([this, organ] {
+        if (proc_ != nullptr && win_ != nullptr) win_->editor().loadOrgan(organ);
+      });
+    };
     applyRemoteSettings();
 #endif
     const juce::File crashed = proc_->crashedOrgan();
@@ -963,6 +971,7 @@ public:
       proc_->onRemoteSettingsChanged = nullptr;
       proc_->remoteStatus = nullptr;
       proc_->onPowerRequest = nullptr;
+      proc_->onLoadOrganRequest = nullptr;
     }
     sysexOn_ = false;
     sysex_.reset();

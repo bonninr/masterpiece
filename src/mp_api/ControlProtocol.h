@@ -36,6 +36,7 @@ enum class Type : uint8_t {
   Width = 22,
   Mute = 23,
   Solo = 24,
+  Organ = 25,
 };
 
 enum class Access : uint8_t { Read, Set, Press };
@@ -79,8 +80,9 @@ constexpr TypeInfo kTypes[] = {
   {Type::Width, "width", "widths", Access::Set, Dump::Values, true, 0, 200, false, "The stereo width of a rank or a division - one per rank, then one per division, as brightnesses; a rank's and its division's multiply. Value - percent, 0 mono, 100 as recorded, 200 twice as wide; heard at once, and saved with the voicing."},
   {Type::Mute, "mute", "mutes", Access::Set, Dump::Bits, true, 0, 1, true, "The Mixer tab's mute buttons - one per rank in the order of ranks, then one per division, then one per perspective or windchest group, then one per output pair. Value - 1 muted; the strip's fader stays where it is. Heard at once, and back to 0 with each organ."},
   {Type::Solo, "solo", "solos", Access::Set, Dump::Bits, true, 0, 1, true, "The Mixer tab's solo buttons, in the order of mutes. Value - 1 soloed. While any rank, division or group is soloed, only the ranks under a soloed strip sound; the pairs solo among themselves. A mute wins over a solo. Heard at once, and back to 0 with each organ."},
+  {Type::Organ, "organ", "organs", Access::Press, Dump::Bits, true, 0, 1, false, "The player's favourite organs, as the Open window lists them - index = favourite slot - 1, 64 slots; a list gives the slots that hold an organ. Value 1 while it is the organ loaded. A press loads it, as opening it in the window does; busy while an organ loads. Listed with no organ loaded and while one loads. Names only, no file paths."},
 };
-constexpr int kTypeCount = 25;
+constexpr int kTypeCount = 26;
 
 constexpr const TypeInfo* typeInfo(Type t) {
   for (const auto& i : kTypes)

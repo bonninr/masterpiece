@@ -1257,6 +1257,9 @@ public:
   std::function<juce::String()> remoteStatus;
   // Set by the program: save and quit, and with true shut the computer down.
   std::function<void(bool powerOff)> onPowerRequest;
+  // Set by the program: open this organ, as the Open window does, after the
+  // caller has returned (#1097).
+  std::function<void(const juce::File&)> onLoadOrganRequest;
 
   // The ready lamp: a message on the console's MIDI output that lights a lamp
   // once an organ is loaded and playable, blinks while one loads and while a
