@@ -3706,7 +3706,8 @@ void VoicingPanel::showEveryPipe() {
   o.escapeKeyTriggersCloseButton = true;
   o.useNativeTitleBar = true;
   o.resizable = true;
-  everyPipeWindow_ = launchDialog(o);
+  // Beside the console: the keys and the stops stay in reach while voicing.
+  everyPipeWindow_ = launchDialog(o, false);
 }
 
 // The four steps as console buttons; the mapping is the console's, the same

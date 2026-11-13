@@ -558,6 +558,28 @@ private:
   juce::String kind_;
 };
 
+// Marks a dialog shown without a modal state (closeModelessDialogs).
+const juce::Identifier kModeless{"mpModeless"};
+
+// A dialog shown without a modal state: its close button only hides it, so
+// it is deleted once hidden, after the click that closed it has finished.
+// Owned by nobody but itself: it goes with the dialog.
+class DeleteWhenHidden : public juce::ComponentListener {
+public:
+  explicit DeleteWhenHidden(juce::Component& dialog) { dialog.addComponentListener(this); }
+  void componentVisibilityChanged(juce::Component& c) override {
+    if (c.isVisible() || !c.isOnDesktop()) return;
+    juce::Component::SafePointer<juce::Component> safe(&c);
+    juce::MessageManager::callAsync([safe] {
+      if (auto* dialog = safe.getComponent(); dialog != nullptr && !dialog->isVisible()) delete dialog;
+    });
+  }
+  void componentBeingDeleted(juce::Component& c) override {
+    c.removeComponentListener(this);
+    delete this;
+  }
+};
+
 // JUCE makes a new dialog always on top whenever another of the program's
 // windows is, and the Recorder and Combinations windows are while the
 // program is in front: such a dialog then stayed above every other
@@ -662,7 +684,7 @@ bool dialogPlaceUsable(juce::Rectangle<int> place, const juce::Array<juce::Recta
   return false;
 }
 
-juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
+juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options, bool modal) {
   if (kMobile) {
     options.useNativeTitleBar = false;
     options.resizable = false;
@@ -706,14 +728,35 @@ juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
     }
     dialog->addComponentListener(new SizeKeeper(kind));
   }
-  // Made afresh where it belongs on X11 (showInPlace), then shown modal.
+  // Made afresh where it belongs on X11 (showInPlace), then shown modal; or
+  // above the program's other windows, with the console in reach, and gone
+  // once closed.
   if (!kMobile) {
+    // Opened from a modal window (Organ settings before an organ's first
+    // load), it is modal too: a window beside a modal one takes no clicks.
+    if (juce::ModalComponentManager::getInstance()->getNumModalComponents() > 0) modal = true;
+    if (!modal) {
+      dialog->getProperties().set(kModeless, true);
+      dialog->setAlwaysOnTop(true);
+      new DeleteWhenHidden(*dialog);
+    }
     showInPlace(*dialog);
-    dialog->enterModalState(true, nullptr, true);
+    if (modal) dialog->enterModalState(true, nullptr, true);
   }
   if (kLiveOnTop && !kMobile && dialog->isAlwaysOnTop()) new FrontFollower(*dialog);
   if (auto* content = dialog->getContentComponent()) giveOwnTooltips(*content);
   return dialog;
+}
+
+void closeModelessDialogs() {
+  auto& desktop = juce::Desktop::getInstance();
+  juce::Array<juce::Component::SafePointer<juce::Component>> open;
+  for (int i = desktop.getNumComponents(); --i >= 0;)
+    if (auto* c = desktop.getComponent(i); c != nullptr && c->getProperties()[kModeless])
+      open.add(c);
+  // Deleted after the list is made: each one leaves the desktop's list.
+  for (auto& c : open)
+    if (auto* dialog = c.getComponent()) delete dialog;
 }
 
 bool closeFrontWindow(juce::Component* mainWindow) {
