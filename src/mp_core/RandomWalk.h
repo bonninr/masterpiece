@@ -144,15 +144,15 @@ inline double randomTuningUnit(uint64_t pipeId, int fn, double probPct) {
 }
 
 // That error in cents for a pipe sounding at targetHz: the unit times the
-// smaller of the two stated limits, the hertz one taken at the pipe's own
-// pitch. A limit of 0 states none.
+// smaller of the two limits, the hertz one taken at the pipe's own pitch.
+// Both limits bound the error, so a limit of 0, stated or left at its
+// default, allows none (#1050). Sets made to err by a beat rate state the
+// hertz limit and set the semitone one out of reach (1199.9 %); a row that
+// states only the semitone limit plays in tune, as it did before #808.
 inline double tuningErrorCents(double unit, double maxCents, double maxHz, double targetHz) {
-  double limit = maxCents > 0.0 ? maxCents : -1.0;
-  if (maxHz > 0.0 && targetHz > 0.0) {
-    const double hzCents = 1200.0 * std::log2(1.0 + maxHz / targetHz);
-    limit = limit < 0.0 ? hzCents : std::min(limit, hzCents);
-  }
-  return limit > 0.0 ? unit * limit : 0.0;
+  if (!(maxCents > 0.0) || !(maxHz > 0.0) || !(targetHz > 0.0)) return 0.0;
+  const double hzCents = 1200.0 * std::log2(1.0 + maxHz / targetHz);
+  return unit * std::min(maxCents, hzCents);
 }
 
 } // namespace mp

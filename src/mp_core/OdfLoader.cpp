@@ -699,12 +699,13 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
         fieldDouble(row, "Pitch_Tempered_BaseTuningDeviation", "g", 0.0);
     // The pipe's random tuning error under a temperament (#808): the largest
     // error in percent of a semitone (cents) and in hertz, and the share of
-    // pipes that err by less.
+    // pipes that err by less. Both limits bound the error: a pipe with either
+    // at 0 stays in tune (#1050).
     p.tuningErrorMaxCents = std::max(
         0.0, fieldDouble(row, "Pitch_Tempered_RandomTuningError_MaxDetuningPctSemitones", "i", 0.0));
     p.tuningErrorMaxHz = std::max(
         0.0, fieldDouble(row, "Pitch_Tempered_RandomTuningError_MaxDetuningHz", "j", 0.0));
-    if (p.tuningErrorMaxCents > 0.0 || p.tuningErrorMaxHz > 0.0)
+    if (p.tuningErrorMaxCents > 0.0 && p.tuningErrorMaxHz > 0.0)
       p.tuningErrorUnit = randomTuningUnit(
           static_cast<uint64_t>(fieldInt(row, "PipeID", "a", 0)),
           fieldInt(row, "Pitch_Tempered_RandomTuningError_IndexGeneratingProbabilityFn", "k", 4),
