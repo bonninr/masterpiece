@@ -1,0 +1,1 @@
+"Shows only the ranks whose name or division holds this text" = "Muestra solo las filas cuyo nombre o división contiene este texto"

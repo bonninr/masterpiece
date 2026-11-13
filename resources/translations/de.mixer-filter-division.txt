@@ -1,0 +1,1 @@
+"Shows only the ranks whose name or division holds this text" = "Zeigt nur die Register, deren Name oder Werk diesen Text enthält"

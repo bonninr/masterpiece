@@ -1,0 +1,1 @@
+"Shows only the ranks whose name or division holds this text" = "Zobrazí jen řady, jejichž název nebo dílo obsahuje tento text"

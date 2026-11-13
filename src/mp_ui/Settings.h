@@ -653,6 +653,7 @@ private:
   std::vector<std::unique_ptr<juce::ComboBox>> rankBuses_;
   std::vector<std::unique_ptr<juce::Label>> rankGroups_;
   std::vector<int> rankGroupAbove_;  // per rank, the heading above its row in rankGroups_, or -1
+  std::vector<juce::String> rankDivisions_;  // per rank, its division's name, for the filter
 };
 
 // The console's own text display: the little 32-character panel on the jamb
