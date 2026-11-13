@@ -239,6 +239,8 @@ public:
       touchLog_ = std::make_unique<TouchLog>();
       juce::Desktop::getInstance().addGlobalMouseListener(touchLog_.get());
     }
+    heldFinger_ = std::make_unique<HeldFingerOpensLists>();
+    juce::Desktop::getInstance().addGlobalMouseListener(heldFinger_.get());
 
     // Audio first: the device's real rate and block size are what the engine
     // must be prepared for, and asking for them before the organ loads means
@@ -968,6 +970,7 @@ public:
     api_.reset();
 #endif
     if (touchLog_ != nullptr) juce::Desktop::getInstance().removeGlobalMouseListener(touchLog_.get());
+    if (heldFinger_ != nullptr) juce::Desktop::getInstance().removeGlobalMouseListener(heldFinger_.get());
     // The device state is written on the way out rather than on every change:
     // a player dragging a buffer-size slider would otherwise rewrite the file
     // once per pixel.
@@ -1468,10 +1471,28 @@ private:
       for (auto* c = e.eventComponent; c != nullptr; c = c->getParentComponent())
         chain << (chain.isEmpty() ? "" : " < ") << "'" << c->getName() << "' "
               << typeid(*c).name();
-      juce::Logger::writeToLog("touch: at " + e.getScreenPosition().toString() + " on " + chain);
+      juce::Logger::writeToLog("touch: at " + e.getScreenPosition().toString() + " by "
+                               + (e.source.isTouch() ? "touch" : e.source.isPen() ? "pen" : "mouse")
+                               + (e.mods.isPopupMenu() ? " (right button)" : "") + " on " + chain);
     }
   };
   std::unique_ptr<TouchLog> touchLog_;
+  // Touch screens on Windows: a finger that rests a moment arrives as a
+  // right click when it lifts, which is how a held finger opens the console's
+  // menus. A drop-down list ignores a right click, so a list held a little
+  // too long never opened (#1082). A held finger on a drop-down opens its
+  // list, in every window.
+  struct HeldFingerOpensLists final : juce::MouseListener {
+    void mouseUp(const juce::MouseEvent& e) override {
+      if (!e.source.isTouch() || !e.mods.isPopupMenu() || e.eventComponent == nullptr) return;
+      auto* box = dynamic_cast<juce::ComboBox*>(e.eventComponent);
+      if (box == nullptr) box = e.eventComponent->findParentComponentOfClass<juce::ComboBox>();
+      if (box == nullptr || !box->isEnabled() || box->isPopupActive()) return;
+      if (!box->getScreenBounds().contains(e.getScreenPosition())) return;
+      box->showPopup();
+    }
+  };
+  std::unique_ptr<HeldFingerOpensLists> heldFinger_;
   // Our own published port, where the platform allows one. The input holds a
   // pointer to its route, so the route is declared FIRST and therefore
   // destroyed last — the input goes away while its callback is still valid.
