@@ -850,6 +850,15 @@ Error ControlModel::setProgram(ProgramProp prop, int value) {
     }
     case ProgramProp::Polyphony: proc_.setPolyphonyLimit(value); break;
     case ProgramProp::RealtimeThreads: proc_.setRealtimeThreads(value == 1); break;
+    // The recorders from a remote (#1081): no file dialog, a dated file.
+    case ProgramProp::MidiRecorder:
+      if ((value == 1) != proc_.recorder().isRecording())
+        proc_.pressRecorderButton(true, MasterpieceProcessor::recordingsFolder());
+      break;
+    case ProgramProp::AudioRecorder:
+      if (value == 0) proc_.audioRecorder().stop();
+      else if (proc_.startAudioRecording() == juce::File()) return Error::Busy;
+      break;
     case ProgramProp::Metronome: proc_.metronome().setEnabled(value == 1); break;
     case ProgramProp::MetronomeTempo: proc_.metronome().setTempo(value); break;
     case ProgramProp::RoomOn: proc_.convolver().setEnabled(value == 1); break;

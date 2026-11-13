@@ -250,8 +250,8 @@ program:
   - {index: 11, name: soundingVoices, min: 0, max: 2097151, access: read}
   - {index: 12, name: lateBlocks, min: 0, max: 2097151, access: read, doc: Since the program started}
   - {index: 13, name: realtimeThreads, min: 0, max: 1, access: set}
-  - {index: 14, name: midiRecorder, min: 0, max: 1, access: read, doc: 1 while recording}
-  - {index: 15, name: audioRecorder, min: 0, max: 1, access: read, doc: 1 while recording}
+  - {index: 14, name: midiRecorder, min: 0, max: 1, access: set, doc: "1 while recording. Set 1 to record, 0 to stop; a take not yet saved is first saved to a dated file in the recordings folder"}
+  - {index: 15, name: audioRecorder, min: 0, max: 1, access: set, doc: "1 while recording. Set 1 to record to a dated file in the recordings folder, 0 to stop"}
   - {index: 16, name: metronome, min: 0, max: 1, access: set}
   - {index: 17, name: metronomeTempo, min: 20, max: 300, access: set, doc: Beats a minute}
   - {index: 18, name: roomOn, min: 0, max: 1, access: set, doc: The room - the convolution reverb}

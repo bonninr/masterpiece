@@ -774,5 +774,58 @@ public:
 };
 static ApiConsolePagesTest g_apiConsolePages;
 
+// The recorders from a remote (#1081): set 1 records, set 0 stops, and the
+// audio goes to a dated file with no dialog.
+class ApiRecordersTest final : public mp::test::Test {
+public:
+  ApiRecordersTest() : Test("functional.api.recorders", Category::Functional) {}
+  void run() override {
+    const juce::File folder = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp api recorders");
+    folder.deleteRecursively();
+    folder.createDirectory();
+    juce::File global;
+    juce::String before;
+    bool existed = false;
+    {
+      mp::MasterpieceProcessor proc;
+      global = proc.globalSettingsFile();
+      existed = global.existsAsFile();
+      before = existed ? global.loadFileAsString() : juce::String();
+      global.getParentDirectory().createDirectory();
+      // The rate the host sets: the recording is written at it.
+      proc.setRateAndBufferSizeDetails(48000.0, 256);
+      proc.prepareToPlay(48000.0, 256);
+      ControlModel m(proc);
+      MP_CHECK(proc.loadOrgan(fixture(), 0, true).ok, "the organ loads");
+      proc.rememberDialogFolder("recording", folder);
+
+      MP_CHECK(m.setProgram(ProgramProp::MidiRecorder, 1) == Error::None && proc.recorder().isRecording(),
+               "the MIDI recorder records");
+      MP_CHECK(m.setProgram(ProgramProp::MidiRecorder, 1) == Error::None && proc.recorder().isRecording(),
+               "set 1 again: it keeps recording");
+      MP_CHECK(m.setProgram(ProgramProp::MidiRecorder, 0) == Error::None && !proc.recorder().isRecording(),
+               "and stops");
+      MP_CHECK(m.setProgram(ProgramProp::MidiRecorder, 0) == Error::None && !proc.recorder().isRecording(),
+               "set 0 again: it stays stopped");
+
+      MP_CHECK(m.setProgram(ProgramProp::AudioRecorder, 1) == Error::None && proc.audioRecorder().isRecording(),
+               "the audio recorder records");
+      Error e;
+      int v = 0;
+      MP_CHECK(m.get(Type::Program, static_cast<int>(ProgramProp::AudioRecorder), v, e) && v == 1, "and reads 1");
+      const juce::File file = proc.audioRecorder().file();
+      MP_CHECK(file.getParentDirectory() == folder && file.hasFileExtension("wav"),
+               "to a file in the recordings folder: " + file.getFullPathName().toStdString());
+      MP_CHECK(m.setProgram(ProgramProp::AudioRecorder, 0) == Error::None && !proc.audioRecorder().isRecording(),
+               "and stops");
+      MP_CHECK(file.existsAsFile(), "the file is kept");
+    }
+    if (existed) global.replaceWithText(before);
+    else global.deleteFile();
+    folder.deleteRecursively();
+  }
+};
+static ApiRecordersTest g_apiRecorders;
+
 }  // namespace
 #endif  // MP_TEST_HAS_API
