@@ -17,8 +17,10 @@ using mp::test::Category;
 
 // One manual, two stops on it, a rank each. Stop A has a tremmed rank too,
 // rank 203 with a softer tone, which switch 1103 plays in place of A's and
-// which re-sounds the notes held when it moves.
-juce::File writeOrgan(const juce::File& root) {
+// which re-sounds the notes held when it moves. `throughInputs` plays the
+// division through its inputs, as Ashton and Buckeburg do: key C2's switch
+// 5036 closes input 33036 of the division, with no key action.
+juce::File writeOrgan(const juce::File& root, bool throughInputs = false) {
   root.deleteRecursively();
   const auto defs = root.getChildFile("OrganDefinitions");
   const auto pkg = root.getChildFile("OrganInstallationPackages").getChildFile("000001");
@@ -38,8 +40,26 @@ juce::File writeOrgan(const juce::File& root) {
     w->writeFromAudioSampleBuffer(tone, 0, 48000);
   }
   const auto odf = defs.getChildFile("held.Organ_Hauptwerk_xml");
+  const juce::String keyAction =
+      throughInputs
+          ? "<ObjectList ObjectType=\"KeyboardKey\"><KeyboardKey><KeyboardID>701</KeyboardID><SwitchID>5036</SwitchID>"
+            "<NormalMIDINoteNumber>36</NormalMIDINoteNumber></KeyboardKey></ObjectList>"
+            "<ObjectList ObjectType=\"DivisionInput\"><DivisionInput><DivisionID>801</DivisionID><SwitchID>33036</SwitchID>"
+            "<NormalMIDINoteNumber>36</NormalMIDINoteNumber></DivisionInput></ObjectList>"
+            "<ObjectList ObjectType=\"SwitchLinkage\"><SwitchLinkage><SourceSwitchID>5036</SourceSwitchID>"
+            "<DestSwitchID>33036</DestSwitchID><SourceSwitchLinkIfEngaged>Y</SourceSwitchLinkIfEngaged>"
+            "<EngageLinkActionCode>1</EngageLinkActionCode><DisengageLinkActionCode>2</DisengageLinkActionCode>"
+            "</SwitchLinkage></ObjectList>"
+          : "<ObjectList ObjectType=\"KeyAction\">"
+            "<KeyAction><SourceKeyboardID>701</SourceKeyboardID><DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision><DestDivisionID>801</DestDivisionID>"
+            "<ActionTypeCode>1</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey><NumberOfKeys>61</NumberOfKeys></KeyAction>"
+            "</ObjectList>";
+  const juce::String inputSwitches =
+      throughInputs ? "<Switch><SwitchID>5036</SwitchID><Name>Key 36</Name><Latching>N</Latching></Switch>"
+                      "<Switch><SwitchID>33036</SwitchID><Name>Input 36</Name><Latching>N</Latching></Switch>"
+                    : "";
   odf.replaceWithText(
-      "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+      juce::String("<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">")+
       "<ObjectList ObjectType=\"_General\"><_General><Identification_Name>Held</Identification_Name>"
       "<Identification_UniqueOrganID>35</Identification_UniqueOrganID></_General></ObjectList>"
       "<ObjectList ObjectType=\"RequiredInstallationPackage\"><RequiredInstallationPackage>"
@@ -66,12 +86,10 @@ juce::File writeOrgan(const juce::File& root) {
       "<Pipe_SoundEngine01_AttackSample><UniqueID>503</UniqueID><LayerID>403</LayerID><SampleID>102</SampleID></Pipe_SoundEngine01_AttackSample>"
       "</ObjectList><ObjectList ObjectType=\"Keyboard\">"
       "<Keyboard><KeyboardID>701</KeyboardID><Name>I</Name><DefaultInputOutputKeyboardAsgnCode>1</DefaultInputOutputKeyboardAsgnCode>"
-      "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey></Keyboard>"
-      "</ObjectList><ObjectList ObjectType=\"Division\"><Division><DivisionID>801</DivisionID><Name>G</Name></Division></ObjectList>"
-      "<ObjectList ObjectType=\"KeyAction\">"
-      "<KeyAction><SourceKeyboardID>701</SourceKeyboardID><DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision><DestDivisionID>801</DestDivisionID>"
-      "<ActionTypeCode>1</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey><NumberOfKeys>61</NumberOfKeys></KeyAction>"
-      "</ObjectList><ObjectList ObjectType=\"Stop\">"
+      "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey>"
+      "<Hint_PrimaryAssociatedDivisionID>801</Hint_PrimaryAssociatedDivisionID></Keyboard>"
+      "</ObjectList><ObjectList ObjectType=\"Division\"><Division><DivisionID>801</DivisionID><Name>G</Name></Division></ObjectList>" +
+      keyAction + "<ObjectList ObjectType=\"Stop\">"
       "<Stop><StopID>901</StopID><Name>A</Name><DivisionID>801</DivisionID><ControllingSwitchID>1101</ControllingSwitchID></Stop>"
       "<Stop><StopID>902</StopID><Name>B</Name><DivisionID>801</DivisionID><ControllingSwitchID>1102</ControllingSwitchID></Stop>"
       "</ObjectList><ObjectList ObjectType=\"StopRank\">"
@@ -84,8 +102,8 @@ juce::File writeOrgan(const juce::File& root) {
       "</ObjectList><ObjectList ObjectType=\"Switch\">"
       "<Switch><SwitchID>1101</SwitchID><Name>A</Name><Latching>Y</Latching></Switch>"
       "<Switch><SwitchID>1102</SwitchID><Name>B</Name><Latching>Y</Latching></Switch>"
-      "<Switch><SwitchID>1103</SwitchID><Name>Trem</Name><Latching>Y</Latching></Switch>"
-      "</ObjectList></Hauptwerk>");
+      "<Switch><SwitchID>1103</SwitchID><Name>Trem</Name><Latching>Y</Latching></Switch>" +
+      inputSwitches + "</ObjectList></Hauptwerk>");
   return odf;
 }
 
@@ -230,6 +248,82 @@ public:
   }
 };
 static HeldNotesTremulantTest g_heldNotesTremulant;
+
+// The same tremulant on a division the keys play through its inputs: the held
+// note changes rank at once, and back (#1116). With held notes left alone it
+// keeps the rank it started with.
+class HeldNotesTremulantInputsTest final : public mp::test::Test {
+public:
+  HeldNotesTremulantInputsTest()
+      : Test("functional.playing.tremulant-division-inputs", Category::Functional) {}
+  void run() override {
+    const juce::File root =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-held-notes-trem-inputs");
+    const juce::File odf = writeOrgan(root, true);
+    mp::MasterpieceProcessor proc;
+    const bool before = proc.stopsLeaveHeldNotes();
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads");
+    proc.clearChannelAssignments();
+    proc.setKeyboardForChannel(1, 701);
+
+    juce::AudioBuffer<float> buf(2, 256);
+    const auto block = [&](juce::MidiBuffer m = {}) {
+      buf.clear();
+      proc.processBlock(buf, m);
+    };
+    const auto level = [&] {
+      for (int i = 0; i < 400; ++i) block();
+      double sum = 0.0;
+      for (int i = 0; i < 64; ++i) {
+        block();
+        const float r = buf.getRMSLevel(0, 0, buf.getNumSamples());
+        sum += static_cast<double>(r) * r;
+      }
+      return static_cast<float>(std::sqrt(sum / 64.0));
+    };
+    juce::MidiBuffer on, off;
+    on.addEvent(juce::MidiMessage::noteOn(1, 36, 0.8f), 0);
+    off.addEvent(juce::MidiMessage::noteOff(1, 36), 0);
+    proc.setStopEngaged(901, true);
+
+    proc.setStopsLeaveHeldNotes(false);
+    block(on);
+    const float plain = level();
+    MP_CHECK(plain > 0.01f, "rank A sounds the key held through the division's input: " + std::to_string(plain));
+    proc.setSwitchEngaged(1103, true);
+    const float tremmed = level();
+    MP_CHECK(tremmed < plain * 0.6f && tremmed > plain * 0.2f,
+             "the tremulant re-sounds the held note on the tremmed rank: " + std::to_string(tremmed) + " of " +
+                 std::to_string(plain));
+    proc.setSwitchEngaged(1103, false);
+    const float back = level();
+    MP_CHECK(std::fabs(back - plain) < plain * 0.05f,
+             "and back on rank A when it stops: " + std::to_string(back) + " of " + std::to_string(plain));
+    block(off);
+    MP_CHECK(level() < 1.0e-5f, "the key let go");
+
+    proc.setStopsLeaveHeldNotes(true);
+    block(on);
+    const float first = level();
+    proc.setSwitchEngaged(1103, true);
+    const float kept = level();
+    MP_CHECK(std::fabs(kept - first) < first * 0.05f,
+             "left alone, the held note stays on rank A: " + std::to_string(kept) + " of " + std::to_string(first));
+    block(off);
+    MP_CHECK(level() < 1.0e-5f, "the key let go ends it");
+    block(on);
+    const float next = level();
+    MP_CHECK(std::fabs(next - tremmed) < tremmed * 0.05f, "the next key plays the tremmed rank: " + std::to_string(next));
+    block(off);
+    level();
+
+    proc.setStopsLeaveHeldNotes(before);
+    proc.settingsFileFor(odf).deleteFile();
+    root.deleteRecursively();
+  }
+};
+static HeldNotesTremulantInputsTest g_heldNotesTremulantInputs;
 
 }  // namespace
 

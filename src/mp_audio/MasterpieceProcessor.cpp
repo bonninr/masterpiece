@@ -6622,8 +6622,10 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   // those stops, when the organ asks for that: what was sounding lets go and
   // the other rank's pipes speak. Unless the player has asked for held notes
   // to be left alone: then only the keys pressed afterwards play the other
-  // rank.
-  if (swapsRanks && !soundingNotes_.empty() && !stopsLeaveHeldNotes())
+  // rank. The notes held through division inputs change too: on Ashton and
+  // Buckeburg the keys play every division through them, and the tremulant
+  // reached only the keys pressed after it (#1116).
+  if (swapsRanks && (!soundingNotes_.empty() || !divisionInputNotes_.empty()) && !stopsLeaveHeldNotes())
     for (const auto& [movedId, nowEngaged] : switches_.lastChanges()) {
       (void)nowEngaged;
       const auto alt = alternateStopsBySwitch_.find(movedId);
@@ -6644,6 +6646,16 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
             voices_.noteOffPipe(held.id, rp.pipeId, NoteRelease{});
         startVoicesForKey(held.keyboard, held.midiNote, held.velocity, held.id,
                           stopSetScratch_, held.extreme);
+      }
+      for (const auto& [inputSwitch, noteId] : divisionInputNotes_) {
+        const auto [division, note] = divisionInputBySwitch_.at(inputSwitch);
+        divisionInputScratch_.clear();
+        resolvePipesInto(model_, division, note, stopSetScratch_, &previousSwitches_, divisionInputScratch_);
+        for (const auto& rp : divisionInputScratch_) voices_.noteOffPipe(noteId, rp.pipeId, NoteRelease{});
+        divisionInputScratch_.clear();
+        resolvePipesInto(model_, division, note, stopSetScratch_, &engagedSwitches_, divisionInputScratch_);
+        for (const auto& rp : divisionInputScratch_)
+          if (rp.pipe != nullptr) startPipeLayers(*rp.pipe, rp.rankId, note, palletVelocity_, noteId);
       }
     }
 
