@@ -1194,7 +1194,10 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       juce::Logger::writeToLog("cache: damaged, read from the samples instead");
     }
     if (fromCache && !cached->empty()) {
+      // A cache is written only for a whole organ: every sample asked for
+      // is in it.
       report.loaded = static_cast<int>(cached->size());
+      report.wanted = report.loaded;
       publish(std::move(cached));
       if (progress != nullptr) {
         progress->total.store(report.loaded, std::memory_order_release);
