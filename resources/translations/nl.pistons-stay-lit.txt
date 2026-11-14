@@ -1,0 +1,2 @@
+"Pistons stay lit until another is pressed" = "Drukknoppen blijven branden tot een andere"
+"A piston stays lit until another piston or a cancel is pressed, whatever stops and couplers are moved by hand meanwhile." = "Een drukknop blijft branden tot een andere drukknop of een annulering wordt ingedrukt, ook als intussen registers en koppels met de hand worden bediend."

@@ -167,6 +167,7 @@ private:
   juce::ToggleButton onTop_{TRANS("Always on top")};
   juce::ToggleButton setOff_{TRANS("Set turns off after storing")};
   juce::ToggleButton leaveBass_{TRANS("Pistons leave the bass coupler")};
+  juce::ToggleButton stayLit_{TRANS("Pistons stay lit until another is pressed")};
   juce::ComboBox show_;
   juce::Viewport viewport_;
   std::unique_ptr<CombinationsPanel> panel_;

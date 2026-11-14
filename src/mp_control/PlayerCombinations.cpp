@@ -330,7 +330,7 @@ void PlayerCombinations::clearAll() {
       std::fill(r.drawn.begin(), r.drawn.end(), 0);
     }
   frame_ = 0;
-  registrationMoved();
+  unlight();
 }
 
 void PlayerCombinations::setGeneralCount(int n) {
@@ -445,6 +445,10 @@ int PlayerCombinations::litDivisional(Id divisionId) const {
 }
 
 void PlayerCombinations::registrationMoved(Id divisionId) {
+  if (!keepLit_) unlightDivisions(divisionId);
+}
+
+void PlayerCombinations::unlightDivisions(Id divisionId) {
   litGeneral_ = 0;
   if (divisionId == kEveryDivision) {
     std::fill(litDivisional_.begin(), litDivisional_.end(), 0);
@@ -457,7 +461,7 @@ void PlayerCombinations::registrationMoved(Id divisionId) {
 // A general describes the whole console, so it replaces every lit piston; a
 // divisional describes one division, so it only unlights the general.
 void PlayerCombinations::lightGeneral(int n) {
-  registrationMoved();
+  unlight();
   litGeneral_ = n;
 }
 
@@ -487,7 +491,7 @@ bool PlayerCombinations::fireFrame(int oneBased, bool capturing,
   Registration& r = frames_[static_cast<size_t>(oneBased)];
   if (capturing) captureInto(r, 0, true, isEngaged);
   else recallInto(r, 0, true, out);
-  registrationMoved();
+  unlight();
   return true;
 }
 

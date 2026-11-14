@@ -1071,6 +1071,16 @@ public:
     player_.setLeaveBassAndMelody(on);
     writeGlobalFile();
   }
+  // Whether a lit piston stays lit through hand-drawn changes until another
+  // piston is pressed (PlayerCombinations::keepLit, #1117). Off by default.
+  // The program's, for every organ.
+  bool pistonsStayLit() const { return pistonsStayLit_; }
+  void setPistonsStayLit(bool on) {
+    const AudioLock audio(*this);
+    pistonsStayLit_ = on;
+    player_.setKeepLit(on);
+    writeGlobalFile();
+  }
   // Whether the organ loaded has a bass or melody coupler a player moves.
   bool hasBassOrMelodyCoupler() const;
   // Whether the drawn manuals show the keys being played. Drawing them is
@@ -3287,6 +3297,7 @@ private:
   // Read on the audio thread, where console and MIDI pistons are pressed.
   std::atomic<bool> setOffAfterStore_{false};
   bool leaveBassAndMelody_ = false;
+  bool pistonsStayLit_ = false;
   std::atomic<bool> showPlayedKeys_{true};
   std::atomic<bool> narrowStrips_{false};
   std::atomic<bool> smallPagesFill_{false};

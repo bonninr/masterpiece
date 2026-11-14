@@ -1,0 +1,2 @@
+"Pistons stay lit until another is pressed" = "I pistoncini restano accesi fino al successivo"
+"A piston stays lit until another piston or a cancel is pressed, whatever stops and couplers are moved by hand meanwhile." = "Un pistoncino resta acceso finché non si preme un altro pistoncino o un annullatore, anche se nel frattempo si muovono a mano registri e unioni."

@@ -705,6 +705,13 @@ CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
                               "couplers, which stay as the player set them. The cancels still push them in."));
   leaveBass_.onClick = [this] { proc_.setLeaveBassAndMelody(leaveBass_.getToggleState()); };
   content_.addAndMakeVisible(leaveBass_);
+  // A lit piston that stays lit through the stops and couplers moved by hand,
+  // so the player sees which general is in use (#1117).
+  stayLit_.setColour(juce::ToggleButton::textColourId, juce::Colour(0xffb9c2d0));
+  stayLit_.setTooltip(TRANS("A piston stays lit until another piston or a cancel is pressed, "
+                            "whatever stops and couplers are moved by hand meanwhile."));
+  stayLit_.onClick = [this] { proc_.setPistonsStayLit(stayLit_.getToggleState()); };
+  content_.addAndMakeVisible(stayLit_);
   show_.addItem(TRANS("Combinations and sequencer"), 1);
   show_.addItem(TRANS("Combinations only"), 2);
   show_.addItem(TRANS("Sequencer only"), 3);
@@ -721,7 +728,9 @@ CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
     onTop_.setBounds(row.removeFromRight(150));
     setOff_.setBounds(row.removeFromRight(260));
     leaveBass_.setBounds(row);
-    show_.setBounds(r.removeFromTop(26).reduced(8, 2).removeFromLeft(240));
+    auto second = r.removeFromTop(26).reduced(8, 2);
+    show_.setBounds(second.removeFromLeft(240));
+    stayLit_.setBounds(second.withTrimmedLeft(12));
     viewport_.setBounds(r);
   };
   setContentNonOwned(&content_, false);
@@ -756,7 +765,8 @@ int CombinationsWindow::neededWidth() const {
     return juce::GlyphArrangement::getStringWidthInt(font, b.getButtonText()) + 34;
   };
   const int boxes = 16 + box(leaveBass_) + std::max(260, box(setOff_)) + std::max(150, box(onTop_));
-  int w = std::max(boxes, panel_->preferredWidth() + viewport_.getScrollBarThickness());
+  const int second = 16 + 240 + 12 + box(stayLit_);
+  int w = std::max({boxes, second, panel_->preferredWidth() + viewport_.getScrollBarThickness()});
   const auto& displays = juce::Desktop::getInstance().getDisplays();
   const auto* d = displays.getDisplayForRect(getScreenBounds());
   if (d == nullptr) d = displays.getPrimaryDisplay();
@@ -805,6 +815,7 @@ void CombinationsWindow::refreshToggles() {
   onTop_.setToggleState(proc_.combinationsOnTop(), juce::dontSendNotification);
   setOff_.setToggleState(proc_.setOffAfterStore(), juce::dontSendNotification);
   leaveBass_.setToggleState(proc_.leaveBassAndMelody(), juce::dontSendNotification);
+  stayLit_.setToggleState(proc_.pistonsStayLit(), juce::dontSendNotification);
   show_.setSelectedId(proc_.combinationsView() + 1, juce::dontSendNotification);
   panel_->showView();
 }

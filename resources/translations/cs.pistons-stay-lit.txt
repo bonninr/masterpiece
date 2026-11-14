@@ -1,0 +1,2 @@
+"Pistons stay lit until another is pressed" = "Tlačítka svítí, dokud není stisknuto jiné"
+"A piston stays lit until another piston or a cancel is pressed, whatever stops and couplers are moved by hand meanwhile." = "Tlačítko svítí, dokud není stisknuto jiné tlačítko nebo vypínač, ať se mezitím ručně přesunou jakékoli rejstříky a spojky."
