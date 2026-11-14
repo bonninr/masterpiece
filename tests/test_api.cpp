@@ -478,6 +478,73 @@ public:
 };
 static ApiHelperSwitchesTest g_apiHelperSwitches;
 
+// A switch every stop waits on is nobody's knob. Alessandria gates each stop
+// on its drawstop and the Blower, which is drawn on the simple jambs, and its
+// Tuba, which has no drawstop, on a hidden switch and the Blower. The stop
+// list's Tuba moved the Blower, and every stop on the console fell silent
+// (#1027, #1046).
+class ApiSharedConditionTest final : public mp::test::Test {
+public:
+  ApiSharedConditionTest() : Test("functional.control.shared-condition-not-a-knob", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "[Organ]\r\nChurchName=Shared\r\nHasPedals=N\r\nNumberOfManuals=1\r\nNumberOfRanks=1\r\n"
+        "NumberOfSwitches=3\r\nNumberOfWindchestGroups=1\r\nNumberOfPanels=1\r\n"
+        "[WindchestGroup001]\r\nName=W\r\n"
+        "[Switch001]\r\nName=Blower\r\nDefaultToEngaged=Y\r\nGCState=-1\r\nDisplayed=N\r\n"
+        "[Switch002]\r\nName=Principal\r\nDisplayed=Y\r\n"
+        "[Switch003]\r\nName=Tuba\r\nDefaultToEngaged=Y\r\nGCState=-1\r\nDisplayed=N\r\n"
+        "[Rank001]\r\nName=P\r\nFirstMidiNoteNumber=36\r\nNumberOfLogicalPipes=1\r\nPipe001=p.wav\r\n"
+        "[Manual001]\r\nName=Great\r\nNumberOfLogicalKeys=1\r\nNumberOfAccessibleKeys=1\r\n"
+        "FirstAccessibleKeyMIDINoteNumber=36\r\nNumberOfStops=2\r\nStop001=1\r\nStop002=2\r\n"
+        "[Stop001]\r\nName=Principal\r\nNumberOfRanks=1\r\nRank001=1\r\nNumberOfAccessiblePipes=1\r\n"
+        "Function=And\r\nSwitchCount=2\r\nSwitch001=002\r\nSwitch002=001\r\n"
+        "[Stop002]\r\nName=Tuba\r\nNumberOfRanks=1\r\nRank001=1\r\nNumberOfAccessiblePipes=1\r\n"
+        "Displayed=N\r\nFunction=And\r\nSwitchCount=2\r\nSwitch001=003\r\nSwitch002=001\r\n"
+        "[Panel001]\r\nName=Jamb\r\nHasPedals=N\r\nNumberOfManuals=0\r\n"
+        "NumberOfSwitches=2\r\nSwitch001=001\r\nSwitch002=002\r\n";
+    const juce::File dir =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-shared-condition");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const juce::File file = dir.getChildFile("shared.organ");
+    file.replaceWithText(juce::String::fromUTF8(organ.c_str()));
+    {
+      mp::MasterpieceProcessor proc;
+      const juce::File settings = proc.settingsFileFor(file);
+      MP_CHECK(proc.loadOrgan(file, 0, true).ok, "the organ loads");
+      const auto& model = proc.organModel();
+      const auto principal = model.stops.find(2001);
+      const auto tuba = model.stops.find(2002);
+      MP_CHECK(principal != model.stops.end() && tuba != model.stops.end(), "both stops are there");
+      if (principal == model.stops.end() || tuba == model.stops.end()) return;
+      MP_CHECK(proc.playerSwitchFor(principal->second.controllingSwitchId) == 8002,
+               "the Principal's knob is its drawstop");
+      MP_CHECK(proc.playerSwitchFor(tuba->second.controllingSwitchId) != 8001,
+               "the Blower is not the Tuba's knob");
+      MP_CHECK(proc.switchEngaged(8001), "the Blower starts on");
+      MP_CHECK(proc.stopEngaged(2002), "the Tuba starts drawn");
+
+      // The stop list's Tuba, off and on: the wind stays.
+      proc.setStopEngaged(2002, false);
+      MP_CHECK(!proc.stopEngaged(2002), "the stop list puts the Tuba in");
+      MP_CHECK(proc.switchEngaged(8001), "and the Blower stays on");
+      proc.setStopEngaged(2002, true);
+      MP_CHECK(proc.switchEngaged(8001), "the Tuba drawn again leaves the Blower on");
+
+      // The Principal's drawstop still draws the Principal. Sanity: the
+      // Blower's own knob still stops it.
+      proc.setSwitchEngaged(8002, true);
+      MP_CHECK(proc.stopEngaged(2001), "the Principal's drawstop draws the Principal");
+      proc.setSwitchEngaged(8001, false);
+      MP_CHECK(!proc.stopEngaged(2001), "the Blower's knob still puts the wind out");
+      settings.deleteFile();
+    }
+    dir.deleteRecursively();
+  }
+};
+static ApiSharedConditionTest g_apiSharedCondition;
+
 // A divisional piston names its division, so a console can group pistons
 // that share a name across divisions, as Wildervank's 1 to 5 do (#572).
 class ApiPistonDivisionsTest final : public mp::test::Test {
