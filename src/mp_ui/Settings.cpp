@@ -4742,7 +4742,9 @@ juce::String diagnosticsReport(MasterpieceProcessor& p) {
             ", moving reservoir boards " + (sw.enableBellowsBoard ? "on" : "off") + ", tremulants " +
             (sw.enableTremulant && !sw.simpleWavOnly ? "on" : "off") + ", wind depth " +
             juce::String(p.windDepth(), 2));
-    out.addLines(juce::String::fromUTF8(mp::windAndTremulantReport(p.organModel()).c_str()).trimEnd());
+    const auto& wind = p.wind();
+    const auto pressures = [&wind](mp::Id id) { return std::make_pair(wind.nominalFor(id), wind.pressureFor(id)); };
+    out.addLines(juce::String::fromUTF8(mp::windAndTremulantReport(p.organModel(), pressures).c_str()).trimEnd());
   }
   return out.joinIntoString("\n");
 }

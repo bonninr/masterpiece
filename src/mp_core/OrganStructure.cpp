@@ -70,7 +70,7 @@ void section(std::string& out, const std::string& heading, const std::vector<std
 
 }  // namespace
 
-std::string windAndTremulantReport(const OrganModel& m, int maxRows) {
+std::string windAndTremulantReport(const OrganModel& m, const CompartmentPressures& pressures, int maxRows) {
   std::string out;
 
   // What the pipes draw, per compartment.
@@ -110,6 +110,10 @@ std::string windAndTremulantReport(const OrganModel& m, int maxRows) {
     if (c.bellowsExtensionOutputControlId != 0)
       row += "; extension to " + controlText(m, c.bellowsExtensionOutputControlId);
     if (c.pressureOutputControlId != 0) row += "; pressure to " + controlText(m, c.pressureOutputControlId);
+    if (pressures) {
+      const auto [working, now] = pressures(id);
+      row += format("; working %.3f in, now %.3f in", working, now);
+    }
     if (const auto d = draws.find(id); d != draws.end()) {
       row += format("; %d pipes draw %.4f kg/s", d->second.pipes, d->second.flow);
       if (d->second.drifting > 0) row += format(", %d with a flow drift", d->second.drifting);

@@ -7,6 +7,7 @@
 
 #include <cstdio>
 #include <string>
+#include <utility>
 
 namespace {
 
@@ -136,7 +137,11 @@ public:
     MP_CHECK(has(text, "rank 11 \"Prinzipal 8 trem\" for rank 10 \"Prinzipal 8\" in stop 5 \"Prinzipal 8'\", by switch 44"),
              "the tremmed rank and its switch");
 
-    const std::string cut = mp::windAndTremulantReport(reportOrgan(), 1);
+    const std::string solved = mp::windAndTremulantReport(
+        reportOrgan(), [](mp::Id id) { return std::make_pair(id == 2 ? 3.0 : 4.0, id == 2 ? 2.875 : 4.0); });
+    MP_CHECK(has(solved, "; working 3.000 in, now 2.875 in"), "the reservoir's pressure from the solver");
+
+    const std::string cut = mp::windAndTremulantReport(reportOrgan(), {}, 1);
     MP_CHECK(has(cut, "  and 1 more\n"), "a long section is cut with the number left out");
   }
 };
