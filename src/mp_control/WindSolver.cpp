@@ -876,20 +876,8 @@ void WindSolver::integrate(double dt,
     // A valve its continuous control opens, as far as the control reads. Open
     // while settling: the working pressure is the organ's with its blower on.
     if (!settling_ && k < linkOpening_.size()) mul *= linkOpening_[k];
-    double flow =
+    const double flow =
         orificeFlow(link.massFlowKgPerSec * mul, link.refPressureInches, pa - pb);
-    // No more air in one step than brings the two sides to one pressure. The
-    // square-root law's slope has no bound as the difference closes, so an
-    // explicit step near balance carries the pair past it, and a small chest
-    // fed hard chattered about its supply: under a chord a 1-litre chest read
-    // 35% above its working pressure (#1121). Where the step is short enough
-    // this never binds.
-    const double ga = ia >= 0 ? kInchesPerKgPerM3 * dt / order_[static_cast<size_t>(ia)].volumeM3 : 0.0;
-    const double gb = ib >= 0 ? kInchesPerKgPerM3 * dt / order_[static_cast<size_t>(ib)].volumeM3 : 0.0;
-    if (ga + gb > 0.0) {
-      const double most = std::abs(pa - pb) / (ga + gb);
-      flow = std::clamp(flow, -most, most);
-    }
     if (ia >= 0) {
       State& a = order_[static_cast<size_t>(ia)];
       a.pressure -= kInchesPerKgPerM3 * flow * dt / a.volumeM3;
