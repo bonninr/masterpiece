@@ -3081,6 +3081,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   text << "samplecache " << static_cast<int>(cacheMode_) << "\n";
   if (setOffAfterStore_.load()) text << "setoffafterstore 1\n";
   if (leaveBassAndMelody_) text << "pistonsleavebass 1\n";
+  if (pistonsStayLit_) text << "pistonsstaylit 1\n";
   if (!showPlayedKeys_.load()) text << "showkeys 0\n";
   if (smallPagesFill_.load()) text << "smallpagesfill 1\n";
   if (narrowStrips_.load()) text << "narrowstrips 1\n";
@@ -3304,6 +3305,9 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
     } else if (key == "pistonsleavebass") {
       leaveBassAndMelody_ = val.getIntValue() != 0;
       player_.setLeaveBassAndMelody(leaveBassAndMelody_);
+    } else if (key == "pistonsstaylit") {
+      pistonsStayLit_ = val.getIntValue() != 0;
+      player_.setKeepLit(pistonsStayLit_);
     } else if (key == "showkeys") {
       showPlayedKeys_.store(val.getIntValue() != 0);
     } else if (key == "narrowstrips") {
@@ -6154,7 +6158,7 @@ void MasterpieceProcessor::pressGeneralCancel() {
   playerScratch_.clear();
   player_.generalCancel(playerScratch_);
   applyPlayerChanges();
-  player_.registrationMoved();
+  player_.unlight();
   // A quarter of a second lit, then dark again (#1058).
   cancelLampSamples_.store(std::max(1, static_cast<int>(sampleRate_ * 0.25)), std::memory_order_relaxed);
 }

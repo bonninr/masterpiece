@@ -135,6 +135,13 @@ public:
   // kEveryDivision unlights them all; 0 is an element only generals reach.
   static constexpr Id kEveryDivision = -1;
   void registrationMoved(Id divisionId = kEveryDivision);
+  // Whether a lit piston stays lit through hand-drawn changes, until another
+  // piston, a cancel or the sequencer moves the registration (#1117). Off by
+  // default: a hand-drawn change unlights it, as above.
+  void setKeepLit(bool on) { keepLit_ = on; }
+  bool keepLit() const { return keepLit_; }
+  // Every lamp out, whatever keepLit says: a cancel was pressed.
+  void unlight() { unlightDivisions(kEveryDivision); }
   // Light the piston just recalled.
   void lightGeneral(int n);
   void lightDivisional(Id divisionId, int n);
@@ -180,6 +187,8 @@ private:
   int frame_ = 0;
   int litGeneral_ = 0;
   bool leaveBassAndMelody_ = false;
+  bool keepLit_ = false;
+  void unlightDivisions(Id divisionId);
   bool left(const Element& e) const { return leaveBassAndMelody_ && e.bassOrMelody; }
 
   int divisionIndex(Id divisionId) const;
