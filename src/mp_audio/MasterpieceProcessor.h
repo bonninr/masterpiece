@@ -2465,6 +2465,16 @@ private:
   static int noteKey(int channel, int midiNote) {
     return (channel << 8) | (midiNote & 0xff);
   }
+  // A press the player's mapping sent to a manual: held per (channel, manual,
+  // key), apart from the keys above. One channel can reach several manuals,
+  // and one manual can hear several channels; a release lets go only of what
+  // its own channel pressed. Keyed on the manual alone, a Grand Orgue still
+  // bound to the channel the Positif took let go of its held key when the
+  // same key was let go on the Positif (#1124).
+  static int mappedNoteKey(int channel, Id keyboard, int midiNote) {
+    return (1 << 29) | ((channel & 0x1f) << 24) |
+           ((static_cast<int>(keyboard) & 0xffff) << 8) | (midiNote & 0xff);
+  }
   // Recall or capture the combination this switch fires, if it fires one.
   // Returns true when the switch was a piston, so the caller knows it has
   // already been dealt with.

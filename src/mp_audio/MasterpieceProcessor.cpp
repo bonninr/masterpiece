@@ -1782,10 +1782,10 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
                                 " device/channel/note"
                               : ""));
       for (const auto& hit : keyHits_) {
-        // Keyed on the manual rather than the channel: two bindings can send
-        // the same note to different manuals and each has to be released on
-        // its own.
-        const int key = noteKey(static_cast<int>(hit.keyboardId), hit.midiNote);
+        // Keyed on the manual and the channel: two bindings can send the
+        // same note to different manuals and each has to be released on its
+        // own, and a manual two channels reach lets go of each press apart.
+        const int key = mappedNoteKey(msg.getChannel(), hit.keyboardId, hit.midiNote);
         if (hit.on && msg.isNoteOn()) {
           // A GrandOrgue manual's key map moves a device's note to the key
           // it plays, after the transposer, as GrandOrgue does. A short-octave
@@ -4844,8 +4844,14 @@ void MasterpieceProcessor::stopNoteByKey(int key, int velocity) {
   if (const auto ks = heldKeySwitches_.find(key); ks != heldKeySwitches_.end()) {
     const Id switchId = ks->second;
     heldKeySwitches_.erase(ks);
-    palletVelocity_ = velocity;
-    setSwitchEngaged(switchId, false);
+    // The key's switch opens while any press of it still holds it: two
+    // channels can play one manual's key (#1124).
+    const bool stillHeld = std::any_of(heldKeySwitches_.begin(), heldKeySwitches_.end(),
+                                       [switchId](const auto& h) { return h.second == switchId; });
+    if (!stillHeld) {
+      palletVelocity_ = velocity;
+      setSwitchEngaged(switchId, false);
+    }
   }
   const auto it = soundingNotes_.find(key);
   if (it == soundingNotes_.end()) return;
@@ -4855,9 +4861,15 @@ void MasterpieceProcessor::stopNoteByKey(int key, int velocity) {
   releaseCoupledInputs(it->second.id);
   releaseDirectInputs(it->second.id);
   voices_.noteOff(it->second.id, rel);
-  setKeyDown(it->second.keyboard, it->second.playedNote, false);
   const Id releasedOn = it->second.keyboard;
+  const int releasedKey = it->second.playedNote;
   soundingNotes_.erase(it);
+  // The key stays down while another channel's press of it on this manual
+  // still holds it (#1124).
+  const bool stillHeld = std::any_of(soundingNotes_.begin(), soundingNotes_.end(), [&](const auto& n) {
+    return n.second.keyboard == releasedOn && n.second.playedNote == releasedKey;
+  });
+  if (!stillHeld) setKeyDown(releasedOn, releasedKey, false);
   scheduleExtremes(releasedOn);
 }
 
@@ -6138,7 +6150,7 @@ void MasterpieceProcessor::routeFromControl(const MidiAction& action) {
           noteChannel_ = held.channel;
           noteDeviceId_ = held.device;
           const bool byManual = midiMap_.hasChannelBinding(held.device, held.channel);
-          const int newKey = byManual ? noteKey(static_cast<int>(next), key & 0xff) : key;
+          const int newKey = byManual ? mappedNoteKey(held.channel, next, key & 0xff) : key;
           startNoteOnKeyboard(next, newKey, held.midiNote, held.velocity, held.playedNote);
         }
         noteChannel_ = savedChannel;
