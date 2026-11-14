@@ -2,6 +2,7 @@
 #include "../mp_audio/DataFolder.h"
 #include "../mp_audio/MidiPorts.h"
 #include "../mp_audio/SystemMemory.h"
+#include "../mp_core/OrganStructure.h"
 
 #include <array>
 #include <cmath>
@@ -4731,6 +4732,20 @@ juce::String diagnosticsReport(MasterpieceProcessor& p) {
     row(there ? 1 : -1, "  " + path + (there ? "" : " (cannot be read now)"));
   }
  #endif
+  // The organ's wind system and tremulants as the program read them: what a
+  // report of a set that sounds wrong with the wind model on needs, by id and
+  // name, with nothing of the definition's own file.
+  if (odf != juce::File()) {
+    const auto& sw = p.engineSwitch();
+    out.add({});
+    out.add(juce::String("Wind model ") + (sw.enableWindModel && !sw.simpleWavOnly ? "on" : "off") +
+            ", moving reservoir boards " + (sw.enableBellowsBoard ? "on" : "off") + ", tremulants " +
+            (sw.enableTremulant && !sw.simpleWavOnly ? "on" : "off") + ", wind depth " +
+            juce::String(p.windDepth(), 2));
+    const auto& wind = p.wind();
+    const auto pressures = [&wind](mp::Id id) { return std::make_pair(wind.nominalFor(id), wind.pressureFor(id)); };
+    out.addLines(juce::String::fromUTF8(mp::windAndTremulantReport(p.organModel(), pressures).c_str()).trimEnd());
+  }
   return out.joinIntoString("\n");
 }
 

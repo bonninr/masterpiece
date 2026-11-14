@@ -670,7 +670,8 @@ private:
 // A phone or a tablet has no command line and no folder to open, so the tab
 // also checks what a report needs and gives it as text to copy or send: the
 // program and the device, each folder Masterpiece writes to, the audio, the
-// organ, and every document the Files app has lent (#197).
+// organ, and every document the Files app has lent (#197). Then the organ's
+// wind system and tremulants as the program read them.
 juce::String diagnosticsReport(MasterpieceProcessor& p);
 
 class LogPanel : public juce::Component {

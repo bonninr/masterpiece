@@ -7,6 +7,7 @@ add_library(mp_core STATIC
   Perspectives.h Perspectives.cpp
   LoadPlan.h
   ObjectLabels.h ObjectLabels.cpp
+  OrganStructure.h OrganStructure.cpp
   PathCase.h PathCase.cpp
   SparseLoading.h SparseLoading.cpp
   TremulantShape.h TremulantShape.cpp
