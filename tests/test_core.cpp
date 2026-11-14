@@ -2689,6 +2689,73 @@ public:
   }
 };
 
+// A pipe's own share of its chest's movement (#821). Most sets trim it per
+// layer, a flue far below a reed; read as full, every rank on a chest sagged
+// alike, by as much as the most sensitive pipe on it.
+class WindDepthPerPipeTest final : public mp::test::Test {
+public:
+  WindDepthPerPipeTest() : Test("functional.voice.wind-depth-per-pipe", Category::Functional) {}
+  void run() override {
+    using WM = mp::VoiceEngine::WindMod;
+    WM sag;
+    sag.ampMul = 0.8f;
+    sag.pitchRatio = std::pow(2.0, -0.2 / 12.0);
+    const WM full = mp::VoiceEngine::windForPipe(sag, 1.0f, 1.0);
+    MP_CHECK(full.ampMul == sag.ampMul && full.pitchRatio == sag.pitchRatio,
+             "a pipe at full depth takes the chest's values untouched");
+    const WM quarter = mp::VoiceEngine::windForPipe(sag, 0.25f, 0.25);
+    MP_CHECK(std::fabs(quarter.ampMul - 0.95f) < 1e-6f, "a quarter of the level's movement");
+    MP_CHECK(std::fabs(12.0 * std::log2(quarter.pitchRatio) + 0.05) < 1e-9,
+             "a quarter of the pitch's movement, in cents");
+    WM empty;
+    empty.ampMul = 0.0f;
+    empty.supply = 0.0f;
+    MP_CHECK(mp::VoiceEngine::windForPipe(empty, 0.25f, 0.25).ampMul == 0.0f,
+             "an empty chest silences a pipe whatever its depth");
+    WM draining;
+    draining.supply = 0.5f;
+    draining.ampMul = 0.5f * 0.65f;
+    MP_CHECK(std::fabs(mp::VoiceEngine::windForPipe(draining, 0.0f, 1.0).ampMul - 0.5f) < 1e-6f,
+             "a draining chest still starves a pipe that ignores the pressure's movement");
+
+    // And in the engine: two pipes on one sagging chest, one at full depth
+    // and one at a quarter.
+    voicetest::Fixture fx;
+    mp::VoiceStart st;
+    st.pipe = &fx.pipe;
+    st.layer = &fx.pipe.layers[0];
+    st.velocity = 100;
+    st.ratio = 1.0;
+    st.gain = 1.0f;
+    st.windIndex = 0;
+    WM steady;
+    WM level;
+    level.ampMul = 0.8f;
+    const auto rmsWith = [&](const WM& wind, float depth) {
+      mp::VoiceEngine eng;
+      eng.prepare(48000.0, 512, 1);
+      eng.setSampleProvider(fx.provider());
+      eng.setWindMods(&wind, 1);
+      mp::VoiceStart s = st;
+      s.windAmpDepth = depth;
+      eng.startVoice(s, 1);
+      std::vector<float> out(512);
+      float* ch[1] = {out.data()};
+      eng.render(ch, 1, 512);
+      return voicetest::rms(out);
+    };
+    const double ref = rmsWith(steady, 1.0f);
+    const double fullDepth = rmsWith(level, 1.0f) / ref;
+    const double quarterDepth = rmsWith(level, 0.25f) / ref;
+    std::printf("    level on a chest at 0.8: full depth %.4f, quarter depth %.4f\n", fullDepth,
+                quarterDepth);
+    MP_CHECK(std::fabs(fullDepth - 0.8) < 1e-3, "a pipe at full depth follows the chest");
+    MP_CHECK(std::fabs(quarterDepth - 0.95) < 1e-3, "a pipe at a quarter takes a quarter of it");
+    MP_CHECK(rmsWith(steady, 0.25f) == ref, "a steady chest sounds the same at any depth");
+  }
+};
+static WindDepthPerPipeTest g_windDepthPerPipe;
+
 #ifdef MP_TEST_HAS_AUDIO  // the processor and JUCE: full build only
 // Several consoles push MIDI from their own threads at once. Every press has
 // to reach the audio thread whole and exactly once: a slot read between a
@@ -4243,9 +4310,10 @@ public:
         "<ObjectList ObjectType=\"Pipe_SoundEngine01\"><o><a>71</a><b>7</b></o>"
         "<o><a>72</a><b>7</b></o><o><a>73</a><b>7</b></o></ObjectList>"
         "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\"><o><a>711</a><b>71</b></o>"
-        "<o><a>721</a><b>72</b><p>5e+1</p></o>"
+        "<o><a>721</a><b>72</b><n>4e+1</n><p>5e+1</p><x>2.5e+1</x></o>"
         "<Pipe_SoundEngine01_Layer><LayerID>731</LayerID><PipeID>73</PipeID>"
         "<AmpLvl_TremulantModDepthAdjustPercent>25</AmpLvl_TremulantModDepthAdjustPercent>"
+        "<AmpLvl_WindModelModDepthAdjustPercent>60</AmpLvl_WindModelModDepthAdjustPercent>"
         "<AudioOut_OptimalMemoryChannelFormatCode>1</AudioOut_OptimalMemoryChannelFormatCode>"
         "</Pipe_SoundEngine01_Layer></ObjectList></Hauptwerk>";
     mp::OdfLoader l;
@@ -4274,6 +4342,18 @@ public:
     auto v4 = layers(" FileFormatVersion=\"4.20014\"");
     MP_CHECK(v4[721].tremAmpDepthAdjustDb == 50.0 && v4[721].tremAmpDepthAdjustPct == 100.0,
              "tag p of a version 4 layer stays in decibels");
+
+    // The wind model's trims (#821) change unit at the same version.
+    MP_CHECK(v5[711].windAmpDepthAdjustPct == 100.0 && v5[711].windAmpDepthAdjustDb == 0.0 &&
+                 v5[711].windPitchDepthAdjustPct == 100.0,
+             "a layer with no wind trim written takes all of the wind");
+    MP_CHECK(v5[721].windAmpDepthAdjustPct == 40.0 && v5[721].windAmpDepthAdjustDb == 0.0,
+             "tag n of a version 5 layer is a percentage");
+    MP_CHECK(v5[731].windAmpDepthAdjustPct == 60.0, "and so is its long spelling");
+    MP_CHECK(v4[721].windAmpDepthAdjustDb == 40.0 && v4[721].windAmpDepthAdjustPct == 100.0,
+             "tag n of a version 4 layer stays in decibels");
+    MP_CHECK(v5[721].windPitchDepthAdjustPct == 25.0 && v4[721].windPitchDepthAdjustPct == 25.0,
+             "tag x is a percentage of the wind's pitch in every version");
     auto none = layers("");
     MP_CHECK(none[721].tremAmpDepthAdjustDb == 50.0 && none[721].tremAmpDepthAdjustPct == 100.0,
              "with no version stated, decibels");

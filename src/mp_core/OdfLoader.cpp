@@ -840,6 +840,14 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
         row, "AmpLvl_TremulantModDepthAdjustPercent", formatFrom5 ? "p" : nullptr, 100.0);
     layer.tremPitchDepthAdjustPct = fieldDouble(
         row, "PitchLvl_TremulantModDepthAdjustPercent", "y", 100.0);
+    // The same trims for the wind model (#821), with the same change of unit
+    // at version 5.
+    layer.windAmpDepthAdjustDb = fieldDouble(
+        row, "AmpLvl_WindModelModDepthAdjustDecibels", formatFrom5 ? nullptr : "n", 0.0);
+    layer.windAmpDepthAdjustPct = fieldDouble(
+        row, "AmpLvl_WindModelModDepthAdjustPercent", formatFrom5 ? "n" : nullptr, 100.0);
+    layer.windPitchDepthAdjustPct = fieldDouble(
+        row, "PitchLvl_WindModelModDepthAdjustPercent", "x", 100.0);
     // The layer's voicing EQ, a high shelf (#815).
     layer.voicingShelfKHz = fieldDouble(row, "VoicingEQ01_TransitionFrequencyKHertz", "i1", 2.0);
     layer.voicingShelfWidthPct = fieldDouble(

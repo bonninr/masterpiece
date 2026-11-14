@@ -722,10 +722,12 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   v.windIndex = start.windIndex;
   v.delayFrames = start.startOffset > 0 ? start.startOffset : 0;
   v.windFlow = start.windFlowKgPerSec;
+  v.windAmpDepth = start.windAmpDepth;
+  v.windPitchDepth = start.windPitchDepth;
   {
     // A release started as a voice of its own begins from the chest as it
     // is now, and keeps that; a sustaining one follows it from here on.
-    const WindMod w = windModFor(v.windIndex);
+    const WindMod w = windForPipe(windModFor(v.windIndex), v.windAmpDepth, v.windPitchDepth);
     v.heldWindAmp = w.ampMul;
     v.heldWindPitch = w.pitchRatio;
   }
@@ -1474,7 +1476,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
   // The wind, read once per voice per block rather than per sample: the
   // pressure moves on the order of tenths of a second and the inner loop runs
   // twenty-five million times a second.
-  WindMod wind = windModFor(v.windIndex);
+  WindMod wind = windForPipe(windModFor(v.windIndex), v.windAmpDepth, v.windPitchDepth);
   if (v.phase == VoicePhase::Release) {
     wind.ampMul = v.heldWindAmp;
     wind.pitchRatio = v.heldWindPitch;

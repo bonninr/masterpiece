@@ -867,6 +867,7 @@ void MasterpieceProcessor::advanceWind(int numFrames) {
     const double d = windDepth_;
     windMods_[i].ampMul = static_cast<float>(1.0 + (mod.ampMul - 1.0) * d);
     windMods_[i].pitchRatio = 1.0 + (mod.pitchRatio - 1.0) * d;
+    windMods_[i].supply = static_cast<float>(mod.supply);
   }
   voices_.setWindMods(windMods_.data(), static_cast<int>(windMods_.size()));
   publishWindPressures();
@@ -5091,6 +5092,15 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
           pipe.windMassFlowKgPerSec > 0.0
               ? static_cast<float>(pipe.windMassFlowKgPerSec)
               : 0.0005f;
+      // How much of the chest's movement this layer takes (#821), read as
+      // the tremulant's trims are: decibels on the level's swing, then a
+      // percentage of it from version 5, and a percentage of the pitch's.
+      if (vs.windIndex >= 0) {
+        vs.windAmpDepth = static_cast<float>(
+            juce::jlimit(0.0, 4.0, std::pow(10.0, layer.windAmpDepthAdjustDb / 20.0) *
+                                       layer.windAmpDepthAdjustPct / 100.0));
+        vs.windPitchDepth = juce::jlimit(0.0, 4.0, layer.windPitchDepthAdjustPct / 100.0);
+      }
       // The drift of that draw (#807), seeded per voice as the tremulant's.
       if (vs.windIndex >= 0 && pipe.windFlowRandom.active()) {
         vs.windFlowRandom = pipe.windFlowRandom;
