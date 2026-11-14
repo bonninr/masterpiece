@@ -17,25 +17,35 @@ juce::String PatientDevice::open(const juce::BigInteger& inputChannels,
                                  int bufferSizeSamples) {
   // One attempt, and whether it failed quickly enough to try again.
   bool quick = false;
+  double tookMs = 0.0;
   const auto attempt = [&] {
     const auto began = juce::Time::getMillisecondCounterHiRes();
     auto error = inner_->open(inputChannels, outputChannels, sampleRate, bufferSizeSamples);
-    quick = juce::Time::getMillisecondCounterHiRes() - began < quickFailMs_;
+    tookMs = juce::Time::getMillisecondCounterHiRes() - began;
+    quick = tookMs < quickFailMs_;
     return error;
   };
+  // What was asked for, so a failure in the log can be read on its own.
+  const juce::String asked = juce::String(sampleRate, 0) + " Hz, " + juce::String(bufferSizeSamples) +
+                             " samples, " + juce::String(outputChannels.countNumberOfSetBits()) +
+                             " outputs";
   auto error = attempt();
   lastAttempts_ = 1;
   for (const int wait : waits_) {
     if (error.isEmpty() || !quick) break;
-    juce::Logger::writeToLog("audio device: " + getName() + ": " + error + "; opening again in " +
-                             juce::String(wait) + " ms");
+    juce::Logger::writeToLog("audio device: " + getName() + " at " + asked + ": " + error +
+                             "; opening again in " + juce::String(wait) + " ms");
     inner_->close();
     juce::Thread::sleep(wait);
     error = attempt();
     ++lastAttempts_;
   }
-  if (error.isEmpty() && lastAttempts_ > 1)
-    juce::Logger::writeToLog("audio device: " + getName() + " opened at attempt " +
+  if (error.isNotEmpty())
+    juce::Logger::writeToLog("audio device: " + getName() + " did not open at " + asked + " after " +
+                             juce::String(lastAttempts_) + (lastAttempts_ == 1 ? " attempt" : " attempts") +
+                             ", the last one " + juce::String(juce::roundToInt(tookMs)) + " ms: " + error);
+  else if (lastAttempts_ > 1)
+    juce::Logger::writeToLog("audio device: " + getName() + " opened at " + asked + " at attempt " +
                              juce::String(lastAttempts_));
   return error;
 }
