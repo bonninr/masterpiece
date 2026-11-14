@@ -9118,6 +9118,9 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   playerSwitch_.clear();
   std::vector<Id> queue;
   std::unordered_set<Id> seen;
+  // The switches the condition walk passes over: the ones a stop with a knob
+  // of its own waits on, filled in before that walk.
+  std::unordered_set<Id> sharedConditions;
   auto walk = [&](Id id, bool withConditions) {
     queue.clear();
     seen.clear();
@@ -9131,6 +9134,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
         for (Id up : fit->second) {
           if (!seen.insert(up).second) continue;
           if (isAid(up)) continue;
+          if (edges == &conditions && sharedConditions.count(up) != 0) continue;
           if (isKnob(up)) return up;
           queue.push_back(up);
         }
@@ -9206,6 +9210,29 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
       }
       if (theirs)
         for (Id node : nodes) playerSwitch_[node] = knob;
+    }
+  }
+  // A switch that stops with knobs of their own wait on is a shared input --
+  // a blower, a ventil, a tremulant -- and the knob of no stop. Alessandria
+  // waits every stop on its Blower, which is drawn on the simple jambs, and
+  // gates its Tuba, which has no drawstop, on a hidden switch and the Blower:
+  // the condition walk took the Blower for the Tuba's knob, so the stop list's
+  // Tuba put the wind out and every stop fell silent (#1027, #1046).
+  if (!conditions.empty()) {
+    for (const auto& [sid, stop] : model_.stops) {
+      if (stop.controllingSwitchId == 0 || !isKnob(playerSwitchFor(stop.controllingSwitchId)))
+        continue;
+      queue.clear();
+      seen.clear();
+      queue.push_back(stop.controllingSwitchId);
+      seen.insert(stop.controllingSwitchId);
+      for (size_t head = 0; head < queue.size() && head < 512; ++head) {
+        if (const auto c = conditions.find(queue[head]); c != conditions.end())
+          sharedConditions.insert(c->second.begin(), c->second.end());
+        if (const auto f = feeders.find(queue[head]); f != feeders.end())
+          for (Id up : f->second)
+            if (!isKnob(up) && seen.insert(up).second) queue.push_back(up);
+      }
     }
   }
   if (!conditions.empty())
