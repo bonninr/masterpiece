@@ -250,8 +250,11 @@ public:
     const juce::File root =
         juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-watchdog-throw");
     const juce::File odf = writeOrgan(root);
+    // The samples are read from their files: the test before this one loaded
+    // the same organ, and its cache would be read in their place.
     {
       mp::MasterpieceProcessor proc;
+      proc.overrideCacheMode(mp::SampleLibrary::CacheMode::Off);
       proc.prepareToPlay(48000.0, 256);
       int asked = 0;
       proc.memoryProbe = [&]() -> int64_t {
@@ -268,6 +271,7 @@ public:
     }
     {
       mp::MasterpieceProcessor proc;
+      proc.overrideCacheMode(mp::SampleLibrary::CacheMode::Off);
       proc.prepareToPlay(48000.0, 256);
       int asked = 0;
       proc.memoryProbe = [&]() -> int64_t {
