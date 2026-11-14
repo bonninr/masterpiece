@@ -126,6 +126,69 @@ public:
 };
 static PatientDeviceOpenTest g_open;
 
+// What the log is told while it is in place; the previous logger comes back after.
+struct CapturedLog final : juce::Logger {
+  CapturedLog() : previous(juce::Logger::getCurrentLogger()) { juce::Logger::setCurrentLogger(this); }
+  ~CapturedLog() override { juce::Logger::setCurrentLogger(previous); }
+  void logMessage(const juce::String& message) override { lines.add(message); }
+  bool has(const juce::String& text) const {
+    for (const auto& line : lines)
+      if (line.contains(text)) return true;
+    return false;
+  }
+  juce::Logger* previous;
+  juce::StringArray lines;
+};
+
+// Every failed open is in the log with what was asked (#1105): a driver that
+// never opens, after its last attempt, and a slow failure that gets no more.
+class PatientDeviceLogTest final : public mp::test::Test {
+public:
+  PatientDeviceLogTest() : Test("functional.audio.patient-open-log", Category::Functional) {}
+  void run() override {
+    {
+      Opens opens;
+      opens.failFirst = 100;
+      mp::PatientDevice device(std::make_unique<FakeDevice>("Dead", opens), {1, 1});
+      CapturedLog log;
+      openAt96k(device);
+      MP_CHECK(log.has("Dead at 96000 Hz, 1024 samples, 4 outputs: Can't start device; opening again"),
+               "each quick failure is in the log with the rate, the buffer and the outputs");
+      MP_CHECK(log.has("Dead did not open at 96000 Hz, 1024 samples, 4 outputs after 3 attempts"),
+               "the last failure is in the log: " + log.lines.joinIntoString(" | ").toStdString());
+    }
+    {
+      Opens opens;
+      opens.failFirst = 100;
+      opens.takesMs = 80;
+      mp::PatientDevice device(std::make_unique<FakeDevice>("No callbacks", opens), {1, 1}, 40);
+      CapturedLog log;
+      openAt96k(device);
+      MP_CHECK(log.has("No callbacks did not open at 96000 Hz, 1024 samples, 4 outputs after 1 attempt") &&
+                   log.has(": Can't start device"),
+               "a slow failure is in the log: " + log.lines.joinIntoString(" | ").toStdString());
+    }
+    {
+      Opens opens;
+      opens.failFirst = 1;
+      mp::PatientDevice device(std::make_unique<FakeDevice>("Slow clock", opens), {1});
+      CapturedLog log;
+      openAt96k(device);
+      MP_CHECK(log.has("Slow clock opened at 96000 Hz, 1024 samples, 4 outputs at attempt 2") &&
+                   !log.has("did not open"),
+               "an open after a retry is in the log as a success");
+    }
+    {
+      Opens opens;
+      mp::PatientDevice device(std::make_unique<FakeDevice>("Ready", opens), {1});
+      CapturedLog log;
+      openAt96k(device);
+      MP_CHECK(log.lines.isEmpty(), "a driver that opens at once adds nothing to the log");
+    }
+  }
+};
+static PatientDeviceLogTest g_log;
+
 class FakeType final : public juce::AudioIODeviceType {
 public:
   explicit FakeType(Opens& opens) : AudioIODeviceType("Fake"), opens_(opens) {}
