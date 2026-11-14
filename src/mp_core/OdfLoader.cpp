@@ -63,6 +63,7 @@ const std::unordered_set<std::string>& knownTables() {
     "TextInstance", "TextStyle",
     // Masterpiece's own, written by the GrandOrgue import
     "MasterpieceRankWindchest", "MasterpieceSwitchDisplay", "MasterpieceGrandOrgueObject",
+    "MasterpieceGeneralCancel",
     // combinations
     "Combination", "CombinationElement",
     // physical modelling (parsed in M2/M3; recognised now so they don't warn)
@@ -1244,6 +1245,13 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     const Id shown = fieldInt(row, "ShownSwitchID", "b", 0);
     if (it != outModel.switches.end() && outModel.switches.count(shown) != 0)
       it->second.dispShownSwitchId = shown;
+  });
+  // What a general cancel does to a switch, written by the GrandOrgue import
+  // from its GCState.
+  forEachRow(odfRoot, "MasterpieceGeneralCancel", [&](pugi::xml_node row) {
+    const auto it = outModel.switches.find(fieldInt(row, "SwitchID", "a", 0));
+    const int state = fieldInt(row, "State", "b", 0);
+    if (it != outModel.switches.end() && state >= -1 && state <= 1) it->second.cancelState = state;
   });
   // A GrandOrgue set's objects by section, for its MIDI settings (#865).
   forEachRow(odfRoot, "MasterpieceGrandOrgueObject", [&](pugi::xml_node row) {

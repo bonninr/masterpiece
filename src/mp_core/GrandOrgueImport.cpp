@@ -643,6 +643,19 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     Emitter::set(o, "Kind", kind);
     Emitter::set(o, "ObjectID", id);
   };
+  // GCState: what a general cancel does to a drawstop of its own, as
+  // GODrawstop::Reset reads it. 0, the default, puts it off; 1 draws it; -1
+  // leaves it alone, as a blower is. A drawstop worked by a Function is the
+  // function's, and its GCState is not read.
+  std::map<int, int> cancelStateOf;
+  auto readCancelState = [&](const std::string& sec, int id) {
+    const int state = std::clamp(ini.num(sec, "GCState", 0), -1, 1);
+    if (state == 0) return;
+    cancelStateOf[id] = state;
+    auto row = out.row("MasterpieceGeneralCancel");
+    Emitter::set(row, "SwitchID", id);
+    Emitter::set(row, "State", state);
+  };
   auto emitSwitch = [&](int id, const std::string& name, bool engaged) {
     auto sw = out.row("Switch");
     switchRows[id] = sw;
@@ -711,6 +724,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     std::vector<int> in;
     const std::string fn = functionOf(sec, in);
     if (!in.empty()) link(gate(fn, in), kGoSwitchBase + n, 0, true);
+    else readCancelState(sec, kGoSwitchBase + n);
   }
   // The switch that controls an object: its own, or its function's gate.
   std::map<std::string, int> controlMemo;
@@ -723,6 +737,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     if (in.empty()) {
       emitSwitch(ownId, ini.str(sec, "Name", sec), ini.yes(sec, "DefaultToEngaged", false));
       goObject(sec, 1, ownId);
+      readCancelState(sec, ownId);
     } else {
       id = gate(fn, in);
     }
@@ -1148,6 +1163,17 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     for (int t = 1; t <= tremCount; ++t) keep("Tremulant" + n3(t), tremulantSwitch(t));
     for (int n = 1; n <= switchCount; ++n) keep("Switch" + n3(n), kGoSwitchBase + n);
   }
+  // A cancel as GrandOrgue's: every storable drawstop off, those whose
+  // GCState says draw it on, those that say leave it left out.
+  auto cancelled = [&] {
+    std::vector<std::pair<int, bool>> el;
+    for (int sw : storable) {
+      const auto it = cancelStateOf.find(sw);
+      const int state = it == cancelStateOf.end() ? 0 : it->second;
+      if (state >= 0) el.emplace_back(sw, state == 1);
+    }
+    return el;
+  };
   std::set<int> setterMade;
   auto setterControl = [&](const std::string& type) -> int {
     const std::string t = lower(type);
@@ -1160,9 +1186,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     }
     if (t == "gc") {
       if (setterMade.insert(kGeneralCancel).second) {
-        std::vector<std::pair<int, bool>> off;
-        for (int sw : storable) off.emplace_back(sw, false);
-        combination("GC", kGeneralCancel, "General cancel", off);
+        combination("GC", kGeneralCancel, "General cancel", cancelled());
         for (auto c : out.lists["Combination"].children("Combination"))
           if (c.child("ActivatingSwitchID").text().as_int() == kGeneralCancel) {
             c.child("CombinationTypeCode").text() = 6;
@@ -1176,13 +1200,11 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       const int n = std::atoi(t.c_str() + 7);
       const int id = kSetterGeneralBase + n;
       if (setterMade.insert(id).second) {
-        // Empty until set: nothing is stored on, so recalling one before it
-        // has been set clears the stops, as a fresh general does. It is the
+        // Empty until set: recalling one before it has been set cancels, as
+        // a fresh general does, and leaves the blower alone. It is the
         // player's to set: [General001] and on are the definition's preset
         // generals, whose Protected says nothing about the setter's (#637).
-        std::vector<std::pair<int, bool>> off;
-        for (int sw : storable) off.emplace_back(sw, false);
-        combination("SetterGeneral" + n3(n), id, "General " + std::to_string(n), off);
+        combination("SetterGeneral" + n3(n), id, "General " + std::to_string(n), cancelled());
       }
       return id;
     }

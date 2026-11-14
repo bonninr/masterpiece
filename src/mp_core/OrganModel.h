@@ -516,6 +516,9 @@ struct Switch {
   // GrandOrgue reversible piston is lit while its stop is drawn (#587).
   // 0 = this switch.
   Id dispShownSwitchId = 0;
+  // What a general cancel does to it: 0 puts it off, 1 draws it, -1 leaves
+  // it as it is. A GrandOrgue set's GCState: a blower is -1 (#1027).
+  int cancelState = 0;
 };
 
 struct CombinationElement {

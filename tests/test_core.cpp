@@ -14461,6 +14461,77 @@ public:
 };
 static GrandOrgueNotSwitchTest g_grandOrgueNotSwitch;
 
+// A GrandOrgue set's GCState, as GODrawstop::Reset reads it: a general cancel
+// puts a drawstop off by default, draws it at 1 and leaves it alone at -1.
+// The blower is -1: a setter's GC or an unset general that put it off left
+// every stop silent.
+class GrandOrgueCancelStateTest final : public mp::test::Test {
+public:
+  GrandOrgueCancelStateTest() : Test("functional.control.grandorgue-gc-state", Category::Functional) {}
+  void run() override {
+    using PC = mp::PlayerCombinations;
+    const std::string organ =
+        "[Organ]\nChurchName=T\nHasPedals=N\nNumberOfManuals=1\nNumberOfRanks=1\n"
+        "NumberOfSwitches=1\nNumberOfWindchestGroups=1\nNumberOfSetterElements=2\n"
+        "[SetterElement001]\nType=GC\n[SetterElement002]\nType=General01\n"
+        "[WindchestGroup001]\nName=W\n"
+        "[Switch001]\nName=Wind\nDefaultToEngaged=Y\nGCState=-1\n"
+        "[Rank001]\nName=P\nFirstMidiNoteNumber=36\nNumberOfLogicalPipes=1\nPipe001=p.wav\n"
+        "[Manual001]\nName=I\nNumberOfLogicalKeys=1\nNumberOfAccessibleKeys=1\n"
+        "FirstAccessibleKeyMIDINoteNumber=36\nNumberOfStops=3\nStop001=1\nStop002=2\nStop003=3\n"
+        "[Stop001]\nName=Principal\nNumberOfRanks=1\nRank001=1\nNumberOfAccessiblePipes=1\n"
+        "[Stop002]\nName=Trompette\nNumberOfRanks=1\nRank001=1\nNumberOfAccessiblePipes=1\nGCState=-1\n"
+        "[Stop003]\nName=Bourdon\nNumberOfRanks=1\nRank001=1\nNumberOfAccessiblePipes=1\nGCState=1\n";
+    const auto rep = mp::convertGrandOrgueText(organ);
+    MP_CHECK(rep.ok, rep.error);
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(rep.xml, "t.organ", o, m, d), "converted definition must load");
+    MP_CHECK(m.stops.count(2001) && m.stops.count(2002) && m.stops.count(2003), "the three stops are there");
+    if (!m.stops.count(2001) || !m.stops.count(2002) || !m.stops.count(2003)) return;
+    const mp::Id principal = m.stops.at(2001).controllingSwitchId;
+    const mp::Id trompette = m.stops.at(2002).controllingSwitchId;
+    const mp::Id bourdon = m.stops.at(2003).controllingSwitchId;
+    MP_CHECK(m.switches.at(8001).cancelState == -1, "the wind is left by a cancel");
+    MP_CHECK(m.switches.at(principal).cancelState == 0 && m.switches.at(trompette).cancelState == -1 &&
+                 m.switches.at(bourdon).cancelState == 1,
+             "each stop carries its GCState");
+
+    // The setter's GC and its unset general: the Principal off, the Bourdon
+    // drawn, the Trompette and the wind left out.
+    for (const char* name : {"General cancel", "General 1"}) {
+      const mp::Combination* combo = nullptr;
+      for (const auto& [id, c] : m.combinations)
+        if (c.name == name) combo = &c;
+      MP_CHECK(combo != nullptr, std::string(name) + " is made");
+      if (combo == nullptr) continue;
+      std::map<mp::Id, bool> stored;
+      for (const auto& e : combo->elements) stored[e.controlledSwitchId] = e.storedEngaged;
+      MP_CHECK(stored.count(principal) && !stored[principal], std::string(name) + ": the Principal off");
+      MP_CHECK(stored.count(bourdon) && stored[bourdon], std::string(name) + ": the Bourdon drawn");
+      MP_CHECK(!stored.count(trompette), std::string(name) + ": the Trompette left alone");
+      MP_CHECK(!stored.count(8001), std::string(name) + ": the wind left alone");
+    }
+
+    // The player's general cancel. Sanity: the Principal is an element and is
+    // put off, so the cancel reaches the stops at all.
+    const auto elements = PC::collect(m, nullptr);
+    PC pc;
+    pc.reset(elements, PC::divisionsOf(m, elements));
+    std::vector<PC::Change> out;
+    pc.generalCancel(out);
+    std::map<mp::Id, bool> moved;
+    for (const auto& c : out)
+      if (c.kind == PC::ElementKind::Stop) moved[c.id] = c.engage;
+    MP_CHECK(moved.count(2001) && !moved[2001], "the player's cancel puts the Principal off");
+    MP_CHECK(moved.count(2003) && moved[2003], "draws the Bourdon");
+    MP_CHECK(!moved.count(2002), "and leaves the Trompette alone");
+  }
+};
+static GrandOrgueCancelStateTest g_grandOrgueCancelState;
+
 // GrandOrgue switch logic, through the real switch network: a stop that is
 // the And of its drawstop and the blower sounds only while both are on, an
 // effect stop's pipe opens with its switch, and a drawn panel becomes a page
