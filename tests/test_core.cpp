@@ -2756,6 +2756,75 @@ public:
 };
 static WindDepthPerPipeTest g_windDepthPerPipe;
 
+// A level that changes between blocks reaches a sounding pipe as a ramp
+// across the next block (#1121). Held for the block, it stepped at every
+// block boundary: a tremulant an organ makes with its wind crackled at the
+// block rate. A level that does not change leaves the pipe as it was.
+class BlockLevelRampTest final : public mp::test::Test {
+public:
+  BlockLevelRampTest() : Test("functional.voice.block-level-ramp", Category::Functional) {}
+  void run() override {
+    using WM = mp::VoiceEngine::WindMod;
+    voicetest::Fixture fx;
+    mp::VoiceStart st;
+    st.pipe = &fx.pipe;
+    st.layer = &fx.pipe.layers[0];
+    st.velocity = 100;
+    st.ratio = 1.0;
+    st.gain = 1.0f;
+    st.windIndex = 0;
+    constexpr int kBlock = 128;
+    WM steadyWind, movingWind;
+    mp::VoiceEngine steady, moving;
+    for (auto* e : {&steady, &moving}) {
+      e->prepare(48000.0, kBlock, 1);
+      e->setSampleProvider(fx.provider());
+      e->startVoice(st, 1);
+    }
+    steady.setWindMods(&steadyWind, 1);
+    moving.setWindMods(&movingWind, 1);
+    std::vector<float> a(kBlock), b(kBlock);
+    float* outA[1] = {a.data()};
+    float* outB[1] = {b.data()};
+    const auto block = [&] {
+      std::fill(a.begin(), a.end(), 0.0f);
+      std::fill(b.begin(), b.end(), 0.0f);
+      steady.render(outA, 1, kBlock);
+      moving.render(outB, 1, kBlock);
+    };
+    for (int i = 0; i < 4; ++i) {
+      block();
+      MP_CHECK(a == b, "an unchanged level sounds exactly as before");
+    }
+    // The chest falls to half between two blocks.
+    movingWind.ampMul = 0.5f;
+    block();
+    // The level the moving pipe had, frame by frame, from the steady one.
+    double first = -1.0, lastRatio = -1.0;
+    int read = 0;
+    for (int f = 0; f < kBlock; ++f) {
+      if (std::fabs(a[static_cast<size_t>(f)]) < 0.02f) continue;
+      const double r = b[static_cast<size_t>(f)] / a[static_cast<size_t>(f)];
+      const double want = 1.0 - 0.5 * f / kBlock;
+      MP_CHECK(std::fabs(r - want) < 0.01,
+               "frame " + std::to_string(f) + " at " + std::to_string(r) + ", the ramp at " + std::to_string(want));
+      if (first < 0.0) first = r;
+      lastRatio = r;
+      ++read;
+    }
+    std::printf("    level across the block after the chest fell to half: %.4f at first, %.4f at last (%d frames)\n",
+                first, lastRatio, read);
+    MP_CHECK(read > kBlock / 4, "enough frames read");
+    // The next block holds the new level.
+    block();
+    for (int f = 0; f < kBlock; ++f)
+      if (std::fabs(a[static_cast<size_t>(f)]) >= 0.02f)
+        MP_CHECK(std::fabs(b[static_cast<size_t>(f)] / a[static_cast<size_t>(f)] - 0.5) < 1e-4,
+                 "the level then holds at half");
+  }
+};
+static BlockLevelRampTest g_blockLevelRamp;
+
 #ifdef MP_TEST_HAS_AUDIO  // the processor and JUCE: full build only
 // Several consoles push MIDI from their own threads at once. Every press has
 // to reach the audio thread whole and exactly once: a slot read between a

@@ -422,6 +422,10 @@ struct Voice {
   // a change to the voicing (retargetVoicing).
   float voicingGain = 1.0f;
   float voicingTarget = 1.0f;
+  // The level the last block ended on: the wind, the live faders, the layer
+  // level and the voicing together. The next block ramps from it. -1 before
+  // the voice's first block, which starts at its own level.
+  float blockLevel = -1.0f;
   // The attack's emphasis: a level that starts at 1 + attackBoost and falls
   // in a straight line to 1 over attackTotal frames, attackLeft of them to
   // go. 0 left is no emphasis, and then nothing is done for it.

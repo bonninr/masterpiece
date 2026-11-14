@@ -119,6 +119,12 @@ constexpr int64_t kReleaseEndFadeFrames = 256;
 // setup costs more than the frames save.
 constexpr int kMinSimdRun = 8;
 
+// The smallest change in a voice's level from one block to the next that is
+// ramped across the block, as a fraction of the level. A smaller step is
+// 74 dB under the note, below hearing, and leaves the voice on its straight
+// runs.
+constexpr float kLevelRampThreshold = 2.0e-4f;
+
 // A release crossfade is run through the vector code this many frames at a
 // time, into scratch of this many channels on the stack.
 constexpr int kXfadeChunk = 256;
@@ -1579,6 +1585,31 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
     ampStep = (f1 - f0) / static_cast<float>(numFrames);
     tremMoving = true;
     v.attackLeft = after;
+  }
+  // The block's level -- the wind, the live faders, the layer level, the
+  // voicing -- as a ramp from where the last block ended (#1121). Held for
+  // the block, a level that moves from one block to the next steps at every
+  // block boundary: a tremulant an organ makes with its wind, or a level
+  // control following a pressure, crackled at the block rate. Folded into
+  // the same ramp as the tremulant and the emphasis. A voice whose level has
+  // not moved takes none of this, and sounds as before to the bit.
+  if (numFrames > 0) {
+    const float now = wind.ampMul;
+    const float last = v.blockLevel;
+    v.blockLevel = now;
+    const float top = std::max(last, now);
+    if (last >= 0.0f && top > 0.0f && std::fabs(now - last) > kLevelRampThreshold * top) {
+      const float n = static_cast<float>(numFrames);
+      const float t0 = 1.0f + ampDepth * tremPhase;
+      const float t1 = 1.0f + ampDepth * (tremPhase + ampStep * n);
+      const float f0 = t0 * last / top;
+      const float f1 = t1 * now / top;
+      wind.ampMul = top;
+      ampDepth = 1.0f;
+      tremPhase = f0 - 1.0f;
+      ampStep = (f1 - f0) / n;
+      tremMoving = true;
+    }
   }
   // Folded in once rather than applied per tap. For Float32 this is 1.0f and
   // the multiply below is the one the gain needed anyway.
