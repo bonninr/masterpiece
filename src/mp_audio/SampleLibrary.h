@@ -426,8 +426,18 @@ private:
   std::string cachePath() const;
   bool writeCache(const Store& store, const std::string& fingerprint,
                   const std::string& path) const;
+public:
+  // What tells a cache's fingerprint from this load's, in words for the log:
+  // another definition or another version of it, or the settings that differ
+  // ("w2 -> w3").
+  static std::string cacheDifference(const std::string& written, const std::string& wanted);
+
+private:
+  // `why`, when given, says why a cache was passed over before its samples
+  // were read: none there, another program version, another organ or other
+  // settings, or more than memory allows. Empty when it was read.
   bool readCache(Store& out, const std::string& fingerprint,
-                 LoadProgress* progress = nullptr) const;
+                 LoadProgress* progress = nullptr, std::string* why = nullptr) const;
 
   std::shared_ptr<const OrganArchive> archive_;
   std::string archivePrefix_;

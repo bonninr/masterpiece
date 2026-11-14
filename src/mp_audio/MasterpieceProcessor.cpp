@@ -17,6 +17,7 @@
 #include <set>
 #include <tuple>
 #include <cmath>
+#include <cstring>
 #include <memory>
 #include <sstream>
 #include <thread>
@@ -1864,6 +1865,35 @@ std::string pathHash(const juce::File& odf) {
   std::snprintf(buf, sizeof(buf), "p%016llx",
                 static_cast<unsigned long long>(h));
   return buf;
+}
+
+// What the sample cache is keyed to: the definition's contents and size,
+// wherever the file lies (#1106). The same organ opened from its installed
+// folder, from another drive or from its packages shares one cache. Eight
+// bytes a step, so a 100 MB definition costs a fraction of its parse.
+std::string definitionStamp(const juce::File& odf) {
+  juce::FileInputStream in(odf);
+  // Unreadable here: its path is all that tells it apart.
+  if (!in.openedOk()) return odf.getFullPathName().toStdString() + "|" + std::to_string(odf.getSize());
+  uint64_t h = 1469598103934665603ull;
+  {
+    std::vector<char> block(1 << 20);
+    for (;;) {
+      const int got = in.read(block.data(), static_cast<int>(block.size()));
+      if (got <= 0) break;
+      int i = 0;
+      for (; i + 8 <= got; i += 8) {
+        uint64_t w;
+        std::memcpy(&w, block.data() + i, 8);
+        h = (h ^ w) * 1099511628211ull;
+        h ^= h >> 29;
+      }
+      for (; i < got; ++i) h = (h ^ static_cast<unsigned char>(block[static_cast<size_t>(i)])) * 1099511628211ull;
+    }
+  }
+  char buf[40];
+  std::snprintf(buf, sizeof(buf), "definition %016llx", static_cast<unsigned long long>(h));
+  return std::string(buf) + "|" + std::to_string(odf.getSize());
 }
 
 } // namespace
@@ -9330,12 +9360,11 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
                                " rank(s) of " + juce::String((int)model_.ranks.size()) +
                                "; every other stop will be silent");
     // What the cache is keyed to: which organ, and whether its definition has
-    // changed since the cache was written. Both are cheap to read and neither
-    // is guessable from the model alone.
+    // changed since the cache was written. The definition's contents, never
+    // its folder: a cache written for a set on one drive serves the same set
+    // opened from another (#1106).
     samples_.setCacheDir(cacheDirectory().getFullPathName().toStdString());
-    std::string odfStamp = effectiveOdf.getFullPathName().toStdString() + "|" +
-                           std::to_string(effectiveOdf.getSize()) + "|" +
-                           std::to_string(effectiveOdf.getLastModificationTime().toMilliseconds());
+    std::string odfStamp = definitionStamp(effectiveOdf);
     // A converted organ's sample table is the importer's work, not the
     // file's: a newer importer can number the same samples differently
     // while the .organ file stays as it was. The stamp covers the table

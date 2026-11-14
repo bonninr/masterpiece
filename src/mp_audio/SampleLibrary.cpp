@@ -1177,8 +1177,15 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
     // A cache that throws as it is read -- damaged, or more than memory
     // allows -- is passed over, and the samples are read from their files.
     bool fromCache = false;
+    std::string why;
     try {
-      fromCache = readCache(*cached, fingerprint, progress);
+      fromCache = readCache(*cached, fingerprint, progress, &why);
+      // Said in the log: a cache passed over looks, from outside, like a cache
+      // that does not work.
+      if (!fromCache && !(progress != nullptr && progress->isCancelled()))
+        juce::Logger::writeToLog("cache: not read: " +
+                                 juce::String::fromUTF8((why.empty() ? cachePath() + " is damaged or cut short" : why).c_str()) +
+                                 "; the samples are read from their files");
     } catch (const std::bad_alloc&) {
       cached->clear();
       juce::Logger::writeToLog("cache: the system refused memory reading it back");
@@ -1643,6 +1650,10 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
   // every later load, and kept it partial after the cause was fixed.
   const bool keep = cacheMode_ != CacheMode::Off && !cacheDir_.empty() && report.loaded > 0 &&
                     !stoppedShort && report.failed == 0;
+  if (!keep && cacheMode_ != CacheMode::Off && !cacheDir_.empty() && report.loaded > 0)
+    juce::Logger::writeToLog(stoppedShort ? juce::String("cache: not written: the load stopped short")
+                                          : "cache: not written: " + juce::String(report.failed) +
+                                                " sample(s) could not be read, and a cache holds the whole organ");
   std::shared_ptr<const Store> written = next;
   publish(std::move(next));
   if (keep) {
@@ -2175,6 +2186,46 @@ std::string SampleLibrary::cacheFingerprint(const std::unordered_set<Id>* onlyRa
   return s;
 }
 
+std::string SampleLibrary::cacheDifference(const std::string& written, const std::string& wanted) {
+  const auto split = [](const std::string& s) {
+    std::vector<std::string> parts;
+    size_t from = 0;
+    for (;;) {
+      const size_t bar = s.find('|', from);
+      parts.push_back(s.substr(from, bar == std::string::npos ? std::string::npos : bar - from));
+      if (bar == std::string::npos) return parts;
+      from = bar + 1;
+    }
+  };
+  // "v1", the definition's stamp (its contents, then its size), then the
+  // settings from the storage width ("w2") on.
+  const auto settingsFrom = [](const std::vector<std::string>& parts) {
+    for (size_t i = 1; i < parts.size(); ++i)
+      if (parts[i].size() > 1 && parts[i][0] == 'w' &&
+          parts[i].find_first_not_of("0123456789", 1) == std::string::npos)
+        return i;
+    return parts.size();
+  };
+  const auto w = split(written), n = split(wanted);
+  const size_t ws = settingsFrom(w), ns = settingsFrom(n);
+  const auto at = [](const std::vector<std::string>& v, size_t i) { return i < v.size() ? v[i] : std::string(); };
+  std::string out;
+  if (std::vector<std::string>(w.begin() + std::min<size_t>(1, ws), w.begin() + ws) !=
+      std::vector<std::string>(n.begin() + std::min<size_t>(1, ns), n.begin() + ns))
+    out = "was written for another definition, or another version of this one (" + at(w, 1) + "; this load: " +
+          at(n, 1) + ")";
+  // The settings each side has that the other lacks.
+  std::string was, now;
+  for (size_t i = ws; i < w.size(); ++i)
+    if (std::find(n.begin() + ns, n.end(), w[i]) == n.end()) was += (was.empty() ? "" : " ") + w[i];
+  for (size_t i = ns; i < n.size(); ++i)
+    if (std::find(w.begin() + ws, w.end(), n[i]) == w.end()) now += (now.empty() ? "" : " ") + n[i];
+  if (!was.empty() || !now.empty())
+    out += (out.empty() ? "was written with other settings: " : "; and with other settings: ") +
+           (was.empty() ? std::string("-") : was) + " -> " + (now.empty() ? std::string("-") : now);
+  return out.empty() ? "was written for another load" : out;
+}
+
 std::string SampleLibrary::cachePath() const {
   if (cacheDir_.empty() || cacheMode_ == CacheMode::Off) return {};
   std::filesystem::path dir = mp::pathOf(cacheDir_);
@@ -2383,19 +2434,26 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
 }
 
 bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
-                              LoadProgress* progress) const {
+                              LoadProgress* progress, std::string* why) const {
+  const auto passedOver = [why](std::string reason) {
+    if (why != nullptr) *why = std::move(reason);
+    return false;
+  };
   const std::string path = cachePath();
-  if (path.empty()) return false;
+  if (path.empty()) return passedOver("the cache is off");
   std::ifstream is(mp::pathOf(path), std::ios::binary);
-  if (!is) return false;
+  if (!is) return passedOver("there is no cache at " + path);
 
   char magic[4] = {};
   is.read(magic, 4);
-  if (!is || std::memcmp(magic, kCacheMagic, 4) != 0) return false;
+  if (!is || std::memcmp(magic, kCacheMagic, 4) != 0)
+    return passedOver(path + " is not a sample cache");
   uint32_t version = 0;
-  if (!getPod(is, version) || version != kCacheVersion) return false;
+  if (!getPod(is, version) || version != kCacheVersion)
+    return passedOver(path + " was written by another version of Masterpiece");
   std::string got;
-  if (!getStr(is, got) || got != fingerprint) return false;
+  if (!getStr(is, got)) return passedOver(path + " is damaged");
+  if (got != fingerprint) return passedOver(path + " " + cacheDifference(got, fingerprint));
 
   // This cache is this load's, and it is the organ's resident audio written
   // out, so its size is what reading it back would cost. Past the memory
@@ -2404,7 +2462,8 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
   const auto cacheBytes = std::filesystem::file_size(mp::pathOf(path), sizeError);
   if (!sizeError && progress != nullptr &&
       !progress->charge(static_cast<int64_t>(cacheBytes)))
-    return false;
+    return passedOver(path + " holds " + std::to_string(cacheBytes / 1048576) +
+                      " MB, more than the memory ceiling allows");
 
   uint64_t count = 0;
   if (!getPod(is, count) || count > 4000000ull) return false;
