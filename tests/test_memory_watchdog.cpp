@@ -174,9 +174,12 @@ public:
     const juce::File odf = writeOrgan(root);
 
     // The player presses Cancel while the samples are read: what arrived
-    // before it is kept, and its keys sound.
+    // before it is kept, and its keys sound. The samples are read from their
+    // files: the cache is keyed to the definition's contents, the same at
+    // every run, and a cache written by an earlier run is read in one piece.
     {
       mp::MasterpieceProcessor proc;
+      proc.overrideCacheMode(mp::SampleLibrary::CacheMode::Off);
       proc.prepareToPlay(48000.0, 256);
       int asked = 0;
       proc.memoryProbe = [&] {
@@ -199,6 +202,7 @@ public:
     // says why.
     {
       mp::MasterpieceProcessor proc;
+      proc.overrideCacheMode(mp::SampleLibrary::CacheMode::Off);
       proc.prepareToPlay(48000.0, 256);
       int asked = 0;
       proc.memoryProbe = [&] { return ++asked < 4 ? int64_t{1} << 40 : int64_t{0}; };
@@ -217,6 +221,20 @@ public:
       proc.memoryProbe = [] { return int64_t{1} << 40; };
       const auto r = proc.loadOrgan(odf, 0, false);
       MP_CHECK(r.ok && !r.incomplete && r.samples.loaded == kPipes, "a load with room reads it all");
+      for (int i = 0; i < 500 && proc.sampleLibrary().cacheWriting(); ++i) juce::Thread::sleep(10);
+      proc.releaseResources();
+    }
+    // Again, from the cache that load wrote: the whole organ, and every
+    // sample asked for is there.
+    {
+      mp::MasterpieceProcessor proc;
+      proc.prepareToPlay(48000.0, 256);
+      proc.memoryProbe = [] { return int64_t{1} << 40; };
+      const auto r = proc.loadOrgan(odf, 0, false);
+      MP_CHECK(proc.sampleLibrary().cacheBytesRead() > 0, "the second load reads the cache");
+      MP_CHECK(r.ok && !r.incomplete && r.samples.loaded == kPipes && r.samples.wanted == kPipes,
+               "the cache holds the whole organ (" + std::to_string(r.samples.loaded) + " of " +
+                   std::to_string(r.samples.wanted) + ")");
       proc.releaseResources();
     }
     root.deleteRecursively();
