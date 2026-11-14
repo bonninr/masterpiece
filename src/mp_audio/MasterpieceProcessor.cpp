@@ -854,6 +854,9 @@ void MasterpieceProcessor::advanceWind(int numFrames) {
   // own (#1028).
   for (size_t i = 0; i < wind_.controlValves().size(); ++i)
     wind_.setControlValve(i, controls_.value(wind_.controlValves()[i].controlId));
+  // And the controls a switch-built regulator reads from outside it (#1121).
+  for (size_t i = 0; i < wind_.relayInputs().size(); ++i)
+    wind_.setRelayInput(i, controls_.value(wind_.relayInputs()[i]));
   wind_.advance(static_cast<double>(numFrames) / sampleRate_,
                 graph_.engineSwitch, engagedSwitches_);
 
