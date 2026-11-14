@@ -129,12 +129,21 @@ std::vector<PlayerCombinations::Element> PlayerCombinations::collect(
   for (const auto& [id, stop] : model.stops)
     if (!isEffect(model, stop) && !onBlower(stop)) stops.emplace_back(stop.divisionId, id);
   std::sort(stops.begin(), stops.end());
+  auto cancelStateOf = [&](Id sw) {
+    const auto it = model.switches.find(sw);
+    return it == model.switches.end() ? 0 : it->second.cancelState;
+  };
   for (const auto& [div, id] : stops) {
     Element e;
     e.kind = ElementKind::Stop;
     e.id = id;
     e.divisionId = div;
-    e.name = model.stops.at(id).name;
+    const Stop& stop = model.stops.at(id);
+    e.name = stop.name;
+    if (stop.controllingSwitchId != 0) {
+      e.cancelState = cancelStateOf(player(stop.controllingSwitchId));
+      if (e.cancelState == 0) e.cancelState = cancelStateOf(stop.controllingSwitchId);
+    }
     out.push_back(std::move(e));
   }
 
@@ -261,6 +270,7 @@ std::vector<PlayerCombinations::Element> PlayerCombinations::collect(
     const auto it = model.switches.find(sw);
     e.name = it != model.switches.end() ? it->second.name : std::string();
     e.bassOrMelody = bassOrMelody.count(sw) != 0 || (it != model.switches.end() && it->second.bassOrMelody);
+    e.cancelState = cancelStateOf(sw);
     out.push_back(std::move(e));
   };
   for (const auto& [sw, vote] : couplers) addSwitch(sw, vote.result());
@@ -406,14 +416,18 @@ void PlayerCombinations::recallDivisional(Id divisionId, int n,
     recallInto(*r, divisionId, false, out);
 }
 
+// A cancel puts every element off, draws those whose switch says so and
+// leaves alone those whose switch says leave it: a GrandOrgue set's GCState.
 void PlayerCombinations::generalCancel(std::vector<Change>& out) const {
-  for (const auto& e : elements_) out.push_back({e.kind, e.id, false});
+  for (const auto& e : elements_)
+    if (e.cancelState >= 0) out.push_back({e.kind, e.id, e.cancelState == 1});
 }
 
 void PlayerCombinations::divisionalCancel(Id divisionId,
                                           std::vector<Change>& out) const {
   for (const auto& e : elements_)
-    if (e.divisionId == divisionId) out.push_back({e.kind, e.id, false});
+    if (e.divisionId == divisionId && e.cancelState >= 0)
+      out.push_back({e.kind, e.id, e.cancelState == 1});
 }
 
 bool PlayerCombinations::generalSet(int n) const {

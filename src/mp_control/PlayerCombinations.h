@@ -41,6 +41,8 @@ public:
     // A bass or a melody coupler: a key action that carries the lowest or
     // the highest key held.
     bool bassOrMelody = false;
+    // What a cancel does to it, from its switch: 0 off, 1 drawn, -1 left.
+    int cancelState = 0;
   };
   struct Division {
     Id divisionId = 0;
