@@ -952,9 +952,10 @@ WindSolver::Mod WindSolver::modFor(Id compartmentId) const {
   // the organ mute once the reservoir drains. The line meets the curve above
   // at half pressure, so an ordinary sag of a few percent is untouched.
   const double fraction = 1.0 + sag;
-  if (fraction < kSpeechFraction)
-    m.ampMul = std::max(0.0, fraction) * (1.0 + kAmpPerFractionalSag * (kSpeechFraction - 1.0)) /
-               kSpeechFraction;
+  if (fraction < kSpeechFraction) {
+    m.supply = std::max(0.0, fraction) / kSpeechFraction;
+    m.ampMul = m.supply * (1.0 + kAmpPerFractionalSag * (kSpeechFraction - 1.0));
+  }
   // Semitones, then a ratio: a sag flattens the organ, and the amount is
   // deliberately conservative — see the header.
   const double semitones = kPitchPerFractionalSag * sag;

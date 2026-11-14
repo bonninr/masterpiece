@@ -65,6 +65,10 @@ public:
   struct Mod {
     double ampMul = 1.0;
     double pitchRatio = 1.0;
+    // The share of ampMul that is the chest too empty to speak (below half
+    // its working pressure), 1 above that. A pipe's own depth (#821) trims
+    // the pressure's movement and leaves this whole.
+    double supply = 1.0;
   };
 
   // Moving reservoir boards (#812). Takes effect at the next reset(): the

@@ -170,6 +170,12 @@ struct PipeLayer {
   double tremAmpDepthAdjustDb = 0.0;    // AmpLvl_TremulantModDepthAdjustDecibels
   double tremAmpDepthAdjustPct = 100.0; // AmpLvl_TremulantModDepthAdjustPercent, from version 5
   double tremPitchDepthAdjustPct = 100.0; // PitchLvl_TremulantModDepthAdjustPercent
+  // How far the wind model moves THIS layer (#821): the same trims for the
+  // chest's pressure. Most sets write them, and they differ by rank: a flue
+  // that barely follows the wind beside a reed that follows it fully.
+  double windAmpDepthAdjustDb = 0.0;    // AmpLvl_WindModelModDepthAdjustDecibels
+  double windAmpDepthAdjustPct = 100.0; // AmpLvl_WindModelModDepthAdjustPercent, from version 5
+  double windPitchDepthAdjustPct = 100.0; // PitchLvl_WindModelModDepthAdjustPercent
   // The layer's voicing EQ (#815): a high shelf that lifts or cuts what lies
   // above its transition frequency by the boost, over a transition the width
   // gives as a percentage of that frequency. Barritt's St. John lifts nearly

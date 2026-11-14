@@ -24,6 +24,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <cmath>
 #include <cstring>
 #include <functional>
 #include <memory>
@@ -380,6 +381,11 @@ struct Voice {
   // recovers, which slid every tail in pitch the moment a chord let go.
   float heldWindAmp = 1.0f;
   double heldWindPitch = 1.0;
+  // How much of the chest's movement reaches this pipe (#821): a factor on
+  // the level's deviation from unity and on the pitch's in cents. 1 is all of
+  // it, and then nothing is computed at all.
+  float windAmpDepth = 1.0f;
+  double windPitchDepth = 1.0;
   // Which tremulant reaches this pipe, as an index into the engine's table,
   // and how far it moves THIS pipe. Hauptwerk states the depth per pipe: a
   // tremulant belongs to a chest, and the stops on it wobble by different
@@ -501,6 +507,9 @@ struct VoiceStart {
   // Windchest index and air draw; see Voice::windIndex and Voice::windFlow.
   int windIndex = -1;
   float windFlowKgPerSec = 0.0f;
+  // This pipe's share of the wind's movement; see Voice::windAmpDepth.
+  float windAmpDepth = 1.0f;
+  double windPitchDepth = 1.0;
   // Tremulant index and this pipe's own depths; see Voice::tremIndex.
   int tremIndex = -1;
   float tremAmpDepth = 0.0f;
@@ -732,6 +741,10 @@ public:
   struct WindMod {
     float ampMul = 1.0f;
     double pitchRatio = 1.0;
+    // The part of ampMul that is the chest running out of wind, below half
+    // its pressure: 1 while it has enough. A pipe's depth trims the rest, the
+    // pressure's movement, and never lets a pipe speak from an empty chest.
+    float supply = 1.0f;
   };
 
   // What a tremulant is doing this block, as a RAMP rather than a level.
@@ -944,6 +957,22 @@ public:
   WindMod windModFor(int index) const {
     if (windMods_ == nullptr || index < 0 || index >= windCount_) return {};
     return windMods_[index];
+  }
+  // The wind as one pipe feels it (#821): the chest's movement scaled by the
+  // pipe's depths, the level about unity and the pitch in cents. A pipe at
+  // full depth takes the chest's values untouched.
+  static WindMod windForPipe(WindMod w, float ampDepth, double pitchDepth) {
+    if (ampDepth != 1.0f && w.ampMul != 1.0f) {
+      if (w.supply == 1.0f) {
+        w.ampMul = std::max(0.0f, 1.0f + (w.ampMul - 1.0f) * ampDepth);
+      } else if (w.supply > 0.0f) {
+        const float moved = w.ampMul / w.supply;
+        w.ampMul = w.supply * std::max(0.0f, 1.0f + (moved - 1.0f) * ampDepth);
+      }
+    }
+    if (pitchDepth != 1.0 && w.pitchRatio != 1.0)
+      w.pitchRatio = std::pow(w.pitchRatio, pitchDepth);
+    return w;
   }
 
   // Voice rendering across worker threads (ADR-012). The audio thread renders
