@@ -1155,9 +1155,12 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
     return onlyRanks == nullptr || onlyRanks->count(rankId) != 0;
   };
   SampleLoadReport report;
-  // The previous load's cache, if it is still being written, is finished
-  // first: this load may be about to read it.
-  finishCacheWrite(false);
+  // The previous load's cache, if it is still being written, is stopped and
+  // left unwritten: a write while playing runs only in silence and at the
+  // lowest priority, so waiting for it held this load for minutes, or for
+  // ever on an organ whose noises sound throughout, and Cancel could not
+  // end the wait (#1139). That organ's next load writes it again.
+  finishCacheWrite(true);
   cacheRead_ = 0;
   cacheWritten_ = 0;
   cacheTotal_ = 0;
@@ -1688,9 +1691,9 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
                                  juce::String(sizeError ? 0.0 : bytes / 1048576.0, 1) +
                                  " MB in " + juce::String(seconds, 1) + " s");
       else if (cacheStop_.load())
-        juce::Logger::writeToLog("cache: write stopped at quit after " +
-                                 juce::String(seconds, 1) +
-                                 " s; the next load reads the samples again");
+        juce::Logger::writeToLog("cache: write stopped after " + juce::String(seconds, 1) +
+                                 " s, for another load or at quit; that organ's next load"
+                                 " reads the samples again");
       else
         juce::Logger::writeToLog("cache: not saved to " + juce::String(path) +
                                  "; the next load reads the samples again");

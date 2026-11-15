@@ -274,8 +274,8 @@ public:
   void setCacheWhilePlaying(bool on) { cacheWhilePlaying_ = on; }
   void setCacheBusy(std::function<bool()> busy) { cacheBusy_ = std::move(busy); }
   // Waits for a cache write still running, so a load never reads one half
-  // written. Asks it to stop first when `abandon` (quitting); the old cache,
-  // if any, is then left as it was.
+  // written. Asks it to stop first when `abandon` (quitting, or another
+  // load starting); the old cache, if any, is then left as it was.
   void finishCacheWrite(bool abandon);
 
   // The archives an organ is played from, when it is not unpacked. A sample
