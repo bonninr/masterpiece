@@ -1859,13 +1859,19 @@ void RecorderPanel::timerCallback() {
   const bool on = a.isRecording();
   if (on) audioFailed_ = false;
   const juce::String folder = proc_.audioRecordingFolder().getFullPathName();
-  audioStatus_.setText(
+  juce::String audio =
       on ? TRANS("Recording %1 - %2 s")
                .replace("%1", a.file().getFileName())
                .replace("%2", juce::String(a.secondsRecorded(), 1))
       : audioFailed_ ? TRANS("Could not write a file in %1").replace("%1", folder)
-                     : TRANS("Recordings go to %1").replace("%1", folder),
-      juce::dontSendNotification);
+                     : TRANS("Recordings go to %1").replace("%1", folder);
+  // A disk that holds the writer up past its room leaves gaps in the take
+  // (#1128). The player hears them as clicks, so the panel says so, during
+  // the take and after it until the next one starts.
+  if (a.framesLost() > 0 && !audioFailed_)
+    audio += "  -  " + TRANS("%1 s missing: the disk was too slow")
+                           .replace("%1", juce::String(a.secondsLost(), 1));
+  audioStatus_.setText(audio, juce::dontSendNotification);
   audioStatus_.setTooltip(on ? a.file().getFullPathName() : folder);
   audioRecord_.setEnabled(!on);
   audioStop_.setEnabled(on);

@@ -9239,6 +9239,95 @@ class AudioRecorderTest final : public mp::test::Test {
   }
 };
 
+// #1128: a recording held clicks the organ never played. The writer thread
+// had 0.68 s of room; when the disk or the scheduler held it up for longer,
+// the block in hand was dropped without a word, and the file jumped. Here the
+// writer's thread is held for a few seconds, the way a slow disk holds it,
+// while the audio keeps coming: every frame has to reach the file. Past the
+// room, what is lost is counted, so the file plus the count is always what
+// was handed over.
+class AudioRecorderStallTest final : public mp::test::Test {
+ public:
+  AudioRecorderStallTest()
+      : Test("functional.audio.recorder-rides-a-stall", Category::Functional) {}
+
+  // Sleeps once on the writer's thread, and says when it has begun.
+  struct Stall final : juce::TimeSliceClient {
+    int ms;
+    juce::WaitableEvent begun;
+    bool done = false;
+    explicit Stall(int m) : ms(m) {}
+    int useTimeSlice() override {
+      if (done) return 1000;
+      done = true;
+      begun.signal();
+      juce::Thread::sleep(ms);
+      return 1000;
+    }
+  };
+
+  static int64_t take(const juce::File& wav, int seconds, int stallMs, int64_t& lost) {
+    constexpr double kRate = 48000.0;
+    constexpr int kBlock = 480;
+    juce::AudioBuffer<float> buf(2, kBlock);
+    double phase = 0.0;
+    int64_t handed = 0;
+    {
+      mp::AudioRecorder rec;
+      if (!rec.start(wav, kRate, 2)) return -1;
+      Stall stall(stallMs);
+      rec.writerThread().addTimeSliceClient(&stall);
+      rec.writerThread().notify();
+      if (!stall.begun.wait(5000)) return -1;
+      for (int b = 0; b < seconds * 100; ++b) {
+        for (int i = 0; i < kBlock; ++i) {
+          const float s = 0.5f * static_cast<float>(std::sin(phase));
+          phase += 2.0 * juce::MathConstants<double>::pi * 440.0 / kRate;
+          buf.setSample(0, i, s);
+          buf.setSample(1, i, s);
+        }
+        rec.write(buf);
+        handed += kBlock;
+      }
+      rec.stop();
+      rec.writerThread().removeTimeSliceClient(&stall);
+      lost = rec.framesLost();
+    }
+    return handed;
+  }
+
+  static int64_t lengthOf(const juce::File& wav) {
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader(fm.createReaderFor(wav));
+    return reader != nullptr ? reader->lengthInSamples : -1;
+  }
+
+  void run() override {
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                         .getChildFile("mp_rec_stall_test");
+    dir.createDirectory();
+    const auto wav = dir.getChildFile("take.wav");
+
+    int64_t lost = -1;
+    const int64_t handed = take(wav, 3, 3000, lost);
+    const int64_t got = lengthOf(wav);
+    MP_CHECK(got == handed,
+             "three seconds played while the writer is held all reach the file (" +
+                 std::to_string(got) + " of " + std::to_string(handed) + " frames)");
+    MP_CHECK(lost == 0, "and none is counted lost");
+
+    const int64_t handed2 = take(wav, 20, 3000, lost);
+    const int64_t got2 = lengthOf(wav);
+    MP_CHECK(got2 >= 0 && got2 + lost == handed2,
+             "past the room, the file and the frames counted lost add up to what was handed over (" +
+                 std::to_string(got2) + " + " + std::to_string(lost) + " of " +
+                 std::to_string(handed2) + ")");
+    MP_CHECK(lost > 0, "and twenty seconds against a held writer do lose some, counted");
+    dir.deleteRecursively();
+  }
+};
+
 // Issue #13: the master fader lived only for the running session. Nothing
 // wrote it down, and switching organs (or restarting the app, which is the
 // same load path with a colder cache) always found it back at unity.
@@ -13227,6 +13316,7 @@ static RingFromDiskTest g_ringFromDisk;
 #endif
 #ifdef MP_TEST_HAS_AUDIO
 static AudioRecorderTest g_audioRecorder;
+static AudioRecorderStallTest g_audioRecorderStall;
 static MasterGainPersistenceTest g_masterGainPersistence;
 #endif
 #ifdef MP_TEST_HAS_DSP
