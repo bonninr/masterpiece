@@ -1,0 +1,2 @@
+# src/mp_ui/Ui.cpp
+"Play without it (%1 s)" = "Jouer sans lui (%1 s)"

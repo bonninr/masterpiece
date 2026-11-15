@@ -733,7 +733,6 @@ countries: nl be sr
 "no name given" = "zonder naam"
 "Choose an archive..." = "Archief kiezen..."
 "Choose a folder..." = "Map kiezen..."
-"Play without it" = "Zonder spelen"
 "The folder that holds the package" = "De map met het pakket"
 "The package's archive" = "Het archief van het pakket"
 "The details are in the log, %1. If Masterpiece has been started again since, they are in masterpiece.previous.log beside it." = "De details staan in het logboek, %1. Als Masterpiece sindsdien opnieuw is gestart, staan ze in masterpiece.previous.log ernaast."

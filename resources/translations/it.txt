@@ -737,7 +737,6 @@ countries: it ch sm va
 "no name given" = "senza nome"
 "Choose an archive..." = "Scegli un archivio..."
 "Choose a folder..." = "Scegli una cartella..."
-"Play without it" = "Suona senza"
 "The folder that holds the package" = "La cartella che contiene il pacchetto"
 "The package's archive" = "L'archivio del pacchetto"
 "The details are in the log, %1. If Masterpiece has been started again since, they are in masterpiece.previous.log beside it." = "I dettagli sono nel log, %1. Se da allora Masterpiece è stato riavviato, sono in masterpiece.previous.log accanto."
