@@ -700,29 +700,62 @@ bool MasterpieceProcessor::isBusesLayoutSupported(const BusesLayout& layouts) co
 
 void MasterpieceProcessor::refreshBusReverbs() {
 #if MP_ENABLE_DSP
+  // Built aside and swapped in under the audio lock: reading a room's file
+  // takes a while, and the audio thread reads these every block. The old
+  // rooms go after the lock is let go.
   // clear + resize, not assign: assign would copy the null unique_ptr.
-  busConvolvers_.clear();
-  busConvolvers_.resize(mixBusOrder_.size());
-  if (sampleRate_ <= 0.0) return;  // not prepared yet; prepareToPlay redoes this
+  std::vector<std::unique_ptr<Convolver>> next;
+  next.resize(mixBusOrder_.size());
+  if (sampleRate_ > 0.0) {  // not prepared yet: prepareToPlay redoes this
+    juce::dsp::ProcessSpec spec;
+    spec.sampleRate = sampleRate_;
+    spec.maximumBlockSize = static_cast<juce::uint32>(juce::jmax(1, maxBlock_));
+    spec.numChannels = 2;
 
-  juce::dsp::ProcessSpec spec;
-  spec.sampleRate = sampleRate_;
-  spec.maximumBlockSize = static_cast<juce::uint32>(juce::jmax(1, maxBlock_));
-  spec.numChannels = 2;
-
-  for (size_t i = 0; i < mixBusOrder_.size(); ++i) {
-    const BusReverb* r = mixer_.reverbFor(mixBusOrder_[i]);
-    if (r == nullptr || !r->active()) continue;
-    const juce::File ir(juce::String(r->irFile));
-    if (!ir.existsAsFile()) continue;  // ReverbPanel reports; silence is not a fix
-    auto c = std::make_unique<Convolver>();
-    c->prepare(spec);
-    if (!c->loadImpulseResponse(ir)) continue;
-    c->setMix(r->mix);
-    c->setEnabled(true);
-    busConvolvers_[i] = std::move(c);
+    for (size_t i = 0; i < mixBusOrder_.size(); ++i) {
+      const BusReverb* r = mixer_.reverbFor(mixBusOrder_[i]);
+      if (r == nullptr || !r->active()) continue;
+      const juce::File ir(juce::String(r->irFile));
+      if (!ir.existsAsFile()) continue;  // ReverbPanel reports; silence is not a fix
+      auto c = std::make_unique<Convolver>();
+      c->prepare(spec);
+      if (!c->loadImpulseResponse(ir)) continue;
+      c->setMix(r->mix);
+      c->setEnabled(true);
+      next[i] = std::move(c);
+    }
+  }
+  {
+    const AudioLock audio(*this);
+    busConvolvers_.swap(next);
   }
 #endif
+}
+
+void MasterpieceProcessor::setBusReverb(int busId, const std::string& irFile, float mix, bool enabled) {
+  if (irFile.empty()) {
+    mixer_.busReverb.erase(busId);
+  } else {
+    BusReverb r;
+    r.irFile = irFile;
+    r.mix = juce::jlimit(0.0f, 1.0f, mix);
+    r.enabled = enabled;
+    mixer_.busReverb[busId] = std::move(r);
+  }
+  refreshBusReverbs();
+  markSettingsDirty();
+}
+
+void MasterpieceProcessor::setBusReverbMix(int busId, float mix) {
+  const auto it = mixer_.busReverb.find(busId);
+  if (it == mixer_.busReverb.end()) return;
+  it->second.mix = juce::jlimit(0.0f, 1.0f, mix);
+#if MP_ENABLE_DSP
+  const auto at = mixBusIndexOf_.find(busId);
+  if (at != mixBusIndexOf_.end() && at->second < static_cast<int>(busConvolvers_.size()))
+    if (auto& c = busConvolvers_[static_cast<size_t>(at->second)]; c != nullptr) c->setMix(it->second.mix);
+#endif
+  markSettingsDirty();
 }
 
 int MasterpieceProcessor::mixBusForPipe(Id rankId, int midiNote) const {

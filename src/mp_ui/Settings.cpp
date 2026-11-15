@@ -1533,10 +1533,109 @@ ReverbPanel::ReverbPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(midi_);
   midi_.setTooltip(TRANS("Learn a knob or a pedal for the wet level"));
   midi_.onClick = [this] { midiMenu(); };
+
+  addChildComponent(pairsHeading_);
+  styleLabel(pairsHeading_, TRANS("Other output pairs"));
+  buildPairRooms();
   startTimerHz(10);
 }
 
 ReverbPanel::~ReverbPanel() { stopTimer(); }
+
+void ReverbPanel::buildPairRooms() {
+  pairRooms_.clear();
+  for (const auto& b : proc_.mixer().buses) {
+    if (b.id.value <= 1) continue;
+    PairRoom row;
+    row.busId = b.id.value;
+    const int id = row.busId;
+    const BusReverb* now = proc_.mixer().reverbFor(b.id);
+    row.on = std::make_unique<juce::ToggleButton>(TRANS("Pair %1").replace("%1", juce::String(id)));
+    row.on->setToggleState(now != nullptr && now->active(), juce::dontSendNotification);
+    row.on->onClick = [this, id] {
+      for (auto& r : pairRooms_) {
+        if (r.busId != id) continue;
+        const BusReverb* has = proc_.mixer().reverbFor(BusId{id});
+        const bool on = r.on->getToggleState();
+        // A pair turned on with no file of its own takes the first pair's
+        // room; with none there either, the player picks one.
+        std::string file = has != nullptr ? has->irFile : std::string();
+        if (on && file.empty() && proc_.convolver().hasImpulseResponse())
+          file = proc_.convolver().impulseResponseFile().getFullPathName().toStdString();
+        if (on && file.empty()) {
+          r.on->setToggleState(false, juce::dontSendNotification);
+          choosePairRoom(id);
+          return;
+        }
+        const float mix = has != nullptr ? has->mix : proc_.convolver().mix();
+        if (!file.empty()) proc_.setBusReverb(id, file, mix, on);
+        r.mix->setValue(mix, juce::dontSendNotification);
+        showPairRoom(r);
+        return;
+      }
+    };
+    row.load = std::make_unique<juce::TextButton>(TRANS("Load impulse response..."));
+    row.load->onClick = [this, id] { choosePairRoom(id); };
+    row.name = std::make_unique<juce::Label>();
+    row.mix = std::make_unique<juce::Slider>(juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight);
+    row.mix->setRange(0.0, 1.0, 0.01);
+    styleFader(*row.mix, fader::evenTicks(0.0, 1.0), fader::kNoUnity);
+    row.mix->setValue(now != nullptr ? now->mix : proc_.convolver().mix(), juce::dontSendNotification);
+    row.mix->setTooltip(TRANS("Wet"));
+    auto* mix = row.mix.get();
+    row.mix->onValueChange = [this, id, mix] { proc_.setBusReverbMix(id, static_cast<float>(mix->getValue())); };
+    addAndMakeVisible(*row.on);
+    addAndMakeVisible(*row.load);
+    addAndMakeVisible(*row.name);
+    addAndMakeVisible(*row.mix);
+    pairRooms_.push_back(std::move(row));
+    showPairRoom(pairRooms_.back());
+  }
+  pairsShown_ = static_cast<int>(proc_.mixer().buses.size());
+  pairsHeading_.setVisible(!pairRooms_.empty());
+}
+
+void ReverbPanel::showPairRoom(PairRoom& row) {
+  const BusReverb* r = proc_.mixer().reverbFor(BusId{row.busId});
+  const juce::String file = r != nullptr ? juce::String(r->irFile) : juce::String();
+  styleLabel(*row.name, file.isEmpty() ? TRANS("No IR loaded")
+                                       : TRANS("IR: %1").replace("%1", juce::File(file).getFileName()));
+  row.mix->setEnabled(r != nullptr && r->active());
+}
+
+void ReverbPanel::choosePairRoom(int busId) {
+  chooser_ = std::make_unique<juce::FileChooser>(TRANS("Choose an impulse response"), proc_.dialogFolder("ir"),
+                                                 "*.wav;*.aiff;*.aif;*.flac");
+  juce::Component::SafePointer<ReverbPanel> self(this);
+  chooser_->launchAsync(
+      juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+      [self, busId](const juce::FileChooser& fc) {
+        if (self == nullptr || fc.getURLResults().isEmpty()) return;  // closed, or cancelled
+        const auto f = pickedFile(fc);
+        self->proc_.rememberDialogFolder("ir", f);
+        // Read once here, so a file that is no room is said at once.
+        Convolver probe;
+        if (!f.existsAsFile() || !probe.loadImpulseResponse(f)) {
+          const auto why = !f.existsAsFile()
+                               ? TRANS("The file could not be read where it is.")
+                               : TRANS("%1 is not an impulse response Masterpiece can read (WAV, AIFF or FLAC).")
+                                     .replace("%1", f.getFileName());
+          juce::Logger::writeToLog("impulse response not loaded: " + f.getFullPathName() + ": " + why);
+          juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+                                                 TRANS("The impulse response was not loaded"), why);
+          return;
+        }
+        const BusReverb* has = self->proc_.mixer().reverbFor(BusId{busId});
+        const float mix = has != nullptr ? has->mix : self->proc_.convolver().mix();
+        self->proc_.setBusReverb(busId, f.getFullPathName().toStdString(), mix, true);
+        for (auto& r : self->pairRooms_)
+          if (r.busId == busId) {
+            r.on->setToggleState(true, juce::dontSendNotification);
+            r.mix->setValue(mix, juce::dontSendNotification);
+            self->showPairRoom(r);
+          }
+      });
+}
 
 void ReverbPanel::midiMenu() {
   auto& map = proc_.midiMap();
@@ -1569,6 +1668,11 @@ void ReverbPanel::timerCallback() {
   const auto& map = proc_.midiMap();
   const bool learning = map.learning() && map.learningKind() == MidiTargetKind::ReverbWet;
   midi_.setButtonText(learning ? TRANS("Move it...") : TRANS("MIDI"));
+  // The Mixer tab can change the number of pairs while this tab is open.
+  if (static_cast<int>(proc_.mixer().buses.size()) != pairsShown_) {
+    buildPairRooms();
+    resized();
+  }
 }
 
 void ReverbPanel::resized() {
@@ -1589,6 +1693,22 @@ void ReverbPanel::resized() {
   row.removeFromLeft(kGap);
   midi_.setBounds(row.removeFromLeft(70));
   r.removeFromTop(kGap);
+
+  if (pairRooms_.empty()) return;
+  r.removeFromTop(kGap);
+  pairsHeading_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(4);
+  const int loadW = juce::jmax(110, pairRooms_.front().load->getBestWidthForHeight(kRow));
+  for (auto& p : pairRooms_) {
+    row = r.removeFromTop(kRow);
+    r.removeFromTop(4);
+    p.on->setBounds(row.removeFromLeft(90));
+    p.load->setBounds(row.removeFromLeft(loadW).reduced(0, 1));
+    row.removeFromLeft(kGap);
+    p.mix->setBounds(row.removeFromRight(juce::jmin(240, row.getWidth() / 2)).reduced(0, 2));
+    row.removeFromRight(kGap);
+    p.name->setBounds(row);
+  }
 }
 
 // ------------------------------------------------------------- metronome
