@@ -195,6 +195,10 @@ struct PipeLayer {
   // sounds the release as a voice of its own, whether the attack still plays
   // or has ended (#978). Key and stop action noises are written this way.
   bool independentRelease = false;
+  // The player's release choice took this layer's releases away (Releases:
+  // None, #1126). Its key-up fades the attack out, so a recording with no
+  // loop stops with its key.
+  bool releasesLeftOut = false;
 };
 
 struct Pipe {
