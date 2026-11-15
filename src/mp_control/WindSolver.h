@@ -196,6 +196,44 @@ private:
   // One integration step. `engagedSwitches` null means every valve is open,
   // which is what settling uses.
   void integrate(double dt, const std::unordered_set<Id>* engagedSwitches);
+
+  // The implicit step (#1130), for an organ with a compartment the explicit
+  // step cannot resolve: one whose own time constant is under what the
+  // smallest step follows. Each step solves for the pressures at its end,
+  // where every compartment's air balances what flowed in and out over the
+  // step, with each moving board taking its share and each valve a board
+  // drives open as far as the board stands at the end of the step. Newton's
+  // method with a line search finds it at any step length. On the Rotterdam
+  // Transept the explicit step's own flow limit held each bellows' fill to a
+  // tenth of what its feeders carry, and each chest to well under the
+  // pressure its bellows held. Every other organ keeps the explicit step.
+  bool implicit_ = false;
+  void implicitStep(double dt);
+  // The step's working storage, sized at reset: nothing allocates in play.
+  // Per resolved link: its flow at reference, 0 when shut, before the opening
+  // of a valve its board drives, which the step solves with the board.
+  std::vector<double> impFlow_;
+  // Every compartment is an unknown; one a settle holds solves to no change.
+  // The slope matrix is factored in an order that keeps its fill small: the
+  // wind system is close to a tree, so the factor is close to as sparse as
+  // the links. impPos_ is each compartment's place in that order; impLower_
+  // the factor's pattern, per row, the earlier columns it holds, ascending;
+  // impUpper_ the same pattern from the other side, the later columns.
+  std::vector<int> impPos_;
+  std::vector<std::vector<int>> impLower_, impUpper_;
+  std::vector<double> impP0_, impH_, impR_, impStep_, impBase_;
+  void impOrder();
+  std::vector<int> impBoardAt_;  // per compartment: its board, or -1
+  std::vector<double> impBoardA_, impBoardB_;  // per board: du = a + b p
+  std::vector<int> impBoardHeld_;              // per board: 0 free, -1 at its bottom, 1 at its top
+  // The balance at the pressures in order_: per unknown, the air short of
+  // balance in kg over the step, into impR_; with `jacobian`, its slope into
+  // impH_. Returns the largest shortfall.
+  double impResidual(double dt, bool jacobian);
+  // Each board's share as a function of its compartment's pressure, from
+  // where it stands and whether it is held at an end of its travel.
+  void impBoardTerms(double dt);
+  bool impSolve(double dt);
   // Find each compartment's working pressure by running the system empty. A
   // windchest does not declare one — see the .cpp.
   void settle(const std::unordered_set<Id>* engagedSwitches = nullptr);

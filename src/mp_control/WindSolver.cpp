@@ -169,7 +169,14 @@ void WindSolver::resetBoards(const OrganModel& model) {
       const double a = area * wc.bellowsLengthM * 0.5;
       const double q = wc.bellowsHingeDistanceM;
       b.travelM3 = area * wc.bellowsExtensionM * 0.5;
-      b.regulatedInches = wc.bellowsGravityMassKg * kGravity * q / a / kPaPerInch;
+      // The pressure the board holds is the one the sets reference their
+      // links to: 2 m g q cos(asin(extension / length)) / area. It matches
+      // every hinged board in the sets at hand to three digits (St. Maximin,
+      // Burton-Berlin Hill, the Rotterdam Transept). The torque balance
+      // m g q / a reads 2.5 to 3 times lower (#1130).
+      const double opened = std::min(1.0, wc.bellowsExtensionM / wc.bellowsLengthM);
+      b.regulatedInches =
+          2.0 * wc.bellowsGravityMassKg * kGravity * q * std::cos(std::asin(opened)) / area / kPaPerInch;
       b.massPerInch = inertia * q * q / (kPaPerInch * a * a);
     } else {
       // Rising flat: it displaces area * height.
@@ -209,6 +216,23 @@ void WindSolver::resetBoards(const OrganModel& model) {
           break;
         }
     }
+  }
+
+  // A board that opens its own intake as it falls is a regulator: the board,
+  // the air under it and the valve close a loop, and at the sets' damping
+  // figures that loop hunts. Burton-Berlin Hill's boards ring near 12 Hz on
+  // their air with a thirtieth of critical damping, and under a steady draw
+  // the chests swung from half to one and a half times their pressure ten
+  // times a second. A tenth of critical
+  // damping, on its own ring against its own air, holds every such board;
+  // a set that damps its board harder keeps its figure.
+  constexpr double kRegulatorDampingRatio = 0.1;
+  for (size_t k = 0; k < boardValve_.size(); ++k) {
+    if (boardValve_[k] < 0) continue;
+    Board& b = boards_[static_cast<size_t>(boardValve_[k])];
+    const double volume = b.fixedVolumeM3 + 0.5 * b.travelM3;
+    const double ring = std::sqrt(kAtmInches / volume / b.massPerInch);
+    b.dampRate = std::max(b.dampRate, 2.0 * kRegulatorDampingRatio * ring);
   }
 }
 
@@ -639,7 +663,27 @@ void WindSolver::chooseStep() {
   // A floor, because an organ that needs a microsecond step cannot be
   // integrated under the player's hands and the honest answer is a coarser
   // model, not a hung audio thread.
-  maxStep_ = std::clamp(smallest, 5.0e-6, 0.002);
+  constexpr double kFloor = 5.0e-6;
+  maxStep_ = std::clamp(smallest, kFloor, 0.002);
+  // Under the floor, the implicit step (#1130), at a length that follows the
+  // boards and the player's hands, whatever the compartments' own speed.
+  implicit_ = smallest < kFloor;
+  const size_t n = order_.size();
+  if (implicit_) {
+    maxStep_ = 5.0e-4;
+    impFlow_.assign(resolved_.size(), 0.0);
+    impOrder();
+    impP0_.assign(n, 0.0);
+    impH_.assign(n * n, 0.0);
+    impR_.assign(n, 0.0);
+    impStep_.assign(n, 0.0);
+    impBase_.assign(n, 0.0);
+    impBoardAt_.assign(n, -1);
+    for (size_t i = 0; i < boards_.size(); ++i) impBoardAt_[static_cast<size_t>(boards_[i].at)] = static_cast<int>(i);
+    impBoardA_.assign(boards_.size(), 0.0);
+    impBoardB_.assign(boards_.size(), 0.0);
+    impBoardHeld_.assign(boards_.size(), 0);
+  }
 }
 
 void WindSolver::settleWith(const std::unordered_set<Id>& engagedSwitches) {
@@ -1220,8 +1264,339 @@ void WindSolver::readValves(const std::unordered_set<Id>* engagedSwitches) {
   }
 }
 
+void WindSolver::impBoardTerms(double dt) {
+  // A board's velocity at the end of the step is linear in its compartment's
+  // pressure then, so the volume it sweeps over the step is du = a + b p, and
+  // b is the extra air the compartment takes per inch while the board rides.
+  // Held at an end of its travel, it sweeps a fixed amount: up to that end.
+  for (size_t i = 0; i < boards_.size(); ++i) {
+    const Board& b = boards_[i];
+    const State& st = order_[static_cast<size_t>(b.at)];
+    double damp = b.dampRate;
+    if (settlingBoards_) damp = std::max(damp, 2.0 * std::sqrt(kAtmInches / st.volumeM3 / b.massPerInch));
+    const double held = impBoardHeld_[i];
+    if (held < 0) {
+      impBoardA_[i] = -b.u;
+      impBoardB_[i] = 0.0;
+    } else if (held > 0) {
+      impBoardA_[i] = b.travelM3 - b.u;
+      impBoardB_[i] = 0.0;
+    } else {
+      const double k = dt / (1.0 + damp * dt);
+      impBoardA_[i] = k * (b.uDot - b.regulatedInches / b.massPerInch * dt);
+      impBoardB_[i] = k * dt / b.massPerInch;
+    }
+  }
+}
+
+void WindSolver::impOrder() {
+  // A minimum-degree order on the links' graph, and the factor's pattern from
+  // eliminating in it: each compartment taken out joins the neighbours it
+  // leaves. Once, at load; small, since the graph is close to a tree.
+  const size_t n = order_.size();
+  std::vector<char> adj(n * n, 0);
+  const auto join = [&](int a, int b) {
+    if (a < 0 || b < 0 || a == b) return;
+    adj[static_cast<size_t>(a) * n + static_cast<size_t>(b)] = 1;
+    adj[static_cast<size_t>(b) * n + static_cast<size_t>(a)] = 1;
+  };
+  for (size_t k = 0; k < resolved_.size(); ++k) {
+    const ResolvedLink& r = resolved_[k];
+    join(r.a, r.b);
+    // A valve its board drives: the link's flow answers the board's pressure.
+    if (!boardValve_.empty() && boardValve_[k] >= 0) {
+      const int at = boards_[static_cast<size_t>(boardValve_[k])].at;
+      join(r.a, at);
+      join(r.b, at);
+    }
+  }
+  std::vector<char> gone(n, 0);
+  impPos_.assign(n, -1);
+  std::vector<size_t> near;
+  for (size_t s = 0; s < n; ++s) {
+    size_t best = n, bestDegree = n + 1;
+    for (size_t i = 0; i < n; ++i) {
+      if (gone[i]) continue;
+      size_t d = 0;
+      for (size_t j = 0; j < n; ++j) d += (!gone[j] && adj[i * n + j]) ? 1 : 0;
+      if (d < bestDegree) best = i, bestDegree = d;
+    }
+    impPos_[best] = static_cast<int>(s);
+    gone[best] = 1;
+    near.clear();
+    for (size_t j = 0; j < n; ++j)
+      if (!gone[j] && adj[best * n + j]) near.push_back(j);
+    for (const size_t a : near)
+      for (const size_t b : near)
+        if (a != b) adj[a * n + b] = 1;
+  }
+  impLower_.assign(n, {});
+  for (size_t i = 0; i < n; ++i)
+    for (size_t j = 0; j < n; ++j)
+      if (adj[i * n + j] && impPos_[j] < impPos_[i])
+        impLower_[static_cast<size_t>(impPos_[i])].push_back(impPos_[j]);
+  for (auto& row : impLower_) std::sort(row.begin(), row.end());
+  impUpper_.assign(n, {});
+  for (size_t r = 0; r < n; ++r)
+    for (const int c : impLower_[r]) impUpper_[static_cast<size_t>(c)].push_back(static_cast<int>(r));
+  for (auto& row : impUpper_) std::sort(row.begin(), row.end());
+}
+
+double WindSolver::impResidual(double dt, bool jacobian) {
+  const size_t n = order_.size();
+  for (size_t j = 0; j < n; ++j) {
+    const size_t v = static_cast<size_t>(impPos_[j]);
+    if (jacobian) {
+      for (const int c : impLower_[v]) impH_[v * n + static_cast<size_t>(c)] = 0.0;
+      for (const int c : impUpper_[v]) impH_[v * n + static_cast<size_t>(c)] = 0.0;
+    }
+    // Held by a settle: solved to no change.
+    if (!pinned_.empty() && pinned_[j]) {
+      impR_[v] = 0.0;
+      if (jacobian) impH_[v * n + v] = 1.0;
+      continue;
+    }
+    const State& st = order_[j];
+    const double c = st.volumeM3 / kInchesPerKgPerM3;
+    impR_[v] = -c * (st.pressure - impP0_[j]);
+    double diag = c;
+    // Out through the pipes standing on it, as the explicit step draws them.
+    if (st.demandKgPerSec > 0.0) {
+      const double ratio = st.nominalInches > 0.0 ? std::max(0.0, st.pressure / st.nominalInches) : 1.0;
+      impR_[v] -= dt * st.demandKgPerSec * std::sqrt(ratio);
+      if (st.nominalInches > 0.0)
+        diag += dt * st.demandKgPerSec * 0.5 / std::sqrt(std::max(ratio, 1.0e-12)) / st.nominalInches;
+    }
+    const int bi = impBoardAt_[j];
+    if (bi >= 0) {
+      const double share = kAtmInches / kInchesPerKgPerM3;
+      impR_[v] -= share * (impBoardA_[static_cast<size_t>(bi)] + impBoardB_[static_cast<size_t>(bi)] * st.pressure);
+      diag += share * impBoardB_[static_cast<size_t>(bi)];
+    }
+    if (jacobian) impH_[v * n + v] = diag;
+  }
+  const auto unknown = [this](int j) {
+    return j >= 0 && (pinned_.empty() || !pinned_[static_cast<size_t>(j)]) ? impPos_[static_cast<size_t>(j)] : -1;
+  };
+  for (size_t k = 0; k < resolved_.size(); ++k) {
+    const double f = impFlow_[k];
+    if (f <= 0.0) continue;
+    const ResolvedLink& r = resolved_[k];
+    const double ref = links_[r.link].refPressureInches;
+    const double pa = r.a >= 0 ? order_[static_cast<size_t>(r.a)].pressure : r.fixedA;
+    const double pb = r.b >= 0 ? order_[static_cast<size_t>(r.b)].pressure : r.fixedB;
+    const double d = pa - pb;
+    // The square-root law, with a smooth core under a hundred-thousandth of
+    // an inch: a cubic that meets it in value and slope there. The law's
+    // slope has no bound at zero, and Newton's method stalls at a corner;
+    // the core moves no pressure by more than its own width.
+    constexpr double kCore = 1.0e-5;
+    const double scale = dt * f / std::sqrt(ref);
+    const double ad = std::abs(d);
+    double air, slope;
+    if (ad >= kCore) {
+      const double root = std::sqrt(ad);
+      air = scale * (d < 0.0 ? -root : root);
+      slope = scale * 0.5 / root;
+    } else {
+      const double k = 1.0 / std::sqrt(kCore);
+      const double q = d * d / (kCore * kCore);
+      air = scale * k * d * (1.25 - 0.25 * q);
+      slope = scale * k * (1.25 - 0.75 * q);
+    }
+    // A valve its board drives opens as the board stands at the end of the
+    // step, which moves with the board's own pressure: the valve keeps step
+    // with its board at any step length.
+    double open = 1.0, openSlope = 0.0;
+    int vbc = -1;
+    if (!boardValve_.empty() && boardValve_[k] >= 0) {
+      const size_t bi = static_cast<size_t>(boardValve_[k]);
+      const Board& b = boards_[bi];
+      const double pbc = order_[static_cast<size_t>(b.at)].pressure;
+      const double uFree = b.u + impBoardA_[bi] + impBoardB_[bi] * pbc;
+      const double u = std::clamp(uFree, 0.0, b.travelM3);
+      const ContinuousControlLinkage& l = boardValveLink_[k];
+      const double raw = l.apply(b.travelM3 > 0.0 ? 127.0 * u / b.travelM3 : 0.0);
+      open = std::clamp(raw, 0.0, 127.0) / 127.0;
+      const bool free = raw > 0.0 && raw < 127.0 && uFree > 0.0 && uFree < b.travelM3;
+      if (free) openSlope = (l.invert ? -1.0 : 1.0) * l.coefficient / b.travelM3 * impBoardB_[bi];
+      vbc = unknown(b.at);
+    }
+    const int va = unknown(r.a);
+    const int vb = unknown(r.b);
+    if (va >= 0) impR_[static_cast<size_t>(va)] -= air * open;
+    if (vb >= 0) impR_[static_cast<size_t>(vb)] += air * open;
+    if (!jacobian) continue;
+    const double s = slope * open;
+    if (va >= 0) impH_[static_cast<size_t>(va) * n + static_cast<size_t>(va)] += s;
+    if (vb >= 0) impH_[static_cast<size_t>(vb) * n + static_cast<size_t>(vb)] += s;
+    if (va >= 0 && vb >= 0 && va != vb) {
+      impH_[static_cast<size_t>(va) * n + static_cast<size_t>(vb)] -= s;
+      impH_[static_cast<size_t>(vb) * n + static_cast<size_t>(va)] -= s;
+    }
+    if (vbc >= 0 && openSlope != 0.0) {
+      if (va >= 0) impH_[static_cast<size_t>(va) * n + static_cast<size_t>(vbc)] += air * openSlope;
+      if (vb >= 0) impH_[static_cast<size_t>(vb) * n + static_cast<size_t>(vbc)] -= air * openSlope;
+    }
+  }
+  double worst = 0.0;
+  for (size_t v = 0; v < n; ++v) worst = std::max(worst, std::abs(impR_[v]));
+  return worst;
+}
+
+bool WindSolver::impSolve(double dt) {
+  // Newton's method on the step's balance: each compartment's air goes as its
+  // pressure, each link's flow only grows with its difference, each board's
+  // share is linear, and a board's valve opens with the board's pressure. A
+  // step that does not shrink the imbalance is halved until it does.
+  const size_t n = order_.size();
+  if (n == 0) return true;
+  for (int it = 0; it < 12; ++it) {
+    impResidual(dt, true);
+    double before = 0.0;
+    for (size_t v = 0; v < n; ++v) before += impR_[v] * impR_[v];
+    // LU in place, row by row, over the factor's pattern only. The diagonal
+    // carries each compartment's own air and every link's slope on it, and
+    // outweighs the row's other entries, so no pivoting is needed.
+    for (size_t r = 0; r < n; ++r) {
+      for (const int ci : impLower_[r]) {
+        const size_t c = static_cast<size_t>(ci);
+        const double m = impH_[r * n + c] / impH_[c * n + c];
+        impH_[r * n + c] = m;
+        for (const int j : impUpper_[c]) impH_[r * n + static_cast<size_t>(j)] -= m * impH_[c * n + static_cast<size_t>(j)];
+      }
+      const double d = impH_[r * n + r];
+      if (!(std::abs(d) > 0.0) || !std::isfinite(d)) return false;
+    }
+    for (size_t r = 0; r < n; ++r) {
+      double s = impR_[r];
+      for (const int c : impLower_[r]) s -= impH_[r * n + static_cast<size_t>(c)] * impStep_[static_cast<size_t>(c)];
+      impStep_[r] = s;
+    }
+    for (size_t r = n; r-- > 0;) {
+      double s = impStep_[r];
+      for (const int c : impUpper_[r]) s -= impH_[r * n + static_cast<size_t>(c)] * impStep_[static_cast<size_t>(c)];
+      impStep_[r] = s / impH_[r * n + r];
+    }
+    double longest = 0.0;
+    for (size_t v = 0; v < n; ++v) longest = std::max(longest, std::abs(impStep_[v]));
+    if (!std::isfinite(longest)) return false;
+    // Converged: a step this short moves nothing anyone could hear.
+    constexpr double kDone = 1.0e-8;
+    if (longest < kDone) {
+      for (size_t j = 0; j < n; ++j) order_[j].pressure += impStep_[static_cast<size_t>(impPos_[j])];
+      return true;
+    }
+    for (size_t j = 0; j < n; ++j) impBase_[j] = order_[j].pressure;
+    const auto along = [&](double t) {
+      for (size_t j = 0; j < n; ++j)
+        order_[j].pressure = impBase_[j] + t * impStep_[static_cast<size_t>(impPos_[j])];
+      impResidual(dt, false);
+      double s = 0.0;
+      for (size_t v = 0; v < n; ++v) s += impR_[v] * impR_[v];
+      return s;
+    };
+    // The full step when it shrinks the imbalance enough, as it almost always
+    // does; otherwise halved until it does.
+    double t = 1.0;
+    for (int h = 0; h < 8 && along(t) > (1.0 - 2.0e-4 * t) * before; ++h) t *= 0.5;
+    if (t * longest < kDone) return true;
+  }
+  return true;
+}
+
+void WindSolver::implicitStep(double dt) {
+  // Each link's flow at reference as the explicit step has it this step: shut
+  // valves carry nothing, the rest drift, follow their board or their control.
+  for (size_t k = 0; k < resolved_.size(); ++k) {
+    const WindCompartmentLink& link = links_[resolved_[k].link];
+    impFlow_[k] = 0.0;
+    if (relayRunning_ && relayValve_[k] >= 0) {
+      if (relaySwitches_[static_cast<size_t>(relayValve_[k])].on != link.valveOpenWhenEngaged) continue;
+    } else if (k < valveOpen_.size() && !valveOpen_[k]) {
+      continue;
+    }
+    // A board's valve opens in the solve itself, from where the board ends.
+    double mul = driftFlow_ && k < linkFlowMul_.size() ? linkFlowMul_[k] : 1.0;
+    if (!settling_ && k < linkOpening_.size()) mul *= linkOpening_[k];
+    if (link.refPressureInches > 0.0) impFlow_[k] = std::max(0.0, link.massFlowKgPerSec * mul);
+  }
+  for (size_t j = 0; j < order_.size(); ++j) impP0_[j] = order_[j].pressure;
+  // A board starts the step held at an end it rests on and is pressed into.
+  for (size_t i = 0; i < boards_.size(); ++i) {
+    const Board& b = boards_[i];
+    const double force = order_[static_cast<size_t>(b.at)].pressure - b.regulatedInches;
+    impBoardHeld_[i] = (b.u <= 0.0 && b.uDot <= 0.0 && force <= 0.0) ? -1
+                       : (b.u >= b.travelM3 && b.uDot >= 0.0 && force >= 0.0) ? 1 : 0;
+  }
+  // Solved, then each board checked against its travel: one that ran past an
+  // end is held there, one held but pulled away is let go, and the step is
+  // solved again. Two rounds settle every case met.
+  bool solved = true;
+  for (int round = 0; round < 4; ++round) {
+    for (size_t j = 0; j < order_.size(); ++j) order_[j].pressure = impP0_[j];
+    impBoardTerms(dt);
+    solved = impSolve(dt);
+    bool changed = false;
+    for (size_t i = 0; i < boards_.size(); ++i) {
+      const Board& b = boards_[i];
+      const double p = order_[static_cast<size_t>(b.at)].pressure;
+      if (impBoardHeld_[i] == 0) {
+        const double u = b.u + impBoardA_[i] + impBoardB_[i] * p;
+        if (u < 0.0) impBoardHeld_[i] = -1, changed = true;
+        else if (u > b.travelM3) impBoardHeld_[i] = 1, changed = true;
+      } else {
+        const double force = p - b.regulatedInches;
+        if ((impBoardHeld_[i] < 0 && force > 0.0) || (impBoardHeld_[i] > 0 && force < 0.0)) {
+          // Let go only when the free board would move away from the end.
+          State& st = order_[static_cast<size_t>(b.at)];
+          double damp = b.dampRate;
+          if (settlingBoards_) damp = std::max(damp, 2.0 * std::sqrt(kAtmInches / st.volumeM3 / b.massPerInch));
+          const double k = dt / (1.0 + damp * dt);
+          const double du = k * (b.uDot + force / b.massPerInch * dt);
+          if ((impBoardHeld_[i] < 0 && du > 0.0) || (impBoardHeld_[i] > 0 && du < 0.0))
+            impBoardHeld_[i] = 0, changed = true;
+        }
+      }
+    }
+    if (!changed) break;
+  }
+  if (!solved) {
+    // A step the solve could not take: the pressures as they were, and the
+    // boards held where they stand.
+    for (size_t j = 0; j < order_.size(); ++j) order_[j].pressure = impP0_[j];
+  }
+  for (size_t i = 0; i < boards_.size(); ++i) {
+    Board& b = boards_[i];
+    State& st = order_[static_cast<size_t>(b.at)];
+    const double du = solved ? impBoardA_[i] + impBoardB_[i] * st.pressure : 0.0;
+    double u = std::clamp(b.u + du, 0.0, b.travelM3);
+    if (impBoardHeld_[i] != 0) {
+      u = impBoardHeld_[i] < 0 ? 0.0 : b.travelM3;
+      b.uDot = 0.0;
+    } else {
+      b.uDot = du / dt;
+    }
+    if (!std::isfinite(u) || !std::isfinite(b.uDot)) {
+      u = b.u;
+      b.uDot = 0.0;
+    }
+    b.u = u;
+    st.volumeM3 = b.fixedVolumeM3 + u;
+  }
+  for (State& st : order_) {
+    if (!std::isfinite(st.pressure)) st.pressure = st.nominalInches;
+    constexpr double kAbsurdInches = 100.0;
+    st.pressure = std::clamp(st.pressure, 0.0, std::max(st.nominalInches * 4.0, kAbsurdInches));
+  }
+}
+
 void WindSolver::integrate(double dt,
                            const std::unordered_set<Id>* engagedSwitches) {
+  if (implicit_) {
+    implicitStep(dt);
+    return;
+  }
   // Out through the pipes standing on each chest. A chest that has already
   // sagged feeds its pipes less, which is the feedback that keeps this stable.
   for (State& st : order_) {

@@ -209,9 +209,10 @@ public:
     std::printf("    blocks of 64 and 192: at most %.5f in apart\n", apart);
     MP_CHECK(apart < 0.01, "blocks of 64 and 192 alike throughout: " + num(apart));
 
-    // A hinged board: its weight acts at its centre of mass, q from the
-    // hinge, against the pressure's turn about the hinge: p = m g q / (A L / 2).
-    const double hingedKg = 3.0 * kPaPerInch * 2.25 * 1.5 / 2.0 / 9.81 / 1.2;
+    // A hinged board holds the pressure the sets reference their links to:
+    // p = 2 m g q cos(asin(extension / length)) / A (#1130).
+    const double opened = std::cos(std::asin(0.4 / 1.5));
+    const double hingedKg = 3.0 * kPaPerInch * 2.25 / (2.0 * 9.81 * 1.2 * opened);
     const Trace hinged = play(reservoirOrgan(2, hingedKg), true);
     std::printf("    hinged: reservoir %.4f in, board at %.1f\n", hinged.nominalRes, hinged.extension);
     MP_CHECK(std::abs(hinged.nominalRes - 3.0) < 0.03, "a hinged board holds 3 inches: " + num(hinged.nominalRes));
