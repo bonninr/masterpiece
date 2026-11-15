@@ -268,7 +268,14 @@ bool hasDrawnManuals(const OrganModel& model);
 // past the validator degrades to a stale value instead of hanging the engine.
 class ContinuousControlBank {
 public:
-  void reset(const OrganModel& model);
+  // The timed linkages into the controls in waitForTime act only in time:
+  // a settle before setTimed(true) leaves those controls at their defaults,
+  // and once timed they move from there as the organ has them move. The
+  // Rotterdam Transept staggers its eleven bellows with a start-up ramp of
+  // eleven seconds; settled at once, every inlet opened together, the
+  // bellows ran in step and all of them were empty at the same moment
+  // (#1121).
+  void reset(const OrganModel& model, const std::unordered_set<Id>* waitForTime = nullptr);
 
   // Set a control from MIDI or the UI. Out-of-range input is clamped to the
   // control's declared range, never wrapped.
@@ -279,8 +286,17 @@ public:
   // gauge is 63.5 at rest and 65.5 at its 4 inch working pressure, and its
   // delay ramp is (gauge - 63.5) * 63.5: read in whole steps, 65.5 became 65
   // and the ramp stopped at 95 of 127 (#546).
-  void setExact(Id controlId, double value);
+  //
+  // The graph is woken when the step changes, or when the reading has moved
+  // by wakeStep since it last woke it. A gauge whose linkages open a wind
+  // valve passes a wakeStep of 0: Rotterdam's non-return valves open on the
+  // komurka gauge minus the trunk gauge times 10000, and a chain woken every
+  // eighth of a step (a quarter inch of wind) left them shut (#1121).
+  void setExact(Id controlId, double value, double wakeStep = 1.0 / 8.0);
   int value(Id controlId) const;
+  // What a linkage reads from the control: the reading between two steps
+  // when it holds one, the step otherwise. 0 for an unknown control.
+  double readingOf(Id controlId) const;
   // Position within the control's own min..max, as 0..1. Returns 0 for an
   // unknown control. Honours the ODF's inverted flag, so a reversed shoe
   // reads 1.0 when it is open, like every other shoe.
@@ -351,6 +367,8 @@ private:
     bool carriesChange = false;
     // Index into motions_ for a timed linkage, -1 for one that acts at once.
     int32_t motion = -1;
+    // A timed linkage that does nothing until the bank is timed (reset()).
+    bool waitsForTime = false;
     const ContinuousControlLinkage* link = nullptr;
   };
   // Where a timed linkage's destination is and is going.
@@ -367,6 +385,7 @@ private:
   std::vector<Motion> motions_;
   std::vector<int32_t> movingList_;
   bool timed_ = false;
+  bool anyWaitsForTime_ = false;
   void writeMotion(Motion& m, bool settled);
   struct DoubleLink {
     int32_t a = -1, b = -1, dst = -1;
@@ -415,6 +434,10 @@ private:
     const int v = static_cast<int>(scaled < 0.0 ? scaled - 0.5 : scaled + 0.5);
     return v < lo_[i] ? lo_[i] : (v > hi_[i] ? hi_[i] : v);
   }
+  // A linkage's answer written to its destination: the nearest step, as
+  // clampSlot() gives it, and when kept the answer itself between the steps.
+  // True when either changed.
+  bool writeLinked(int i, double scaled, bool keepExact);
 
   int clampToRange(const ContinuousControl& c, int v) const;
 };

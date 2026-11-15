@@ -2547,6 +2547,8 @@ private:
   // Compartments that report their pressure to a continuous control, and
   // which control: the console's wind gauges hang off these.
   std::vector<std::pair<Id, Id>> windGauges_;
+  // Parallel to windGauges_: the reading change that wakes the control graph.
+  std::vector<double> windGaugeWake_;
   // Moving reservoir boards and their extension output controls (#812).
   std::vector<std::pair<Id, Id>> windBoards_;
   std::unordered_map<Id, int> windIndexOf_;

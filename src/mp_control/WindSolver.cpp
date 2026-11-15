@@ -83,7 +83,8 @@ void WindSolver::reset(const OrganModel& model) {
   boards_.clear();
   boardValve_.clear();
   boardValveLink_.clear();
-  if (boardWanted_) resetBoards(model);
+  resetBoards(model);
+  resetRelay(model);
   resetControlValves(model);
   chooseStep();
   settle();
@@ -129,16 +130,27 @@ void WindSolver::resetControlValves(const OrganModel& model) {
   }
 }
 
-void WindSolver::setControlValve(size_t index, int value) {
+void WindSolver::setControlValve(size_t index, double value) {
   const ControlValve& v = controlValves_[index];
   linkOpening_[v.link] =
-      std::clamp(static_cast<double>(value - v.low) / static_cast<double>(v.high - v.low), 0.0, 1.0);
+      std::clamp((value - v.low) / static_cast<double>(v.high - v.low), 0.0, 1.0);
 }
 
 void WindSolver::resetBoards(const OrganModel& model) {
+  // With the option off, only the boards whose height switches a valve
+  // (#1121): such a reservoir has no wind without its board.
+  std::unordered_set<Id> switching;
+  if (!boardWanted_) {
+    for (const auto& [id, wc] : model.wind)
+      if (wc.hasBellows && wc.bellowsExtensionOutputControlId != 0 && indexOf(id) >= 0 &&
+          !relayReach(model, {wc.bellowsExtensionOutputControlId}).empty())
+        switching.insert(id);
+    if (switching.empty()) return;
+  }
   for (const auto& [id, wc] : model.wind) {
     const int at = indexOf(id);
     if (at < 0 || !wc.hasBellows) continue;
+    if (!boardWanted_ && switching.count(id) == 0) continue;
     const double area = wc.bellowsWidthM * wc.bellowsLengthM;
     const double inertia = wc.bellowsMassKg > 0.0 ? wc.bellowsMassKg : wc.bellowsGravityMassKg;
     // A board the file leaves without a weight, a frame or a travel stays
@@ -248,6 +260,310 @@ std::vector<std::pair<Id, Id>> WindSolver::extensionOutputs() const {
   for (const Board& b : boards_)
     if (b.outputControlId != 0) out.emplace_back(order_[static_cast<size_t>(b.at)].id, b.outputControlId);
   return out;
+}
+
+std::unordered_set<Id> WindSolver::relayReach(const OrganModel& model, const std::vector<Id>& extensions,
+                                              std::unordered_set<Id>* controlsOut,
+                                              std::unordered_set<Id>* switchesOut) {
+  // Everything a board's height can move without the player: the controls
+  // its linkages drive, or that a linkage drives while one of these switches
+  // holds its condition (the Transept's delay ramp); the switches their stage
+  // switches move; and the switches those reach through unconditional switch
+  // linkages.
+  std::unordered_set<Id> controls(extensions.begin(), extensions.end());
+  std::unordered_set<Id> switches;
+  for (bool grew = true; grew;) {
+    grew = false;
+    for (const ContinuousControlStageSwitch& st : model.controlStageSwitches)
+      if (controls.count(st.controlId) != 0 && switches.insert(st.controlledSwitchId).second) grew = true;
+    for (const SwitchLinkage& l : model.switchLinkages)
+      if (l.conditionSwitchId == 0 && switches.count(l.sourceSwitchId) != 0 &&
+          switches.insert(l.destSwitchId).second)
+        grew = true;
+    for (const ContinuousControlLinkage& l : model.controlLinkages)
+      if ((controls.count(l.sourceControlId) != 0 ||
+           (l.conditionSwitchId != 0 && switches.count(l.conditionSwitchId) != 0)) &&
+          controls.insert(l.destControlId).second)
+        grew = true;
+  }
+  std::unordered_set<Id> valves;
+  for (const WindCompartmentLink& link : model.windLinks)
+    if (link.valveSwitchId != 0 && switches.count(link.valveSwitchId) != 0) valves.insert(link.valveSwitchId);
+  if (controlsOut != nullptr) *controlsOut = std::move(controls);
+  if (switchesOut != nullptr) *switchesOut = std::move(switches);
+  return valves;
+}
+
+std::unordered_set<Id> WindSolver::relayStartControls(const OrganModel& model) {
+  std::vector<Id> extensions;
+  for (const auto& [id, wc] : model.wind)
+    if (wc.hasBellows && wc.bellowsExtensionOutputControlId != 0)
+      extensions.push_back(wc.bellowsExtensionOutputControlId);
+  std::unordered_set<Id> start;
+  if (extensions.empty()) return start;
+  std::unordered_set<Id> chainControls, chainSwitches;
+  if (relayReach(model, extensions, &chainControls, &chainSwitches).empty()) return start;
+  for (const ContinuousControlStageSwitch& st : model.controlStageSwitches)
+    if (chainSwitches.count(st.controlledSwitchId) != 0 && chainControls.count(st.controlId) == 0)
+      start.insert(st.controlId);
+  for (bool grew = !start.empty(); grew;) {
+    grew = false;
+    for (const ContinuousControlLinkage& l : model.controlLinkages)
+      if (start.count(l.destControlId) != 0 && chainControls.count(l.sourceControlId) == 0 &&
+          start.insert(l.sourceControlId).second)
+        grew = true;
+    for (const ContinuousControlDoubleLinkage& l : model.controlDoubleLinkages)
+      if (start.count(l.destControlId) != 0)
+        for (const Id src : {l.firstControlId, l.secondControlId})
+          if (chainControls.count(src) == 0 && start.insert(src).second) grew = true;
+  }
+  return start;
+}
+
+void WindSolver::resetRelay(const OrganModel& model) {
+  relayControls_.clear();
+  relayFeeds_.clear();
+  relayLinks_.clear();
+  relaySwitches_.clear();
+  relaySwitchIndex_.clear();
+  relayInputIds_.clear();
+  relayOwned_.clear();
+  relayInputs_.clear();
+  relayValve_.clear();
+  relayPrimed_ = false;
+  if (boards_.empty()) return;
+  std::vector<Id> extensions;
+  for (const Board& b : boards_)
+    if (b.outputControlId != 0) extensions.push_back(b.outputControlId);
+  std::unordered_set<Id> controlSet, switchSet;
+  if (relayReach(model, extensions, &controlSet, &switchSet).empty()) return;
+
+  // In id order, so that a run is the same every time.
+  std::vector<Id> switchIds(switchSet.begin(), switchSet.end());
+  std::sort(switchIds.begin(), switchIds.end());
+  for (const Id id : switchIds) {
+    relaySwitchIndex_[id] = static_cast<int>(relaySwitches_.size());
+    RelaySwitch s;
+    s.id = id;
+    relaySwitches_.push_back(s);
+  }
+  std::vector<Id> controlIds(controlSet.begin(), controlSet.end());
+  std::sort(controlIds.begin(), controlIds.end());
+  std::unordered_map<Id, int> controlIndex;
+  for (const Id id : controlIds) {
+    RelayControl c;
+    c.id = id;
+    const auto it = model.continuousControls.find(id);
+    if (it != model.continuousControls.end()) {
+      c.lo = std::min(it->second.minValue, it->second.maxValue);
+      c.hi = std::max(it->second.minValue, it->second.maxValue);
+      c.start = std::clamp(it->second.defaultValue, c.lo, c.hi);
+    }
+    for (size_t j = 0; j < boards_.size(); ++j)
+      if (boards_[j].outputControlId == id) c.board = static_cast<int>(j);
+    controlIndex[id] = static_cast<int>(relayControls_.size());
+    relayControls_.push_back(c);
+    relayOwned_.insert(id);
+  }
+  for (const ContinuousControlStageSwitch& st : model.controlStageSwitches) {
+    const auto c = controlIndex.find(st.controlId);
+    if (c == controlIndex.end()) continue;
+    RelayRow row;
+    row.threshold = st.value;
+    row.sw = relaySwitchIndex_.at(st.controlledSwitchId);
+    row.engageUp = st.engageWhenIncreasing;
+    row.engageDown = st.engageWhenDecreasing;
+    row.disengageUp = st.disengageWhenIncreasing;
+    row.disengageDown = st.disengageWhenDecreasing;
+    relayControls_[static_cast<size_t>(c->second)].rows.push_back(row);
+  }
+  for (RelayControl& c : relayControls_)
+    std::stable_sort(c.rows.begin(), c.rows.end(),
+                     [](const RelayRow& a, const RelayRow& b) { return a.threshold < b.threshold; });
+
+  // The linkages within the chain. One whose source is outside it reads that
+  // control as the caller passes it in; one whose condition is outside it is
+  // left to the caller, as is anything driving a board's own height.
+  for (const ContinuousControlLinkage& l : model.controlLinkages) {
+    const auto dst = controlIndex.find(l.destControlId);
+    if (dst == controlIndex.end() || relayControls_[static_cast<size_t>(dst->second)].board >= 0) continue;
+    RelayFeed f;
+    f.dst = dst->second;
+    f.link = l;
+    if (l.conditionSwitchId != 0) {
+      const auto s = relaySwitchIndex_.find(l.conditionSwitchId);
+      if (s == relaySwitchIndex_.end()) continue;
+      f.condition = s->second;
+      f.whenEngaged = l.conditionWhenEngaged;
+    }
+    const auto src = controlIndex.find(l.sourceControlId);
+    if (src != controlIndex.end()) {
+      f.source = src->second;
+    } else {
+      if (f.condition < 0) continue;  // wholly outside the chain
+      const auto known = std::find(relayInputIds_.begin(), relayInputIds_.end(), l.sourceControlId);
+      f.input = static_cast<int>(known - relayInputIds_.begin());
+      if (known == relayInputIds_.end()) {
+        relayInputIds_.push_back(l.sourceControlId);
+        const auto it = model.continuousControls.find(l.sourceControlId);
+        relayInputs_.push_back(it != model.continuousControls.end() ? it->second.defaultValue : 0);
+      }
+    }
+    // A lag is followed here; an inertia model acts at once.
+    if (l.linkType == 2 && l.willisMsPerStep > 0.0) f.tau = l.willisMsPerStep / 1000.0;
+    const int at = static_cast<int>(relayFeeds_.size());
+    if (f.source >= 0) relayControls_[static_cast<size_t>(f.source)].feeds.push_back(at);
+    if (f.condition >= 0) relaySwitches_[static_cast<size_t>(f.condition)].feeds.push_back(at);
+    relayFeeds_.push_back(f);
+  }
+  for (const SwitchLinkage& l : model.switchLinkages) {
+    if (l.conditionSwitchId != 0) continue;
+    const auto src = relaySwitchIndex_.find(l.sourceSwitchId);
+    const auto dst = relaySwitchIndex_.find(l.destSwitchId);
+    if (src == relaySwitchIndex_.end() || dst == relaySwitchIndex_.end()) continue;
+    RelayLink k;
+    k.dst = dst->second;
+    k.sourceWhenEngaged = l.sourceWhenEngaged;
+    k.engageAction = l.engageAction;
+    k.disengageAction = l.disengageAction;
+    relaySwitches_[static_cast<size_t>(src->second)].links.push_back(static_cast<int>(relayLinks_.size()));
+    relayLinks_.push_back(k);
+  }
+  relayValve_.assign(resolved_.size(), -1);
+  for (size_t k = 0; k < resolved_.size(); ++k) {
+    const auto s = relaySwitchIndex_.find(links_[resolved_[k].link].valveSwitchId);
+    if (s != relaySwitchIndex_.end()) relayValve_[k] = s->second;
+  }
+}
+
+void WindSolver::setRelayInput(size_t index, int value) {
+  if (index >= relayInputs_.size() || relayInputs_[index] == value) return;
+  relayInputs_[index] = value;
+  if (!relayPrimed_) return;
+  for (size_t f = 0; f < relayFeeds_.size(); ++f)
+    if (relayFeeds_[f].input == static_cast<int>(index)) applyRelayFeed(static_cast<int>(f), 0);
+}
+
+int WindSolver::relaySwitchState(Id switchId) const {
+  const auto it = relaySwitchIndex_.find(switchId);
+  return it == relaySwitchIndex_.end() ? -1 : (relaySwitches_[static_cast<size_t>(it->second)].on ? 1 : 0);
+}
+
+double WindSolver::relayFeedSource(const RelayFeed& f) const {
+  if (f.source >= 0) return relayControls_[static_cast<size_t>(f.source)].pos;
+  return f.input >= 0 ? relayInputs_[static_cast<size_t>(f.input)] : 0.0;
+}
+
+void WindSolver::primeRelay(const std::unordered_set<Id>& engagedSwitches) {
+  // The chain starts as the organ loads: the switches as the caller has them,
+  // each control at its own starting value. The first step then brings each
+  // board's height in from there, and the thresholds it crosses fire, as they
+  // do in the control layer when it first publishes the height: a board that
+  // settled at its top shuts its inlet.
+  for (RelaySwitch& s : relaySwitches_) s.on = s.outside = engagedSwitches.count(s.id) != 0;
+  for (RelayControl& c : relayControls_) {
+    c.pos = c.start;
+    c.moving = false;
+    c.engagedSwitch = -1;
+    c.step = static_cast<int>(std::ceil(std::clamp(c.pos, static_cast<double>(c.lo), static_cast<double>(c.hi)) - 0.5));
+  }
+  relayPrimed_ = true;
+  for (size_t f = 0; f < relayFeeds_.size(); ++f) applyRelayFeed(static_cast<int>(f), 0);
+}
+
+void WindSolver::applyRelayFeed(int fi, int depth) {
+  const RelayFeed& f = relayFeeds_[static_cast<size_t>(fi)];
+  if (f.condition >= 0 && relaySwitches_[static_cast<size_t>(f.condition)].on != f.whenEngaged) return;
+  RelayControl& c = relayControls_[static_cast<size_t>(f.dst)];
+  const double goal = std::clamp(f.link.apply(relayFeedSource(f)), static_cast<double>(c.lo),
+                                 static_cast<double>(c.hi));
+  if (f.tau > 0.0) {
+    // A lag starts from wherever the control stands, as the control layer's
+    // timed linkages do.
+    c.goal = goal;
+    c.tau = f.tau;
+    c.moving = true;
+    return;
+  }
+  c.moving = false;
+  moveRelayControl(f.dst, goal, depth + 1);
+}
+
+void WindSolver::moveRelayControl(int ci, double pos, int depth) {
+  // A chain that feeds itself back stops here instead of running away.
+  if (depth > 32) return;
+  RelayControl& c = relayControls_[static_cast<size_t>(ci)];
+  c.pos = std::clamp(pos, static_cast<double>(c.lo), static_cast<double>(c.hi));
+  // The nearest step, an exact half rounding down: what the control layer
+  // makes of the same reading.
+  const int to = static_cast<int>(std::ceil(c.pos - 0.5));
+  const int from = c.step;
+  if (to != from) {
+    c.step = to;
+    // The stage switches crossed, in the order the control met them, as the
+    // control layer's StageSwitchBank has them: arriving on a threshold
+    // counts, and an engaging row takes the control's last one out.
+    const bool rising = to > from;
+    const auto handle = [&](const RelayRow& row) {
+      const bool crossed = rising ? (from < row.threshold && row.threshold <= to)
+                                  : (to <= row.threshold && row.threshold < from);
+      if (!crossed) return;
+      if (rising ? row.engageUp : row.engageDown) {
+        if (c.engagedSwitch >= 0 && c.engagedSwitch != row.sw) setRelaySwitch(c.engagedSwitch, false, depth + 1);
+        relayControls_[static_cast<size_t>(ci)].engagedSwitch = row.sw;
+        setRelaySwitch(row.sw, true, depth + 1);
+      } else if (rising ? row.disengageUp : row.disengageDown) {
+        if (c.engagedSwitch == row.sw) relayControls_[static_cast<size_t>(ci)].engagedSwitch = -1;
+        setRelaySwitch(row.sw, false, depth + 1);
+      }
+    };
+    if (rising)
+      for (size_t r = 0; r < c.rows.size(); ++r) handle(relayControls_[static_cast<size_t>(ci)].rows[r]);
+    else
+      for (size_t r = c.rows.size(); r-- > 0;) handle(relayControls_[static_cast<size_t>(ci)].rows[r]);
+  }
+  for (const int f : relayControls_[static_cast<size_t>(ci)].feeds) applyRelayFeed(f, depth);
+}
+
+void WindSolver::setRelaySwitch(int si, bool on, int depth) {
+  if (depth > 32) return;
+  if (relaySwitches_[static_cast<size_t>(si)].on == on) return;
+  relaySwitches_[static_cast<size_t>(si)].on = on;
+  // The switch linkages as SwitchNetwork fires them: 1 and 4 engage, 2 and 7
+  // disengage, 3 flips on firing; a 2/7 wire takes nothing back when it stops.
+  for (const int li : relaySwitches_[static_cast<size_t>(si)].links) {
+    const RelayLink& l = relayLinks_[static_cast<size_t>(li)];
+    const bool fires = on == l.sourceWhenEngaged;
+    if (l.engageAction == 3) {
+      if (fires) setRelaySwitch(l.dst, !relaySwitches_[static_cast<size_t>(l.dst)].on, depth + 1);
+      continue;
+    }
+    if (!fires && l.engageAction == 2 && l.disengageAction == 7) continue;
+    const int action = fires ? l.engageAction : l.disengageAction;
+    if (action == 1 || action == 4) setRelaySwitch(l.dst, true, depth + 1);
+    else if (action == 2 || action == 7) setRelaySwitch(l.dst, false, depth + 1);
+  }
+  for (const int f : relaySwitches_[static_cast<size_t>(si)].feeds) applyRelayFeed(f, depth);
+}
+
+void WindSolver::stepRelay(double dt) {
+  for (size_t ci = 0; ci < relayControls_.size(); ++ci) {
+    RelayControl& c = relayControls_[ci];
+    if (c.board >= 0) {
+      const Board& b = boards_[static_cast<size_t>(c.board)];
+      moveRelayControl(static_cast<int>(ci), b.travelM3 > 0.0 ? 127.0 * b.u / b.travelM3 : 0.0);
+    } else if (c.moving) {
+      // A Willis lag, as ContinuousControlBank::advance moves it: an even
+      // ramp over the whole range in its time.
+      const double d = c.goal - c.pos, run = 127.0 * dt / c.tau;
+      double pos = std::fabs(d) <= run ? c.goal : c.pos + (d > 0.0 ? run : -run);
+      if (std::abs(pos - c.goal) < 1.0 / 64.0) {
+        pos = std::floor(c.goal + 0.5);
+        c.moving = false;
+      }
+      moveRelayControl(static_cast<int>(ci), pos);
+    }
+  }
 }
 
 void WindSolver::resolveLinks() {
@@ -447,12 +763,14 @@ void WindSolver::settleSolve(const std::unordered_set<Id>* engagedSwitches) {
 
   lastSweeps_ = 0;
   lastSteps_ = 0;
+  pinRelayBellows();
   if (directSettle_ && solveSteady(engagedSwitches)) {
     settleBoards(engagedSwitches);
     for (State& st : order_) {
       st.nominalInches = st.pressure;
       st.velocity = 0.0;
     }
+    pinned_.clear();
     debtSeconds_ = 0.0;
     return;
   }
@@ -481,6 +799,7 @@ void WindSolver::settleSolve(const std::unordered_set<Id>* engagedSwitches) {
       }
     }
     integrate(maxStep_, engagedSwitches);
+    holdPinned();
     ++lastSteps_;
     if (phase == kWindow - 1) {
       double swing = 0.0;
@@ -497,7 +816,36 @@ void WindSolver::settleSolve(const std::unordered_set<Id>* engagedSwitches) {
     st.nominalInches = st.pressure;
     st.velocity = 0.0;
   }
+  pinned_.clear();
   debtSeconds_ = 0.0;
+}
+
+void WindSolver::pinRelayBellows() {
+  // A bellows whose board switches its own inlet and exhaust (#1121) never
+  // rests open to the blower: its board shuts the inlet at the top and floats,
+  // and while it floats the air under it is at the pressure the board's
+  // weight makes. Settled with its inlet left open, it read the blower's
+  // pressure as the working one, and the chests behind it then read seventy
+  // percent down in play. Held at its board's pressure, the rest is solved
+  // around it. Empty, and nothing held, on every other organ.
+  pinned_.clear();
+  for (const RelayControl& c : relayControls_) {
+    if (c.board < 0) continue;
+    const Board& b = boards_[static_cast<size_t>(c.board)];
+    if (pinned_.empty()) pinned_.assign(order_.size(), 0);
+    pinned_[static_cast<size_t>(b.at)] = 1;
+    order_[static_cast<size_t>(b.at)].pressure = b.regulatedInches;
+  }
+}
+
+void WindSolver::holdPinned() {
+  if (pinned_.empty()) return;
+  for (const RelayControl& c : relayControls_) {
+    if (c.board < 0) continue;
+    Board& b = boards_[static_cast<size_t>(c.board)];
+    order_[static_cast<size_t>(b.at)].pressure = b.regulatedInches;
+    b.uDot = 0.0;
+  }
 }
 
 void WindSolver::settleBoards(const std::unordered_set<Id>* engagedSwitches) {
@@ -536,6 +884,7 @@ void WindSolver::settleBoards(const std::unordered_set<Id>* engagedSwitches) {
       hi[j] = std::max(hi[j], v);
     }
     integrate(maxStep_, engagedSwitches);
+    holdPinned();
     ++lastSteps_;
     if (phase == kWindow - 1) {
       double swing = 0.0;
@@ -608,6 +957,7 @@ bool WindSolver::solveSteady(const std::unordered_set<Id>* engagedSwitches) {
     for (size_t j = 0; j < order_.size(); ++j) {
       const auto& mine = ends[j];
       if (mine.empty()) continue;  // nothing reaches it: it stays as it is
+      if (!pinned_.empty() && pinned_[j]) continue;  // held where it works
       double lo = pressureAt(mine.front()), hi = lo;
       for (const End& e : mine) {
         lo = std::min(lo, pressureAt(e));
@@ -651,7 +1001,7 @@ bool WindSolver::solveSteady(const std::unordered_set<Id>* engagedSwitches) {
   std::vector<int> var(order_.size(), -1);
   std::vector<size_t> at;
   for (size_t j = 0; j < order_.size(); ++j)
-    if (!ends[j].empty()) {
+    if (!ends[j].empty() && (pinned_.empty() || !pinned_[j])) {
       var[j] = static_cast<int>(at.size());
       at.push_back(j);
     }
@@ -672,7 +1022,8 @@ bool WindSolver::solveSteady(const std::unordered_set<Id>* engagedSwitches) {
           const double slope =
               e.flowAtRef / (2.0 * std::sqrt(e.refDiff * std::max(std::abs(d), 1.0e-12)));
           h[v * n + v] += slope;
-          if (e.other >= 0) h[v * n + static_cast<size_t>(var[static_cast<size_t>(e.other)])] -= slope;
+          if (e.other >= 0 && var[static_cast<size_t>(e.other)] >= 0)
+            h[v * n + static_cast<size_t>(var[static_cast<size_t>(e.other)])] -= slope;
         }
         r[v] = net;
       }
@@ -788,9 +1139,28 @@ bool WindSolver::advance(double dtSeconds, const EngineSwitch& sw,
       st.pressure = st.nominalInches;
       st.velocity = 0.0;
     }
+    relayPrimed_ = false;
     return false;
   }
   if (dtSeconds <= 0.0) return true;
+
+  // A switch-built regulator (#1121) takes what the caller changed since the
+  // last block: the organ's start-up engaging the inlets, or the player. The
+  // caller's own copy of the chain lags this one by a block, and its echoes
+  // of what already happened here change nothing.
+  if (!relayControls_.empty()) {
+    if (!relayPrimed_) {
+      primeRelay(engagedSwitches);
+    } else {
+      for (size_t s = 0; s < relaySwitches_.size(); ++s) {
+        RelaySwitch& rs = relaySwitches_[s];
+        const bool now = engagedSwitches.count(rs.id) != 0;
+        if (now == rs.outside) continue;
+        rs.outside = now;
+        setRelaySwitch(static_cast<int>(s), now);
+      }
+    }
+  }
 
   // The links' flow drifts once a block (#807).
   if (anyLinkWalk_)
@@ -807,21 +1177,34 @@ bool WindSolver::advance(double dtSeconds, const EngineSwitch& sw,
   // physics must not know what the buffer size is.
   debtSeconds_ += dtSeconds;
   int steps = static_cast<int>(debtSeconds_ / maxStep_);
-  // Bounded: the audio thread cannot spend an unbounded time here whatever the
-  // file or a stalled host says. Dropping the excess loses a little simulated
-  // time, which is the right thing to lose.
-  if (steps > 256) {
-    steps = 256;
+  // Bounded: the audio thread cannot spend more than 256 steps here whatever
+  // the file or the host says. A block that needs more takes longer steps,
+  // up to eight times the chosen one, so the wind keeps time with the music
+  // (#1121): the Rotterdam Transept's step is at the floor, and with the
+  // excess dropped its wind ran at an eighth of real time, and each bellows'
+  // delay of 1.7 s before it delivers took over thirteen. The flow
+  // limit in integrate() keeps a longer step from carrying a link past
+  // balance. Only a stalled host loses time beyond that.
+  constexpr int kMaxSteps = 256;
+  constexpr double kMaxStretch = 8.0;
+  double dt = maxStep_;
+  if (steps > kMaxSteps) {
+    dt = std::min(debtSeconds_, kMaxSteps * kMaxStretch * maxStep_) / kMaxSteps;
+    steps = kMaxSteps;
     debtSeconds_ = 0.0;
   } else {
     debtSeconds_ -= steps * maxStep_;
   }
   if (steps <= 0) return true;
-  const double dt = maxStep_;
 
   readValves(&engagedSwitches);
   driftFlow_ = anyLinkWalk_;
-  for (int step = 0; step < steps; ++step) integrate(dt, &engagedSwitches);
+  relayRunning_ = !relayControls_.empty();
+  for (int step = 0; step < steps; ++step) {
+    integrate(dt, &engagedSwitches);
+    if (relayRunning_) stepRelay(dt);
+  }
+  relayRunning_ = false;
   driftFlow_ = false;
   return true;
 }
@@ -857,7 +1240,12 @@ void WindSolver::integrate(double dt,
   for (size_t k = 0; k < resolved_.size(); ++k) {
     const ResolvedLink& r = resolved_[k];
     const WindCompartmentLink& link = links_[r.link];
-    if (k < valveOpen_.size() && !valveOpen_[k]) continue; // valve shut
+    if (relayRunning_ && relayValve_[k] >= 0) {
+      // A valve the solver's own switch chain holds (#1121), as it is now.
+      if (relaySwitches_[static_cast<size_t>(relayValve_[k])].on != link.valveOpenWhenEngaged) continue;
+    } else if (k < valveOpen_.size() && !valveOpen_[k]) {
+      continue;  // valve shut
+    }
     // A valve driven by a continuous control is left OPEN. On a real organ
     // that control is the reservoir's own board extension closing the intake
     // as it fills — the mechanism by which a reservoir regulates itself — and
@@ -876,8 +1264,24 @@ void WindSolver::integrate(double dt,
     // A valve its continuous control opens, as far as the control reads. Open
     // while settling: the working pressure is the organ's with its blower on.
     if (!settling_ && k < linkOpening_.size()) mul *= linkOpening_[k];
-    const double flow =
+    double flow =
         orificeFlow(link.massFlowKgPerSec * mul, link.refPressureInches, pa - pb);
+    // No more air in one step than brings the two sides to one pressure. The
+    // square-root law's slope has no bound as the difference closes, so an
+    // explicit step near balance carries the pair past it: on the Rotterdam
+    // Transept, whose conduits settle in microseconds, the chests swung
+    // between empty and full every step, and each swing below empty, cut off
+    // at zero, made air out of nothing (#1121). Each link only ever closes
+    // the difference across it, so no pressure leaves the range its
+    // neighbours span, at any step length.
+    {
+      const double ga = ia >= 0 ? kInchesPerKgPerM3 * dt / order_[static_cast<size_t>(ia)].volumeM3 : 0.0;
+      const double gb = ib >= 0 ? kInchesPerKgPerM3 * dt / order_[static_cast<size_t>(ib)].volumeM3 : 0.0;
+      if (ga + gb > 0.0) {
+        const double most = std::abs(pa - pb) / (ga + gb);
+        flow = std::clamp(flow, -most, most);
+      }
+    }
     if (ia >= 0) {
       State& a = order_[static_cast<size_t>(ia)];
       a.pressure -= kInchesPerKgPerM3 * flow * dt / a.volumeM3;

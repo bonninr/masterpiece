@@ -1,5 +1,5 @@
 // Timed control linkages (LinkTypeCode 2 and 3, #811). A Willis linkage moves
-// its destination at a speed proportional to the distance left; an inertia
+// its destination in an even ramp, the whole range in its time (#1121); an inertia
 // linkage is a damped spring. Both act at once until the bank is timed, as
 // they do while an organ loads.
 #include "MpTest.h"
@@ -51,7 +51,7 @@ public:
     m.continuousControls[3] = control(3, 0);
     auto l = wire(1, 2);
     l.linkType = 2;
-    l.willisMsPerStep = 100.0;  // a 0.1 s lag
+    l.willisMsPerStep = 100.0;  // the whole range in 0.1 s
     m.controlLinkages.push_back(l);
     m.controlLinkages.push_back(wire(2, 3));  // and a plain wire after it
 
@@ -66,14 +66,14 @@ public:
     bank.setValue(1, 0);
     bank.propagate(1);
     MP_CHECK(bank.value(2) == 127, "timed, the destination has not moved before any time passes");
-    ::run(bank, 0.1);
-    // One time constant: 127 * e^-1 = 46.7 left.
+    ::run(bank, 0.05);
+    // Ten blocks, a little over half its time: 59 left.
     const int at = bank.value(2);
-    MP_CHECK(at >= 45 && at <= 49, "one time constant on, a 1/e of the way is left: " + std::to_string(at));
+    MP_CHECK(at >= 56 && at <= 62, "half its time on, half the way is left: " + std::to_string(at));
     MP_CHECK(bank.value(3) == at, "the plain wire after it follows it as it goes: " + std::to_string(bank.value(3)));
     MP_CHECK(bank.moving(), "and it is still on its way");
-    ::run(bank, 1.0);
-    MP_CHECK(bank.value(2) == 0 && bank.value(3) == 0, "ten time constants on it is there");
+    ::run(bank, 0.06);
+    MP_CHECK(bank.value(2) == 0 && bank.value(3) == 0, "past its time it is there");
     MP_CHECK(!bank.moving(), "and it stops being worked on");
 
     // A stop-action delay: the constant 127 reaches the ramp only while its

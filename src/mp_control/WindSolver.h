@@ -31,7 +31,9 @@
 //
 // The board as a moving mass (#812) is an option, off by default: "Moving
 // reservoir boards". While it is off none of the below runs and the solver
-// is the swallowed-volume model above, bit for bit.
+// is the swallowed-volume model above, bit for bit -- except for a board
+// whose height switches a valve (#1121), which always moves: see
+// relayInputs().
 //
 // While it is on, each reservoir whose board the file describes in full has
 // that board moving. The file states everything it needs: the weight under
@@ -94,7 +96,7 @@ public:
     int low = 0, high = 127;
   };
   const std::vector<ControlValve>& controlValves() const { return controlValves_; }
-  void setControlValve(size_t index, int value);
+  void setControlValve(size_t index, double value);
 
   // Tell the solver what is sounding, before advancing. Call once per block:
   // clear, then add the demand of each compartment from a table the caller
@@ -141,6 +143,45 @@ public:
   // the caller to publish; empty while the option is off.
   std::vector<std::pair<Id, Id>> extensionOutputs() const;
 
+  // A regulator built from switches (#1121). The Rotterdam Transept fills each
+  // of its eleven bellows through an inlet valve and empties it through an
+  // exhaust valve, both switches: the board's height crossing 127 shuts the
+  // inlet, a delay ramp then opens the exhaust, and the board reaching 0 opens
+  // the inlet and shuts the exhaust again. Run once a block, the valves
+  // answered a block late and the bellows chattered; the solver runs that
+  // chain itself, at its own step, from the board through the stage switches,
+  // the switch linkages and the timed linkages to the valves. A board whose
+  // height switches a valve this way always moves, whatever the option says:
+  // there is no wind without it. Empty, and free, on every other organ.
+  //
+  // The controls the chain reads from outside it, such as a constant the
+  // delay ramps toward. The caller reads each once a block and passes it in.
+  const std::vector<Id>& relayInputs() const { return relayInputIds_; }
+  void setRelayInput(size_t index, int value);
+  // A switch of that chain as the solver has it: 1 engaged, 0 not, -1 when it
+  // is not one of the chain's.
+  int relaySwitchState(Id switchId) const;
+  // The controls from outside that chain whose stage switches move its
+  // switches, and every control feeding them: the Rotterdam Transept's
+  // start-up ramp, which opens its bellows' inlets one after another. Empty
+  // on an organ without such a regulator.
+  static std::unordered_set<Id> relayStartControls(const OrganModel& model);
+  // Whether the chain runs this control itself: a board's height, a delay it
+  // times. While the wind runs, the caller fires none of its stage switches.
+  // The caller's own copy of the chain, a block behind and timed apart, read
+  // back as moves, shut all eleven of the Transept's exhausts together on any
+  // switch change, and every chest went silent for a second (#1121).
+  bool relayOwnsControl(Id controlId) const {
+    return running_ && !relayOwned_.empty() && relayOwned_.count(controlId) != 0;
+  }
+  // The chain's switches as the solver has them, for the caller to mirror
+  // into its own switches after each advance(). Each switch mirrored is taken
+  // as the caller's, so the next advance() does not read it as a move.
+  size_t relaySwitchCount() const { return running_ ? relaySwitches_.size() : 0; }
+  Id relaySwitchId(size_t i) const { return relaySwitches_[i].id; }
+  bool relaySwitchOn(size_t i) const { return relaySwitches_[i].on; }
+  void relaySwitchMirrored(size_t i) { relaySwitches_[i].outside = relaySwitches_[i].on; }
+
 private:
   struct State {
     Id id = 0;
@@ -161,6 +202,12 @@ private:
   void settleSolve(const std::unordered_set<Id>* engagedSwitches);
   // Every control valve reads open while this is set.
   bool settling_ = false;
+  // Per compartment, 1 when the settle holds it at a set pressure: a bellows
+  // whose board switches its own valves (#1121) works at the pressure its
+  // board's weight makes, and the wind around it is solved from that.
+  std::vector<char> pinned_;
+  void pinRelayBellows();
+  void holdPinned();
   std::vector<ControlValve> controlValves_;
   // Per resolved link, how far its control valve is open: 1 for every other link.
   std::vector<double> linkOpening_;
@@ -253,6 +300,70 @@ private:
   void settleBoards(const std::unordered_set<Id>* engagedSwitches);
   void stepBoards(double dt);
   double boardValveOpening(size_t link) const;
+
+  // The switch-built regulators (#1121): see relayInputs(). Each piece refers
+  // to the others by position.
+  struct RelayRow {
+    int threshold = 0;
+    int sw = -1;
+    bool engageUp = false, engageDown = false, disengageUp = false, disengageDown = false;
+  };
+  struct RelayFeed {
+    int dst = -1;        // the relay control it drives
+    int source = -1;     // a relay control, or -1 for an input
+    int input = -1;      // an input, or -1
+    int condition = -1;  // a relay switch, or -1 for none
+    bool whenEngaged = true;
+    double tau = 0.0;    // a lag's time constant, 0 for at once
+    ContinuousControlLinkage link;
+  };
+  struct RelayControl {
+    Id id = 0;
+    int board = -1;  // the board whose height it is, or -1
+    int lo = 0, hi = 127;
+    double start = 0.0;  // its value at organ load
+    double pos = 0.0, goal = 0.0, tau = 0.0;
+    bool moving = false;
+    int step = 0;
+    int engagedSwitch = -1;  // the switch its last engaging row put in
+    std::vector<RelayRow> rows;   // ascending by threshold
+    std::vector<int> feeds;       // the feeds reading it
+  };
+  struct RelayLink {
+    int dst = -1;
+    bool sourceWhenEngaged = true;
+    int engageAction = 1, disengageAction = 2;
+  };
+  struct RelaySwitch {
+    Id id = 0;
+    bool on = false;
+    bool outside = false;  // as the caller last had it
+    std::vector<int> links;
+    std::vector<int> feeds;  // the feeds it is the condition of
+  };
+  std::vector<RelayControl> relayControls_;
+  std::vector<RelayFeed> relayFeeds_;
+  std::vector<RelayLink> relayLinks_;
+  std::vector<RelaySwitch> relaySwitches_;
+  std::unordered_map<Id, int> relaySwitchIndex_;
+  std::unordered_set<Id> relayOwned_;  // the ids of relayControls_
+  std::vector<Id> relayInputIds_;
+  std::vector<double> relayInputs_;
+  std::vector<int> relayValve_;  // per resolved link: its relay switch, or -1
+  bool relayPrimed_ = false;
+  bool relayRunning_ = false;
+  // The valve switches a board's height reaches through stage switches,
+  // linkages and switch linkages, from the given extension controls.
+  static std::unordered_set<Id> relayReach(const OrganModel& model, const std::vector<Id>& extensions,
+                                           std::unordered_set<Id>* controls = nullptr,
+                                           std::unordered_set<Id>* switches = nullptr);
+  void resetRelay(const OrganModel& model);
+  void primeRelay(const std::unordered_set<Id>& engagedSwitches);
+  void stepRelay(double dt);
+  void moveRelayControl(int c, double pos, int depth = 0);
+  void setRelaySwitch(int s, bool on, int depth = 0);
+  void applyRelayFeed(int f, int depth);
+  double relayFeedSource(const RelayFeed& f) const;
 };
 
 } // namespace mp
