@@ -591,7 +591,7 @@ void resolveKeyNoisesInto(const OrganModel& model, int divisionId, int midiNote,
 
 // ---------------------------------------------------- M2.4 continuous controls
 
-void ContinuousControlBank::reset(const OrganModel& model) {
+void ContinuousControlBank::reset(const OrganModel& model, const std::unordered_set<Id>* waitForTime) {
   model_ = &model;
 
   // Every control gets a slot in a plain array, and every linkage is compiled
@@ -643,6 +643,7 @@ void ContinuousControlBank::reset(const OrganModel& model) {
   motions_.clear();
   movingList_.clear();
   timed_ = false;
+  anyWaitsForTime_ = false;
   for (const auto& l : model.controlLinkages) {
     if (l.sourceControlId == 0 || l.destControlId == 0) continue;
     Link k;
@@ -674,6 +675,8 @@ void ContinuousControlBank::reset(const OrganModel& model) {
       m.damping = std::max(0.0, l.inertiaDamping);
       k.motion = static_cast<int32_t>(motions_.size());
       motions_.push_back(m);
+      k.waitsForTime = waitForTime != nullptr && waitForTime->count(l.destControlId) != 0;
+      if (k.waitsForTime) anyWaitsForTime_ = true;
     }
     links_.push_back(k);
   }
@@ -749,7 +752,7 @@ void ContinuousControlBank::setValue(Id controlId, int value) {
   flagged_[i] = v;
 }
 
-void ContinuousControlBank::setExact(Id controlId, double value) {
+void ContinuousControlBank::setExact(Id controlId, double value, double wakeStep) {
   const auto it = index_.find(controlId);
   if (it == index_.end()) return;
   const int i = it->second;
@@ -767,12 +770,36 @@ void ContinuousControlBank::setExact(Id controlId, double value) {
   if (changed || std::fabs(clamped - flagged_[i]) >= 1.0 / 8.0) {
     dirty_ = true;
     flagged_[i] = clamped;
+  } else if (clamped != flagged_[i] && std::fabs(clamped - flagged_[i]) >= wakeStep) {
+    // A finer wake carries the reading along its own linkages only, as a
+    // timed linkage's glide does.
+    markMoved(i);
+    flagged_[i] = clamped;
   }
 }
 
 int ContinuousControlBank::value(Id controlId) const {
   const auto it = index_.find(controlId);
   return it == index_.end() ? 0 : vals_[it->second];
+}
+
+double ContinuousControlBank::readingOf(Id controlId) const {
+  const auto it = index_.find(controlId);
+  return it == index_.end() ? 0.0 : reading(it->second);
+}
+
+bool ContinuousControlBank::writeLinked(int i, double scaled, bool keepExact) {
+  const int next = clampSlot(i, scaled);
+  double kept = std::nan("");
+  if (keepExact) {
+    const double c = std::clamp(scaled, static_cast<double>(lo_[i]), static_cast<double>(hi_[i]));
+    if (c != static_cast<double>(next)) kept = c;
+  }
+  const bool sameExact = std::isnan(kept) ? std::isnan(exact_[i]) : exact_[i] == kept;
+  if (vals_[i] == next && sameExact) return false;
+  vals_[i] = next;
+  exact_[i] = kept;
+  return true;
 }
 
 double ContinuousControlBank::normalised(Id controlId) const {
@@ -863,6 +890,7 @@ bool ContinuousControlBank::runSingle(size_t li, const std::unordered_set<Id>& s
       return false;
     }
   }
+  if (k.waitsForTime && !timed_) return false;
   // A linkage into a control the player moves carries a change: it fires
   // once at load, when its condition comes on, and when its source moves,
   // and otherwise leaves the control where the player put it. Hill feeds
@@ -909,12 +937,10 @@ bool ContinuousControlBank::runSingle(size_t li, const std::unordered_set<Id>& s
     return false;
   }
 
-  const int next = clampSlot(k.dst, k.link->apply(reading(k.src)));
-  int& slot = vals_[k.dst];
-  if (slot == next) return false;
-  slot = next;
-  exact_[k.dst] = std::nan("");
-  return true;
+  // A reading between two steps carries on between them (#1121): Rotterdam
+  // scales a quarter-step pressure difference by 10000 to open a valve, and
+  // rounded at the first linkage it was nothing.
+  return writeLinked(k.dst, k.link->apply(reading(k.src)), !std::isnan(exact_[k.src]));
 }
 
 bool ContinuousControlBank::runDouble(size_t di, int pinnedSlot) {
@@ -937,12 +963,8 @@ bool ContinuousControlBank::runDouble(size_t di, int pinnedSlot) {
     case 7: combined = x * y / 127.0; break;
     default: return false;  // the loader rejected anything else
   }
-  const int next = clampSlot(k.dst, combined * d.destCoefficient + d.destIncrement);
-  int& slot = vals_[k.dst];
-  if (slot == next) return false;
-  slot = next;
-  exact_[k.dst] = std::nan("");
-  return true;
+  return writeLinked(k.dst, combined * d.destCoefficient + d.destIncrement,
+                     !std::isnan(exact_[k.a]) || !std::isnan(exact_[k.b]));
 }
 
 void ContinuousControlBank::markMoved(int32_t slot) {
@@ -1035,6 +1057,8 @@ void ContinuousControlBank::setTimed(bool on) {
     m.listed = false;
   }
   movingList_.clear();
+  // What waited for time starts now.
+  if (on && anyWaitsForTime_) dirty_ = true;
 }
 
 void ContinuousControlBank::writeMotion(Motion& m, bool settled) {
@@ -1081,8 +1105,13 @@ void ContinuousControlBank::advance(double seconds) {
     const double goal = std::clamp(m.target, lo, hi);
     bool settled = false;
     if (m.type == 2) {
-      // A lag: the speed is the distance left over the time constant.
-      m.pos = goal + (m.pos - goal) * std::exp(-seconds / m.tau);
+      // A Willis lag: an even ramp, the whole range of 127 steps in its time
+      // (#1121). Read as a lag proportional to the distance left, a timed
+      // valve crept the last steps for nine times its time, and the bellows
+      // relay of the Rotterdam Transept organ held its outlets shut long
+      // after they had filled.
+      const double d = goal - m.pos, run = 127.0 * seconds / m.tau;
+      m.pos = std::fabs(d) <= run ? goal : m.pos + (d > 0.0 ? run : -run);
       settled = std::fabs(m.pos - goal) < kNear;
     } else {
       // A damped spring, integrated in steps short beside its own period

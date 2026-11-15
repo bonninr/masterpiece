@@ -452,7 +452,7 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   // alone settles with every valve open, which filled the chests of an organ
   // whose blower is off (#1028).
   for (size_t i = 0; i < wind_.controlValves().size(); ++i)
-    wind_.setControlValve(i, controls_.value(wind_.controlValves()[i].controlId));
+    wind_.setControlValve(i, controls_.readingOf(wind_.controlValves()[i].controlId));
   wind_.settleWith(engagedSwitches_);
   convolver_.prepare(spec);
   voicingEq_.configure(voicingEqSettings_, sampleRate);
@@ -853,12 +853,33 @@ void MasterpieceProcessor::advanceWind(int numFrames) {
   // The valves the organ opens with a continuous control, such as a blower's
   // own (#1028).
   for (size_t i = 0; i < wind_.controlValves().size(); ++i)
-    wind_.setControlValve(i, controls_.value(wind_.controlValves()[i].controlId));
+    wind_.setControlValve(i, controls_.readingOf(wind_.controlValves()[i].controlId));
   // And the controls a switch-built regulator reads from outside it (#1121).
   for (size_t i = 0; i < wind_.relayInputs().size(); ++i)
     wind_.setRelayInput(i, controls_.value(wind_.relayInputs()[i]));
   wind_.advance(static_cast<double>(numFrames) / sampleRate_,
                 graph_.engineSwitch, engagedSwitches_);
+  // The switch-built regulator's switches as the solver moved them (#1121):
+  // its chain is the one that runs, and the console's switches follow it.
+  if (const size_t n = wind_.relaySwitchCount(); n != 0) {
+    bool mirrored = false;
+    for (int pass = 0; pass < 3; ++pass) {
+      bool again = false;
+      for (size_t i = 0; i < n; ++i) {
+        const Id id = wind_.relaySwitchId(i);
+        const bool on = wind_.relaySwitchOn(i);
+        if (switches_.engaged(id) == on) continue;
+        switches_.set(id, on);
+        again = mirrored = true;
+      }
+      if (!again) break;
+    }
+    for (size_t i = 0; i < n; ++i) wind_.relaySwitchMirrored(i);
+    if (mirrored) {
+      engagedSwitches_ = switches_.engagedSwitches();
+      shownStale_ = true;
+    }
+  }
 
   for (size_t i = 0; i < windOrder_.size(); ++i) {
     const auto mod = wind_.modFor(windOrder_[i]);
@@ -889,8 +910,9 @@ void MasterpieceProcessor::advanceWind(int numFrames) {
 // pressure itself: the same ramp at its 4 inch working pressure is 65.5, which
 // as the step 65 stopped it at 95 of 127 (#546).
 void MasterpieceProcessor::publishWindPressures() {
-  for (const auto& [compartment, control] : windGauges_)
-    controls_.setExact(control, 63.5 + wind_.pressureFor(compartment) * 0.5);
+  for (size_t i = 0; i < windGauges_.size(); ++i)
+    controls_.setExact(windGauges_[i].second, 63.5 + wind_.pressureFor(windGauges_[i].first) * 0.5,
+                       windGaugeWake_[i]);
   for (const auto& [compartment, control] : windBoards_)
     controls_.setExact(control, wind_.extensionFor(compartment));
 }
@@ -6417,6 +6439,12 @@ void MasterpieceProcessor::fireMovedStages() {
   for (auto& [id, previous] : stageValues_) {
     const int now = controls_.value(id);
     if (now == previous) continue;
+    // A switch-built regulator's own controls move its switches inside the
+    // wind solver, which the console's switches mirror (#1121).
+    if (wind_.relayOwnsControl(id)) {
+      previous = now;
+      continue;
+    }
 
     // A shoe that drives switches fires every threshold it sweeps past, in the
     // order it passes them. For a crescendo that means each step's
@@ -8840,7 +8868,10 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   // the outside because a stuck-open enclosure sounds like an organ.
   phases.mark("model: switches");
   phases.mark("model: switch solve");
-  controls_.reset(model_);
+  // A switch-built regulator's start-up runs in time once the organ is live
+  // (#1121).
+  const std::unordered_set<Id> windStart = WindSolver::relayStartControls(model_);
+  controls_.reset(model_, windStart.empty() ? nullptr : &windStart);
 
   // Now, and not before: reset() has just put every control at the organ's
   // default, so positions restored from the player's file go on top of it.
@@ -8888,6 +8919,25 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
         model_.continuousControls.count(wc.pressureOutputControlId) != 0)
       windGauges_.emplace_back(id, wc.pressureOutputControlId);
   std::sort(windGauges_.begin(), windGauges_.end());
+  // The gauges whose linkages reach a valve of the wind itself carry every
+  // change along (#1121); the others wake the graph by the eighth of a step.
+  {
+    std::unordered_set<Id> feeds;
+    for (const auto& v : wind_.controlValves()) feeds.insert(v.controlId);
+    for (bool grew = !feeds.empty(); grew;) {
+      grew = false;
+      for (const ContinuousControlLinkage& l : model_.controlLinkages)
+        if (feeds.count(l.destControlId) != 0 && feeds.insert(l.sourceControlId).second) grew = true;
+      for (const ContinuousControlDoubleLinkage& l : model_.controlDoubleLinkages)
+        if (feeds.count(l.destControlId) != 0) {
+          if (feeds.insert(l.firstControlId).second) grew = true;
+          if (feeds.insert(l.secondControlId).second) grew = true;
+        }
+    }
+    windGaugeWake_.assign(windGauges_.size(), 1.0 / 8.0);
+    for (size_t i = 0; i < windGauges_.size(); ++i)
+      if (feeds.count(windGauges_[i].second) != 0) windGaugeWake_[i] = 0.0;
+  }
   // Moving reservoir boards (#812) report their height; empty while off.
   windBoards_.clear();
   for (const auto& [compartment, control] : wind_.extensionOutputs())
@@ -9073,7 +9123,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   phases.mark("model: stages");
   loadProgress_.beginPhase(LoadProgress::Phase::WiringConsole);
   for (size_t i = 0; i < wind_.controlValves().size(); ++i)
-    wind_.setControlValve(i, controls_.value(wind_.controlValves()[i].controlId));
+    wind_.setControlValve(i, controls_.readingOf(wind_.controlValves()[i].controlId));
   wind_.settleWith(engagedSwitches_);
   if (wind_.active())
     juce::Logger::writeToLog(

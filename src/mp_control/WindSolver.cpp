@@ -130,10 +130,10 @@ void WindSolver::resetControlValves(const OrganModel& model) {
   }
 }
 
-void WindSolver::setControlValve(size_t index, int value) {
+void WindSolver::setControlValve(size_t index, double value) {
   const ControlValve& v = controlValves_[index];
   linkOpening_[v.link] =
-      std::clamp(static_cast<double>(value - v.low) / static_cast<double>(v.high - v.low), 0.0, 1.0);
+      std::clamp((value - v.low) / static_cast<double>(v.high - v.low), 0.0, 1.0);
 }
 
 void WindSolver::resetBoards(const OrganModel& model) {
@@ -294,6 +294,32 @@ std::unordered_set<Id> WindSolver::relayReach(const OrganModel& model, const std
   return valves;
 }
 
+std::unordered_set<Id> WindSolver::relayStartControls(const OrganModel& model) {
+  std::vector<Id> extensions;
+  for (const auto& [id, wc] : model.wind)
+    if (wc.hasBellows && wc.bellowsExtensionOutputControlId != 0)
+      extensions.push_back(wc.bellowsExtensionOutputControlId);
+  std::unordered_set<Id> start;
+  if (extensions.empty()) return start;
+  std::unordered_set<Id> chainControls, chainSwitches;
+  if (relayReach(model, extensions, &chainControls, &chainSwitches).empty()) return start;
+  for (const ContinuousControlStageSwitch& st : model.controlStageSwitches)
+    if (chainSwitches.count(st.controlledSwitchId) != 0 && chainControls.count(st.controlId) == 0)
+      start.insert(st.controlId);
+  for (bool grew = !start.empty(); grew;) {
+    grew = false;
+    for (const ContinuousControlLinkage& l : model.controlLinkages)
+      if (start.count(l.destControlId) != 0 && chainControls.count(l.sourceControlId) == 0 &&
+          start.insert(l.sourceControlId).second)
+        grew = true;
+    for (const ContinuousControlDoubleLinkage& l : model.controlDoubleLinkages)
+      if (start.count(l.destControlId) != 0)
+        for (const Id src : {l.firstControlId, l.secondControlId})
+          if (chainControls.count(src) == 0 && start.insert(src).second) grew = true;
+  }
+  return start;
+}
+
 void WindSolver::resetRelay(const OrganModel& model) {
   relayControls_.clear();
   relayFeeds_.clear();
@@ -301,6 +327,7 @@ void WindSolver::resetRelay(const OrganModel& model) {
   relaySwitches_.clear();
   relaySwitchIndex_.clear();
   relayInputIds_.clear();
+  relayOwned_.clear();
   relayInputs_.clear();
   relayValve_.clear();
   relayPrimed_ = false;
@@ -336,6 +363,7 @@ void WindSolver::resetRelay(const OrganModel& model) {
       if (boards_[j].outputControlId == id) c.board = static_cast<int>(j);
     controlIndex[id] = static_cast<int>(relayControls_.size());
     relayControls_.push_back(c);
+    relayOwned_.insert(id);
   }
   for (const ContinuousControlStageSwitch& st : model.controlStageSwitches) {
     const auto c = controlIndex.find(st.controlId);
@@ -525,9 +553,10 @@ void WindSolver::stepRelay(double dt) {
       const Board& b = boards_[static_cast<size_t>(c.board)];
       moveRelayControl(static_cast<int>(ci), b.travelM3 > 0.0 ? 127.0 * b.u / b.travelM3 : 0.0);
     } else if (c.moving) {
-      // A lag: the speed is the distance left over the time constant, and a
-      // sixty-fourth of a step from its goal it is there.
-      double pos = c.goal + (c.pos - c.goal) * std::exp(-dt / c.tau);
+      // A Willis lag, as ContinuousControlBank::advance moves it: an even
+      // ramp over the whole range in its time.
+      const double d = c.goal - c.pos, run = 127.0 * dt / c.tau;
+      double pos = std::fabs(d) <= run ? c.goal : c.pos + (d > 0.0 ? run : -run);
       if (std::abs(pos - c.goal) < 1.0 / 64.0) {
         pos = std::floor(c.goal + 0.5);
         c.moving = false;
@@ -734,12 +763,14 @@ void WindSolver::settleSolve(const std::unordered_set<Id>* engagedSwitches) {
 
   lastSweeps_ = 0;
   lastSteps_ = 0;
+  pinRelayBellows();
   if (directSettle_ && solveSteady(engagedSwitches)) {
     settleBoards(engagedSwitches);
     for (State& st : order_) {
       st.nominalInches = st.pressure;
       st.velocity = 0.0;
     }
+    pinned_.clear();
     debtSeconds_ = 0.0;
     return;
   }
@@ -768,6 +799,7 @@ void WindSolver::settleSolve(const std::unordered_set<Id>* engagedSwitches) {
       }
     }
     integrate(maxStep_, engagedSwitches);
+    holdPinned();
     ++lastSteps_;
     if (phase == kWindow - 1) {
       double swing = 0.0;
@@ -784,7 +816,36 @@ void WindSolver::settleSolve(const std::unordered_set<Id>* engagedSwitches) {
     st.nominalInches = st.pressure;
     st.velocity = 0.0;
   }
+  pinned_.clear();
   debtSeconds_ = 0.0;
+}
+
+void WindSolver::pinRelayBellows() {
+  // A bellows whose board switches its own inlet and exhaust (#1121) never
+  // rests open to the blower: its board shuts the inlet at the top and floats,
+  // and while it floats the air under it is at the pressure the board's
+  // weight makes. Settled with its inlet left open, it read the blower's
+  // pressure as the working one, and the chests behind it then read seventy
+  // percent down in play. Held at its board's pressure, the rest is solved
+  // around it. Empty, and nothing held, on every other organ.
+  pinned_.clear();
+  for (const RelayControl& c : relayControls_) {
+    if (c.board < 0) continue;
+    const Board& b = boards_[static_cast<size_t>(c.board)];
+    if (pinned_.empty()) pinned_.assign(order_.size(), 0);
+    pinned_[static_cast<size_t>(b.at)] = 1;
+    order_[static_cast<size_t>(b.at)].pressure = b.regulatedInches;
+  }
+}
+
+void WindSolver::holdPinned() {
+  if (pinned_.empty()) return;
+  for (const RelayControl& c : relayControls_) {
+    if (c.board < 0) continue;
+    Board& b = boards_[static_cast<size_t>(c.board)];
+    order_[static_cast<size_t>(b.at)].pressure = b.regulatedInches;
+    b.uDot = 0.0;
+  }
 }
 
 void WindSolver::settleBoards(const std::unordered_set<Id>* engagedSwitches) {
@@ -823,6 +884,7 @@ void WindSolver::settleBoards(const std::unordered_set<Id>* engagedSwitches) {
       hi[j] = std::max(hi[j], v);
     }
     integrate(maxStep_, engagedSwitches);
+    holdPinned();
     ++lastSteps_;
     if (phase == kWindow - 1) {
       double swing = 0.0;
@@ -895,6 +957,7 @@ bool WindSolver::solveSteady(const std::unordered_set<Id>* engagedSwitches) {
     for (size_t j = 0; j < order_.size(); ++j) {
       const auto& mine = ends[j];
       if (mine.empty()) continue;  // nothing reaches it: it stays as it is
+      if (!pinned_.empty() && pinned_[j]) continue;  // held where it works
       double lo = pressureAt(mine.front()), hi = lo;
       for (const End& e : mine) {
         lo = std::min(lo, pressureAt(e));
@@ -938,7 +1001,7 @@ bool WindSolver::solveSteady(const std::unordered_set<Id>* engagedSwitches) {
   std::vector<int> var(order_.size(), -1);
   std::vector<size_t> at;
   for (size_t j = 0; j < order_.size(); ++j)
-    if (!ends[j].empty()) {
+    if (!ends[j].empty() && (pinned_.empty() || !pinned_[j])) {
       var[j] = static_cast<int>(at.size());
       at.push_back(j);
     }
@@ -959,7 +1022,8 @@ bool WindSolver::solveSteady(const std::unordered_set<Id>* engagedSwitches) {
           const double slope =
               e.flowAtRef / (2.0 * std::sqrt(e.refDiff * std::max(std::abs(d), 1.0e-12)));
           h[v * n + v] += slope;
-          if (e.other >= 0) h[v * n + static_cast<size_t>(var[static_cast<size_t>(e.other)])] -= slope;
+          if (e.other >= 0 && var[static_cast<size_t>(e.other)] >= 0)
+            h[v * n + static_cast<size_t>(var[static_cast<size_t>(e.other)])] -= slope;
         }
         r[v] = net;
       }
@@ -1113,17 +1177,25 @@ bool WindSolver::advance(double dtSeconds, const EngineSwitch& sw,
   // physics must not know what the buffer size is.
   debtSeconds_ += dtSeconds;
   int steps = static_cast<int>(debtSeconds_ / maxStep_);
-  // Bounded: the audio thread cannot spend an unbounded time here whatever the
-  // file or a stalled host says. Dropping the excess loses a little simulated
-  // time, which is the right thing to lose.
-  if (steps > 256) {
-    steps = 256;
+  // Bounded: the audio thread cannot spend more than 256 steps here whatever
+  // the file or the host says. A block that needs more takes longer steps,
+  // up to eight times the chosen one, so the wind keeps time with the music
+  // (#1121): the Rotterdam Transept's step is at the floor, and with the
+  // excess dropped its wind ran at an eighth of real time, and each bellows'
+  // delay of 1.7 s before it delivers took over thirteen. The flow
+  // limit in integrate() keeps a longer step from carrying a link past
+  // balance. Only a stalled host loses time beyond that.
+  constexpr int kMaxSteps = 256;
+  constexpr double kMaxStretch = 8.0;
+  double dt = maxStep_;
+  if (steps > kMaxSteps) {
+    dt = std::min(debtSeconds_, kMaxSteps * kMaxStretch * maxStep_) / kMaxSteps;
+    steps = kMaxSteps;
     debtSeconds_ = 0.0;
   } else {
     debtSeconds_ -= steps * maxStep_;
   }
   if (steps <= 0) return true;
-  const double dt = maxStep_;
 
   readValves(&engagedSwitches);
   driftFlow_ = anyLinkWalk_;
@@ -1192,8 +1264,24 @@ void WindSolver::integrate(double dt,
     // A valve its continuous control opens, as far as the control reads. Open
     // while settling: the working pressure is the organ's with its blower on.
     if (!settling_ && k < linkOpening_.size()) mul *= linkOpening_[k];
-    const double flow =
+    double flow =
         orificeFlow(link.massFlowKgPerSec * mul, link.refPressureInches, pa - pb);
+    // No more air in one step than brings the two sides to one pressure. The
+    // square-root law's slope has no bound as the difference closes, so an
+    // explicit step near balance carries the pair past it: on the Rotterdam
+    // Transept, whose conduits settle in microseconds, the chests swung
+    // between empty and full every step, and each swing below empty, cut off
+    // at zero, made air out of nothing (#1121). Each link only ever closes
+    // the difference across it, so no pressure leaves the range its
+    // neighbours span, at any step length.
+    {
+      const double ga = ia >= 0 ? kInchesPerKgPerM3 * dt / order_[static_cast<size_t>(ia)].volumeM3 : 0.0;
+      const double gb = ib >= 0 ? kInchesPerKgPerM3 * dt / order_[static_cast<size_t>(ib)].volumeM3 : 0.0;
+      if (ga + gb > 0.0) {
+        const double most = std::abs(pa - pb) / (ga + gb);
+        flow = std::clamp(flow, -most, most);
+      }
+    }
     if (ia >= 0) {
       State& a = order_[static_cast<size_t>(ia)];
       a.pressure -= kInchesPerKgPerM3 * flow * dt / a.volumeM3;

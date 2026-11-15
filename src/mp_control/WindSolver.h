@@ -96,7 +96,7 @@ public:
     int low = 0, high = 127;
   };
   const std::vector<ControlValve>& controlValves() const { return controlValves_; }
-  void setControlValve(size_t index, int value);
+  void setControlValve(size_t index, double value);
 
   // Tell the solver what is sounding, before advancing. Call once per block:
   // clear, then add the demand of each compartment from a table the caller
@@ -161,6 +161,26 @@ public:
   // A switch of that chain as the solver has it: 1 engaged, 0 not, -1 when it
   // is not one of the chain's.
   int relaySwitchState(Id switchId) const;
+  // The controls from outside that chain whose stage switches move its
+  // switches, and every control feeding them: the Rotterdam Transept's
+  // start-up ramp, which opens its bellows' inlets one after another. Empty
+  // on an organ without such a regulator.
+  static std::unordered_set<Id> relayStartControls(const OrganModel& model);
+  // Whether the chain runs this control itself: a board's height, a delay it
+  // times. While the wind runs, the caller fires none of its stage switches.
+  // The caller's own copy of the chain, a block behind and timed apart, read
+  // back as moves, shut all eleven of the Transept's exhausts together on any
+  // switch change, and every chest went silent for a second (#1121).
+  bool relayOwnsControl(Id controlId) const {
+    return running_ && !relayOwned_.empty() && relayOwned_.count(controlId) != 0;
+  }
+  // The chain's switches as the solver has them, for the caller to mirror
+  // into its own switches after each advance(). Each switch mirrored is taken
+  // as the caller's, so the next advance() does not read it as a move.
+  size_t relaySwitchCount() const { return running_ ? relaySwitches_.size() : 0; }
+  Id relaySwitchId(size_t i) const { return relaySwitches_[i].id; }
+  bool relaySwitchOn(size_t i) const { return relaySwitches_[i].on; }
+  void relaySwitchMirrored(size_t i) { relaySwitches_[i].outside = relaySwitches_[i].on; }
 
 private:
   struct State {
@@ -182,6 +202,12 @@ private:
   void settleSolve(const std::unordered_set<Id>* engagedSwitches);
   // Every control valve reads open while this is set.
   bool settling_ = false;
+  // Per compartment, 1 when the settle holds it at a set pressure: a bellows
+  // whose board switches its own valves (#1121) works at the pressure its
+  // board's weight makes, and the wind around it is solved from that.
+  std::vector<char> pinned_;
+  void pinRelayBellows();
+  void holdPinned();
   std::vector<ControlValve> controlValves_;
   // Per resolved link, how far its control valve is open: 1 for every other link.
   std::vector<double> linkOpening_;
@@ -320,6 +346,7 @@ private:
   std::vector<RelayLink> relayLinks_;
   std::vector<RelaySwitch> relaySwitches_;
   std::unordered_map<Id, int> relaySwitchIndex_;
+  std::unordered_set<Id> relayOwned_;  // the ids of relayControls_
   std::vector<Id> relayInputIds_;
   std::vector<double> relayInputs_;
   std::vector<int> relayValve_;  // per resolved link: its relay switch, or -1
