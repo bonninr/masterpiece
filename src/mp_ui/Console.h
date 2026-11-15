@@ -154,6 +154,8 @@ public:
 
   // Which display page to show, and how many there are.
   void setPage(int index);
+  // The next rebuild draws the first page: a newly opened organ starts on it.
+  void startOnFirstPage() { pageIndex_ = 0; }
   int pageCount() const { return static_cast<int>(pageIds_.size()); }
   juce::String pageName(int index) const;
   int currentPage() const { return pageIndex_; }
