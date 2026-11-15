@@ -472,6 +472,9 @@ public:
   void askForPackage(const juce::String& package, const juce::String& name, const juce::File& start,
                      std::function<void(const juce::String&)> answered);
   std::unique_ptr<juce::FileChooser> packageChooser_;
+  // The definition the console last drew: another one opens on its first
+  // page, the same one reloaded stays on the page it shows (#1138).
+  juce::File consoleOdf_;
   void askLicenceQuestion(const juce::String& organ, const juce::String& who,
                           std::function<void(bool)> answered);
   // Several organs in one set of packages -- a perspective each, or full and

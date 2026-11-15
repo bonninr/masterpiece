@@ -2311,6 +2311,11 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   const double artStart = juce::Time::getMillisecondCounterHiRes();
   jamb_.rebuild();
   expression_.rebuild();
+  // Each organ opens on its first console page, whichever page the one
+  // before it was showing (#1138). The same organ loaded again, after a
+  // setting or the licence answer, stays on its page.
+  if (odf != consoleOdf_) console_.startOnFirstPage();
+  consoleOdf_ = odf;
   console_.rebuild();
   if (combinations_ != nullptr) {
     combinations_->panel().rebuild();
