@@ -803,9 +803,12 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   // release sample keeps its release at key-up, and a forced one-shot (a
   // noise) already says it for itself.
   // A pipe the definition calls percussive rings on whatever releases it
-  // has: an independent one sounds beside it (holdRelease).
+  // has: an independent one sounds beside it (holdRelease). A pipe whose
+  // releases the player left out (Releases: None) still stops at key-up:
+  // its file has a release, and only its loop is missing (#1126).
   v.percussive = start.layer->percussive ||
-                 (!start.oneShot && !v.loops() && start.layer->releases.empty());
+                 (!start.oneShot && !v.loops() && start.layer->releases.empty() &&
+                  !start.layer->releasesLeftOut);
   speaking_[static_cast<size_t>(slot)] =
       start.joinSpeaking && !start.oneShot ? SpeakingPipe{v.pipeId, v.layer} : SpeakingPipe{};
   if (start.layer->independentRelease) holdRelease(v, noteId);

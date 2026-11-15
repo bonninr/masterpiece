@@ -837,6 +837,7 @@ void SampleLibrary::pruneReleases(OrganModel& model, ReleaseChoice choice) {
       for (auto& layer : pipe.layers) {
         auto& rel = layer.releases;
         if (choice == ReleaseChoice::None || rel.empty()) {
+          if (!rel.empty()) layer.releasesLeftOut = true;
           rel.clear();
           continue;
         }
