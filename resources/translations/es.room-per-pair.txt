@@ -1,0 +1,2 @@
+# src/mp_ui/Settings.cpp
+"Other output pairs" = "Otros pares de salida"

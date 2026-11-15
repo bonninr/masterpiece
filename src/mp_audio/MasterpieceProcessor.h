@@ -135,6 +135,12 @@ public:
   // off) and the device channel of the subwoofer, counted from 0. Kept with
   // the pairs, in the organ's settings and in the saved defaults.
   void setBusBass(int busId, float crossoverHz, int subChannel);
+  // A pair's own room: an impulse response heard on that pair, with its wet
+  // level, kept in the organ's settings (#1140). An empty file takes the room
+  // away. Message thread; the file is read before the audio thread is held.
+  void setBusReverb(int busId, const std::string& irFile, float mix, bool enabled);
+  // Only the wet level, heard at once, without reading the file again.
+  void setBusReverbMix(int busId, float mix);
   // Told on the message thread's side when that number changes, so the
   // program that owns the device can open the channels.
   std::function<void()> onOutputChannelsWanted;

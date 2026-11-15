@@ -276,6 +276,25 @@ private:
   juce::Label mixLabel_;
   juce::Slider mix_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
   std::unique_ptr<juce::FileChooser> chooser_;
+
+  // The rooms of the output pairs after the first, one row each, shown with
+  // two pairs or more (#1140). The room above plays on the first pair.
+  struct PairRoom {
+    int busId = 0;
+    std::unique_ptr<juce::ToggleButton> on;
+    std::unique_ptr<juce::TextButton> load;
+    std::unique_ptr<juce::Label> name;
+    std::unique_ptr<juce::Slider> mix;
+  };
+  // Rows for the pairs the mixer has now.
+  void buildPairRooms();
+  // Shows a pair's file, or that it has none.
+  void showPairRoom(PairRoom& row);
+  // Chooses a file for a pair and turns its room on.
+  void choosePairRoom(int busId);
+  juce::Label pairsHeading_;
+  std::vector<PairRoom> pairRooms_;
+  int pairsShown_ = -1;
 };
 
 // Practice: metronome.
