@@ -4397,7 +4397,7 @@ void MixerPanel::setBusCount(int buses) {
     for (int i = 1; i <= buses; ++i) box->addItem(TRANS("Pair %1").replace("%1", juce::String(i)), i);
   }
   for (size_t i = 0; i < rankIds_.size(); ++i) {
-    const auto& dest = proc_.mixer().routingFor(rankIds_[i]).perspectives[0].dest;
+    const auto dest = proc_.mixer().routingFor(rankIds_[i]).perspectives[0].dest;
     int sel = 1;
     if (std::holds_alternative<BusId>(dest)) sel = std::get<BusId>(dest).value;
     rankBuses_[i]->setSelectedId(sel >= 1 && sel <= buses ? sel : 1,
@@ -4604,7 +4604,9 @@ void MixerPanel::refresh() {
 
     auto box = std::make_unique<juce::ComboBox>();
     for (int i = 1; i <= buses; ++i) box->addItem(TRANS("Pair %1").replace("%1", juce::String(i)), i);
-    const auto& dest = proc_.mixer().routingFor(rankId).perspectives[0].dest;
+    // A copy: routingFor returns the routing by value, and a reference into
+    // it would outlive it.
+    const auto dest = proc_.mixer().routingFor(rankId).perspectives[0].dest;
     int sel = 1;
     if (std::holds_alternative<BusId>(dest)) sel = std::get<BusId>(dest).value;
     box->setSelectedId(sel >= 1 && sel <= buses ? sel : 1,
