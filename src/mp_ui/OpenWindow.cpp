@@ -89,15 +89,18 @@ public:
     if (dragging_) {
       dragging_ = false;
       owner_.dropRow(slot_, e.getEventRelativeTo(getParentComponent()).y);
-    } else if (!e.source.hasMovedSignificantlySincePressed() && !e.mods.isPopupMenu()) {
-      // A press held a moment is still a click (#1047). JUCE calls a press
-      // over 300 ms a drag, and mouseWasClicked() then left the row shut.
+    } else if (!e.mods.isPopupMenu() && getLocalBounds().contains(e.getPosition())) {
+      // A press released on its own row is a click (#1047), however long it
+      // was held. A touchpad click moves the pointer a few pixels on the
+      // way, and a row that asked for a still pointer opened only now and
+      // then.
       owner_.openSlot(slot_);
     }
   }
   void mouseDrag(const juce::MouseEvent& e) override {
-    if (!dragging_ && e.source.hasMovedSignificantlySincePressed() && e.getDistanceFromDragStartY() != 0 &&
-        owner_.canDrag()) {
+    // A reorder begins once the pointer has gone a quarter of a row up or
+    // down, well past the wander of a click.
+    if (!dragging_ && std::abs(e.getDistanceFromDragStartY()) >= kRowH / 4 && owner_.canDrag()) {
       dragging_ = true;
       toFront(false);
     }

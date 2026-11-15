@@ -31,8 +31,9 @@ class FrameLabel : public juce::Label {
 public:
   std::function<void()> onClick;
   void mouseUp(const juce::MouseEvent& e) override {
-    // Moved, not held: JUCE counts a press over 300 ms as a drag (#1047).
-    if (onClick && !e.source.hasMovedSignificantlySincePressed()) onClick();
+    // Released on the readout is a click (#1047), held a moment or with the
+    // pointer moved a few pixels, as a touchpad click moves it.
+    if (onClick && getLocalBounds().contains(e.getPosition())) onClick();
   }
 };
 
