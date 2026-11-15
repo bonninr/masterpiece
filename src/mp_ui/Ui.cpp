@@ -1803,9 +1803,46 @@ void MasterpieceEditor::askLicenceQuestion(const juce::String& organName, const 
                        true);  // deleted when dismissed
 }
 
+namespace {
+// The missing-package box: with no answer in ten seconds, the organ plays
+// without the package, as on its last button. A console started unattended
+// opens its organ with no one at the screen.
+class PackageAlert final : public juce::AlertWindow, private juce::Timer {
+public:
+  using juce::AlertWindow::AlertWindow;
+  static constexpr int kSeconds = 10;
+  // The last button's words, with the seconds left. The button is sized for
+  // the first, widest, figure.
+  static juce::String playWithout(int seconds) {
+    return TRANS("Play without it (%1 s)").replace("%1", juce::String(seconds));
+  }
+  void startCountdown() {
+    left_ = kSeconds;
+    showLeft();
+    startTimer(1000);
+  }
+
+private:
+  void timerCallback() override {
+    if (--left_ > 0) {
+      showLeft();
+      return;
+    }
+    stopTimer();
+    juce::Logger::writeToLog("package: no answer in " + juce::String(kSeconds) +
+                             " s; the organ plays without it");
+    exitModalState(0);
+  }
+  void showLeft() {
+    if (auto* b = getButton(getNumButtons() - 1)) b->setButtonText(playWithout(left_));
+  }
+  int left_ = kSeconds;
+};
+}  // namespace
+
 void MasterpieceEditor::askForPackage(const juce::String& package, const juce::String& name, const juce::File& start,
                                       std::function<void(const juce::String&)> answered) {
-  auto* box = new juce::AlertWindow(
+  auto* box = new PackageAlert(
       TRANS("A package this organ plays is missing"),
       TRANS("This organ plays package %1, \"%2\", which is not in its folder, a folder in it, nor the package "
             "folder.\n\nChoose the archive of that package, or the folder that holds it. The choice is kept "
@@ -1815,7 +1852,8 @@ void MasterpieceEditor::askForPackage(const juce::String& package, const juce::S
       juce::MessageBoxIconType::QuestionIcon, this);
   box->addButton(TRANS("Choose an archive..."), 1);
   box->addButton(TRANS("Choose a folder..."), 2);
-  box->addButton(TRANS("Play without it"), 0, juce::KeyPress(juce::KeyPress::escapeKey));
+  box->addButton(PackageAlert::playWithout(PackageAlert::kSeconds), 0, juce::KeyPress(juce::KeyPress::escapeKey));
+  box->startCountdown();
   juce::Component::SafePointer<MasterpieceEditor> self(this);
   box->enterModalState(
       true, juce::ModalCallbackFunction::create([self, answered, start](int result) {

@@ -737,7 +737,6 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "no name given" = "sin nombre"
 "Choose an archive..." = "Elegir un archivo..."
 "Choose a folder..." = "Elegir una carpeta..."
-"Play without it" = "Tocar sin él"
 "The folder that holds the package" = "La carpeta que contiene el paquete"
 "The package's archive" = "El archivo comprimido del paquete"
 "The details are in the log, %1. If Masterpiece has been started again since, they are in masterpiece.previous.log beside it." = "Los detalles están en el log, %1. Si Masterpiece se ha vuelto a iniciar desde entonces, están en masterpiece.previous.log, a su lado."

@@ -737,7 +737,6 @@ countries: cz
 "no name given" = "bez názvu"
 "Choose an archive..." = "Vybrat archiv..."
 "Choose a folder..." = "Vybrat složku..."
-"Play without it" = "Hrát bez něj"
 "The folder that holds the package" = "Složka s balíčkem"
 "The package's archive" = "Archiv balíčku"
 "The details are in the log, %1. If Masterpiece has been started again since, they are in masterpiece.previous.log beside it." = "Podrobnosti jsou v protokolu, %1. Pokud byl Masterpiece mezitím spuštěn znovu, jsou v masterpiece.previous.log vedle něj."
