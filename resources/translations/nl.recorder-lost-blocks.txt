@@ -1,0 +1,1 @@
+"%1 s missing: the disk was too slow" = "%1 s ontbreekt: de schijf was te traag"

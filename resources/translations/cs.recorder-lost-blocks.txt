@@ -1,0 +1,1 @@
+"%1 s missing: the disk was too slow" = "Chybí %1 s: disk byl příliš pomalý"

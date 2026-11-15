@@ -30,6 +30,15 @@ public:
   // Where it is being written, so the panel can name it.
   juce::File file() const { return file_; }
   double secondsRecorded() const;
+  // Frames handed over that the file never got, because the writer fell
+  // further behind than its room (#1128). Zero in a take that is whole.
+  int64_t framesLost() const { return framesLost_.load(std::memory_order_relaxed); }
+  double secondsLost() const {
+    return sampleRate_ > 0.0 ? static_cast<double>(framesLost()) / sampleRate_ : 0.0;
+  }
+  // The thread the file is written on. A test holds it up to stand in for a
+  // slow disk.
+  juce::TimeSliceThread& writerThread() { return backgroundThread_; }
 
   // Audio thread. Does nothing unless recording.
   void write(const juce::AudioBuffer<float>& buffer);
@@ -47,6 +56,7 @@ private:
 
   std::atomic<bool> recording_{false};
   std::atomic<int64_t> framesWritten_{0};
+  std::atomic<int64_t> framesLost_{0};
   double sampleRate_ = 0.0;
   juce::File file_;
 };

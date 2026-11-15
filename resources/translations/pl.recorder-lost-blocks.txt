@@ -1,0 +1,1 @@
+"%1 s missing: the disk was too slow" = "Brakuje %1 s: dysk był zbyt wolny"
