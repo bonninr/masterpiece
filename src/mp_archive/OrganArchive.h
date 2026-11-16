@@ -132,11 +132,14 @@ public:
 
   // Read the entries at `wanted` (lower-case, '/'-separated paths) of one
   // archive, in its own order, calling `deliver` with each file's bytes.
-  // `deliver` returns false to stop. Safe to run for several archives at
-  // once, one thread each.
+  // `deliver` returns false to stop. `stopped`, when given, is asked before
+  // each file the walk passes, wanted or not: in a solid archive the next
+  // wanted file can be gigabytes on, and a cancelled load ends there (#1139).
+  // Safe to run for several archives at once, one thread each.
   using Deliver = std::function<bool(const std::string& path, std::vector<char>&& bytes)>;
+  using Stopped = std::function<bool()>;
   bool read(size_t archive, const std::unordered_set<std::string>& wanted,
-            const Deliver& deliver, std::string& error) const;
+            const Deliver& deliver, std::string& error, const Stopped& stopped = {}) const;
 
   // The key find() and read() use for a path.
   static std::string key(const std::string& path);

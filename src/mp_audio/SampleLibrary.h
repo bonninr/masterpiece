@@ -384,10 +384,13 @@ public:
   // The waveform files of `sampleIds` that can be read, from the organ's
   // folders or its archive, one pass per archive. A file that is missing,
   // unreadable, without a loop, or waiting for the publisher's licence is left
-  // out.
+  // out. `stopped`, when given, ends an archive's pass at the next file it
+  // passes: in a solid set the waveform can lie at the far end, a walk of a
+  // minute or more, and a cancelled load does not wait for it (#1139).
   std::unordered_map<Id, WaveformFile> readWaveformFiles(const std::vector<Id>& sampleIds,
                                                          const OrganModel& model,
-                                                         const std::string& organRootDir) const;
+                                                         const std::string& organRootDir,
+                                                         const OrganArchive::Stopped& stopped = {}) const;
 
   // A provider to hand VoiceEngine::setSampleProvider. Lock-free and
   // allocation-free: safe to call from the audio thread.
