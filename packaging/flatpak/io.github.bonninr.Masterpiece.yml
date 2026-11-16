@@ -5,7 +5,7 @@
 # a CI build allows; a Flathub submission will need them listed as sources.
 app-id: io.github.bonninr.Masterpiece
 runtime: org.freedesktop.Platform
-runtime-version: '24.08'
+runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
 command: masterpiece
 rename-desktop-file: masterpiece.desktop

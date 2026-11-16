@@ -57,7 +57,7 @@ sudo apt-get install -y build-essential git cmake ninja-build pkg-config \
 |---|---|
 | Android | Android SDK with NDK `27.2.12479018` and CMake `3.22.1`, JDK 17 or later, Git |
 | iOS | Xcode with the iOS SDK |
-| Flatpak | `flatpak-builder` and the freedesktop 24.08 runtime and SDK |
+| Flatpak | `flatpak-builder` and the freedesktop 25.08 runtime and SDK |
 | Windows installer | NSIS |
 | Debian packages | `cpack` (part of CMake) |
 
@@ -231,14 +231,14 @@ CI also runs the simulator build on iPad and iPhone devices with the scripts in 
 | Item | Value |
 |---|---|
 | App ID | `io.github.bonninr.Masterpiece` |
-| Runtime and SDK | `org.freedesktop.Platform` and `org.freedesktop.Sdk`, version `24.08` |
+| Runtime and SDK | `org.freedesktop.Platform` and `org.freedesktop.Sdk`, version `25.08` |
 | Command | `masterpiece` |
 | Permissions | `--share=ipc`, `--socket=x11`, `--socket=pulseaudio`, `--filesystem=xdg-run/pipewire-0`, `--device=all`, `--filesystem=home`, `/media`, `/run/media`, `/mnt` |
 | CMake options a Release build with the plugin, the tests and the developer tools switched off |
 
 The first module installs the JACK headers from the jack2 `v1.9.22` archive into `/app/include/jack`; JUCE needs them to compile and opens `libjack` itself at run time. The second module builds Masterpiece with `cmake-ninja` and `--share=network`, because `FetchContent` downloads JUCE and the other libraries during the build. A Flathub submission would need those sources listed in the manifest. The manifest also installs `io.github.bonninr.Masterpiece.metainfo.xml` and renames the shared MIME file to the app ID.
 
-CI builds it in the job `flatpak` with `flatpak/flatpak-github-actions/flatpak-builder` inside the container `ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08`, producing `masterpiece-linux-x86_64.flatpak`.
+CI builds it in the job `flatpak` with `flatpak/flatpak-github-actions/flatpak-builder` inside the container `ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08`, producing `masterpiece-linux-x86_64.flatpak`.
 
 ## Packaging
 
