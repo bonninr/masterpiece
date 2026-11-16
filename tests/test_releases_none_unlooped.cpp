@@ -34,6 +34,8 @@ void writeTone(const juce::File& file) {
 
 // One manual, two stops on middle C: the first pipe names its recording again
 // as its release, the second has none at all, as a bell or a noise is written.
+// The first is a speaking stop and takes retuning; a stop that takes none is
+// a noise effect and keeps its releases under Releases: None (#1161).
 std::string organText() {
   std::string s =
       "[Organ]\r\nChurchName=Unlooped\r\nHasPedals=N\r\nNumberOfManuals=1\r\n"
@@ -43,7 +45,8 @@ std::string organText() {
   for (int st = 1; st <= 2; ++st) {
     s += "[Stop00" + std::to_string(st) + "]\r\nName=Stop " + std::to_string(st) +
          "\r\nNumberOfLogicalPipes=61\r\nNumberOfAccessiblePipes=61\r\n"
-         "FirstAccessiblePipeLogicalKeyNumber=1\r\nWindchestGroup=001\r\nAcceptsRetuning=N\r\n";
+         "FirstAccessiblePipeLogicalKeyNumber=1\r\nWindchestGroup=001\r\n" +
+         std::string(st == 1 ? "" : "AcceptsRetuning=N\r\n");
     for (int p = 1; p <= 61; ++p) {
       char key[16];
       std::snprintf(key, sizeof key, "Pipe%03d", p);
