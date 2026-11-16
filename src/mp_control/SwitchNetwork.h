@@ -28,7 +28,9 @@
 // an engage action of 3 toggles the destination on each firing (a reversible
 // piston) and does nothing when the wire stops firing. A wire that disengages
 // when it fires (2) has nothing to take back when it stops, whatever its
-// disengage code says. Together these cover
+// disengage code says. Neither does a momentary button letting go of a
+// latching switch with a 7: the button set that switch, as a reset, an Appel
+// or a divisional does (#1146). Together these cover
 // every wiring real organs use — a plain follow (1/2 or 4/7), a reversible
 // (3/7) and an
 // inverting one (7/4, or 1/2 driven from the source's OFF state).
