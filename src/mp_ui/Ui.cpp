@@ -1356,7 +1356,8 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   // The organ's own console when the set ships artwork; the plain jamb
   // otherwise, and on demand. A set without artwork must still be playable.
   addAndMakeVisible(consoleView_);
-  consoleView_.setViewedComponent(&console_, false);
+  consoleHolder_.addAndMakeVisible(console_);
+  consoleView_.setViewedComponent(&consoleHolder_, false);
   addAndMakeVisible(pageTabs_);
   pageTabs_.addChangeListener(this);
   pageTabs_.onPopup = [this](int page) {
@@ -2671,6 +2672,7 @@ void MasterpieceEditor::resized() {
     const auto art = console_.artworkBounds();
     consoleArea_ = r;
     if (art.getWidth() <= 0 || art.getHeight() <= 0) {
+      consoleHolder_.setSize(console_.getRight(), console_.getBottom());
       consoleView_.setBounds(r);
     } else {
       console_.setTransform({});
@@ -2697,6 +2699,8 @@ void MasterpieceEditor::resized() {
       // width split evenly either side instead of banked in one strip.
       const int w = juce::roundToInt(static_cast<float>(art.getWidth()) * scale);
       const int h = juce::roundToInt(static_cast<float>(art.getHeight()) * scale);
+      consoleHolder_.setBounds(0, 0, w, h);
+      consoleView_.setViewPosition(0, 0);
       consoleView_.setBounds(
           r.withSizeKeepingCentre(juce::jmin(w, r.getWidth()),
                                   juce::jmin(h, r.getHeight())));

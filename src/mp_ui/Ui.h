@@ -525,6 +525,12 @@ private:
   TopBar top_;
   UpdateNotice updateNotice_{proc_};
   ConsoleView console_;
+  // The viewport shows this holder, the size of the scaled page; the console
+  // sits at its top-left with the page's transform, as in a page window. A
+  // viewport moves its viewed component itself, and with the console viewed
+  // directly a page whose drawing starts away from the origin kept the
+  // previous page's offset and was drawn pushed right and clipped (#1151).
+  juce::Component consoleHolder_;
   juce::Viewport consoleView_;
   // The room the console page is given in the window, for "Fit window to page".
   juce::Rectangle<int> consoleArea_;
