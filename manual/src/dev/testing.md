@@ -121,7 +121,7 @@ Separate jobs in the same workflow:
 
 | Job | Runner | Content |
 |---|---|---|
-| `flatpak` | `ubuntu-latest` in the freedesktop 24.08 container | Builds `masterpiece-linux-x86_64.flatpak` from `packaging/flatpak` |
+| `flatpak` | `ubuntu-latest` in the freedesktop 25.08 container | Builds `masterpiece-linux-x86_64.flatpak` from `packaging/flatpak` |
 | `ios` | `macos-15` | Builds the app for the simulator, then plays generated test organs, records the output inside the app and checks it against the numbers the organs were made from, taps through the interface and opens a package through the document picker. A pull request runs the large iPad; `main` runs three devices. Skipped on release tags |
 | `ios-device` | `macos-14` | Builds the unsigned device `.ipa` |
 | `android` | `ubuntu-22.04` | Builds the APK and the Play bundle with Gradle and checks that the APK holds `libjuce_jni.so` for `arm64-v8a` and `x86_64` |

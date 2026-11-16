@@ -741,7 +741,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: ${{ (inputs.pgo || contains(github.event.pull_request.labels.*.name, 'pgo') || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 180 || 90 }}
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
       options: --privileged
     steps:
       - uses: actions/checkout@v4
