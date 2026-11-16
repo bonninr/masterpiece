@@ -386,12 +386,13 @@ public:
     old.setRankRoutes({{kRank, mp::BusId{2}}});
     old.setPairCount(1);
     MP_CHECK(old.mixer().groups[0].members == std::vector<mp::BusId>{mp::BusId{1}}, "the group keeps pair 1 only");
-    const auto& dest = old.mixer().routingFor(kRank).perspectives[0].dest;
+    // routingFor returns a copy: the destination is copied out of it.
+    const auto dest = old.mixer().routingFor(kRank).perspectives[0].dest;
     MP_CHECK(std::holds_alternative<mp::BusId>(dest) && std::get<mp::BusId>(dest).value == 1,
              "the rank on pair 2 goes to pair 1");
     old.setRankRoutes({{kRank, 5}});
     old.setSpeakerGroups({});
-    const auto& gone = old.mixer().routingFor(kRank).perspectives[0].dest;
+    const auto gone = old.mixer().routingFor(kRank).perspectives[0].dest;
     MP_CHECK(std::holds_alternative<mp::BusId>(gone) && std::get<mp::BusId>(gone).value == 1,
              "a rank sent to a group that is gone goes to pair 1");
   }
