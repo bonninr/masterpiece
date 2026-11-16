@@ -20470,6 +20470,9 @@ public:
     const juce::File global = mp::dataFolder().getChildFile("settings.mpglobal");
     const bool had = global.existsAsFile();
     const juce::String before = had ? global.loadFileAsString() : juce::String();
+    // General pistons are the console's, saved in its own map for every organ:
+    // left there, keys 40 and 41 would play no pipe in the tests after this.
+    PlayerPistonsProcessorTest::Keep keepConsoleMap(mp::MasterpieceProcessor::consoleMidiFile());
     {
       mp::MasterpieceProcessor proc;
       proc.loadOrgan(odf, 0, false);
