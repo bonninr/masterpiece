@@ -1,7 +1,8 @@
 // Noise effects load whole (#1161): a key's and a drawstop's action noise,
 // often a silent attack with the sound in its releases, keeps every note and
 // every release whatever the loading choices thin out. A GrandOrgue rank that
-// takes no retuning is one, as is a rank of the format's Noise table.
+// takes no retuning is one, as is a rank of the format's Noise table and a
+// rank whose every pipe is on tuning scheme 4, no tuning at all.
 #include "MpTest.h"
 
 #include "../src/mp_core/GrandOrgueImport.h"
@@ -96,11 +97,24 @@ public:
     MP_CHECK(releasesOf(longest.ranks.at(5002)) == 12, "the longest only keeps them too");
 #endif
 
-    // A rank of the Noise table is a noise effect as well.
+    // A rank of the Noise table is a noise effect as well, and so is a rank
+    // whose every pipe takes no tuning (scheme 4). One pipe tempered among
+    // them makes a rank that speaks.
+    const auto pipe = [](int pipeId, int rankId, int scheme) {
+      return "<Pipe_SoundEngine01><PipeID>" + std::to_string(pipeId) + "</PipeID><RankID>" +
+             std::to_string(rankId) + "</RankID><NormalMIDINoteNumber>" + std::to_string(30 + pipeId % 10) +
+             "</NormalMIDINoteNumber><Pitch_Tempered_BaseTuningSchemeCode>" + std::to_string(scheme) +
+             "</Pitch_Tempered_BaseTuningSchemeCode></Pipe_SoundEngine01>";
+    };
     const std::string xml =
         "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
         "<ObjectList ObjectType=\"_General\"><_General><Identification_Name>N</Identification_Name></_General></ObjectList>"
-        "<ObjectList ObjectType=\"Rank\"><Rank><RankID>7</RankID><Name>Keys</Name></Rank></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><Rank><RankID>7</RankID><Name>Keys</Name></Rank>"
+        "<Rank><RankID>8</RankID><Name>Key Action Release</Name></Rank>"
+        "<Rank><RankID>9</RankID><Name>Principal</Name></Rank></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\">" +
+        pipe(81, 8, 4) + pipe(82, 8, 4) + pipe(91, 9, 1) + pipe(92, 9, 4) +
+        "</ObjectList>"
         "<ObjectList ObjectType=\"Noise\"><Noise><RankID>7</RankID></Noise></ObjectList></Hauptwerk>";
     mp::OdfLoader loader;
     mp::OrganModel table;
@@ -108,6 +122,9 @@ public:
     mp::OdfLoader::Options options;
     MP_CHECK(loader.loadFromXmlString(xml, "t.Organ_Hauptwerk_xml", options, table, diag), "the definition loads");
     MP_CHECK(table.ranks.count(7) && table.ranks.at(7).noiseEffect, "a Noise table rank loads whole");
+    MP_CHECK(table.ranks.count(8) && table.ranks.at(8).noiseEffect && table.ranks.at(8).pipes.size() == 2,
+             "a rank of untuned pipes loads whole");
+    MP_CHECK(table.ranks.count(9) && !table.ranks.at(9).noiseEffect, "a rank with a tempered pipe is pipework");
   }
 };
 static NoiseEffectsTest g_noiseEffects;

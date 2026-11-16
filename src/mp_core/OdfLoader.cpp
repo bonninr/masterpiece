@@ -695,10 +695,17 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     }
   }
   std::unordered_map<Id, Pipe*> pipeById;
+  // Per rank, its pipes on tuning scheme 4 and all its pipes (#1161).
+  std::unordered_map<Id, std::pair<size_t, size_t>> untunedPipes;
   forEachRow(odfRoot, "Pipe_SoundEngine01", [&](pugi::xml_node row) {
     Pipe p;
     p.pipeId = fieldInt(row, "PipeID", "a", 0);
     const Id rankId = fieldInt(row, "RankID", "b", 0);
+    {
+      auto& [untuned, all] = untunedPipes[rankId];
+      ++all;
+      if (fieldInt(row, "Pitch_Tempered_BaseTuningSchemeCode", "e", 1) == 4) ++untuned;
+    }
     p.midiNote = fieldInt(row, "NormalMIDINoteNumber", "d", 60);
     p.palletSwitchId = fieldInt(row, "ControllingPalletSwitchID", "c", 0);
     p.baseTuningDeviationCents =
@@ -784,6 +791,14 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     rankIt->second.pipes.push_back(std::move(p));
     pipeById[p.pipeId] = &rankIt->second.pipes.back();
   });
+  // A rank whose every pipe is on tuning scheme 4 takes no tuning at all:
+  // the sets use it for their noises, the key and stop actions, the blower,
+  // the shutters, and for nothing that speaks. A noise effect (#1161).
+  for (const auto& [rankId, counts] : untunedPipes) {
+    if (counts.first == 0 || counts.first != counts.second) continue;
+    const auto it = outModel.ranks.find(rankId);
+    if (it != outModel.ranks.end()) it->second.noiseEffect = true;
+  }
 
   // ---- M1.2: Layer table (linked into pipes; reserve like pipes above) ----
   {

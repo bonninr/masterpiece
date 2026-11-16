@@ -262,8 +262,9 @@ struct Rank {
   // and coming up, a drawstop, a shutter, the blower, often as a silent
   // attack with the sound in its releases. It loads whole, every note and
   // every release, whatever the loading choices thin out (#1161). A rank of
-  // the Noise table is one; a GrandOrgue rank that does not accept retuning
-  // is one.
+  // the Noise table is one; a rank whose every pipe is on tuning scheme 4,
+  // no tuning at all, is one; a GrandOrgue rank that does not accept
+  // retuning is one.
   bool noiseEffect = false;
 };
 
