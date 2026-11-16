@@ -1,5 +1,6 @@
 #include "OpenWindow.h"
 
+#include "InstallWindow.h"
 #include "Mobile.h"
 
 #include <algorithm>
@@ -49,6 +50,12 @@ public:
       owner_.proc_.saveGlobalDefaults();
       owner_.refresh();
     };
+    // An installed organ is not a favourite: it has no place in the list to
+    // move, and no name of the player's to change.
+    if (slot_ < 0)
+      for (juce::Component* c : {static_cast<juce::Component*>(&up_), static_cast<juce::Component*>(&down_),
+                                 static_cast<juce::Component*>(&rename_), static_cast<juce::Component*>(&remove_)})
+        c->setVisible(false);
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
     setTitle(name_);
   }
@@ -60,7 +67,7 @@ public:
     auto text = getLocalBounds().reduced(12, 4).withTrimmedRight(textRight_);
     g.setColour(kDim);
     g.setFont(juce::Font(juce::FontOptions(13.0f)));
-    g.drawText(juce::String(slot_), text.removeFromLeft(26), juce::Justification::centredLeft);
+    if (slot_ > 0) g.drawText(juce::String(slot_), text.removeFromLeft(26), juce::Justification::centredLeft);
     auto top = text.removeFromTop(text.getHeight() / 2 + 2);
     g.setColour(kText);
     g.setFont(juce::Font(juce::FontOptions(15.0f, juce::Font::bold)));
@@ -138,9 +145,11 @@ OpenPanel::OpenPanel(MasterpieceProcessor& p, std::function<void(const juce::Fil
   sort_.addItem(TRANS("Slot order"), 1);
   sort_.addItem(TRANS("Last used"), 2);
   sort_.addItem(TRANS("Most used"), 3);
+  sort_.addSeparator();
+  sort_.addItem(TRANS("Installed"), kInstalled);
   sort_.setSelectedId(static_cast<int>(proc_.favouriteSort()) + 1, juce::dontSendNotification);
   sort_.onChange = [this] {
-    proc_.setFavouriteSort(static_cast<FavouriteSort>(sort_.getSelectedId() - 1));
+    if (!showsInstalled()) proc_.setFavouriteSort(static_cast<FavouriteSort>(sort_.getSelectedId() - 1));
     refresh();
   };
 
@@ -172,12 +181,62 @@ OpenPanel::OpenPanel(MasterpieceProcessor& p, std::function<void(const juce::Fil
     close();
     if (browse) browse();
   };
+  // Installing and uninstalling, from the Installed list (#1024).
+  addChildComponent(install_);
+  install_.setTooltip(TRANS("Install an organ's packages into the organs folder"));
+  install_.onClick = [this] {
+    auto open = open_;
+    auto& proc = proc_;
+    close();
+    InstallPanel::showInstall(proc, open);
+  };
+  addChildComponent(uninstall_);
+  uninstall_.setTooltip(TRANS("Remove an organ's packages from the organs folder"));
+  uninstall_.onClick = [this] {
+    auto open = open_;
+    auto& proc = proc_;
+    close();
+    InstallPanel::showUninstall(proc, open);
+  };
   setSize(kMobile ? 640 : 600, 520);
+  // No favourite yet, and organs installed: the window opens on them.
+  if (proc_.favourites().organs.used().empty() && !proc_.installedOrgans().isEmpty())
+    sort_.setSelectedId(kInstalled, juce::dontSendNotification);
   refresh();
 }
 
 void OpenPanel::refresh() {
   rowViews_.clear();
+  const bool installed = showsInstalled();
+  addCurrent_.setVisible(!installed);
+  install_.setVisible(installed && !kMobile);
+  uninstall_.setVisible(installed && !kMobile);
+  search_.setTextToShowWhenEmpty(installed ? TRANS("Search the installed organs") : TRANS("Search the favourites"),
+                                 kDim);
+  if (installed) {
+    installed_ = proc_.installedOrgans();
+    const auto query = search_.getText().trim().toLowerCase();
+    int y = 0;
+    for (int i = 0; i < installed_.size(); ++i) {
+      const juce::File& f = installed_.getReference(i);
+      const auto name = f.getFileNameWithoutExtension();
+      if (query.isNotEmpty() && !name.toLowerCase().contains(query)) continue;
+      juce::String detail = f.getParentDirectory().getParentDirectory().getFullPathName();
+      if (const auto kind = formatOf(f); kind.isNotEmpty()) detail = kind + ": " + detail;
+      auto row = std::make_unique<Row>(*this, -(i + 1), name, detail, false, false);
+      rows_.addAndMakeVisible(*row);
+      row->setBounds(0, y, 10, kRowH);
+      y += kRowH;
+      rowViews_.push_back(std::move(row));
+    }
+    empty_.setVisible(rowViews_.empty());
+    empty_.setText(installed_.isEmpty()
+                       ? TRANS("No organ installed yet. Install one from its package.")
+                       : TRANS("No installed organ matches \"%1\".").replace("%1", search_.getText().trim()),
+                   juce::dontSendNotification);
+    resized();
+    return;
+  }
   const auto& bank = proc_.favourites().organs;
   const auto slots = bank.ordered(proc_.favouriteSort());
   const auto query = search_.getText().trim().toLowerCase();
@@ -218,6 +277,15 @@ void OpenPanel::refresh() {
 }
 
 void OpenPanel::openSlot(int slot) {
+  if (slot < 0) {
+    const int i = -slot - 1;
+    if (i >= installed_.size()) return;
+    const juce::File f = installed_[i];
+    auto open = open_;
+    close();
+    if (open) open(f);
+    return;
+  }
   const juce::File f(juce::String::fromUTF8(proc_.favourites().organs.at(slot).target.c_str()));
   if (!f.existsAsFile() && !MasterpieceProcessor::portableCopyFor(f).existsAsFile()) {
     // A set on a drive not plugged in: said, and the favourite kept.
@@ -316,6 +384,9 @@ void OpenPanel::resized() {
   another_.setBounds(bottom.removeFromRight(200));
   bottom.removeFromRight(8);
   addCurrent_.setBounds(bottom.removeFromRight(210));
+  install_.setBounds(addCurrent_.getBounds());
+  bottom.removeFromRight(8);
+  uninstall_.setBounds(bottom.removeFromRight(160));
   r.removeFromBottom(6);
   status_.setBounds(r.removeFromBottom(22));
   r.removeFromBottom(4);
@@ -330,7 +401,8 @@ void OpenPanel::show(MasterpieceProcessor& p, std::function<void(const juce::Fil
                      std::function<void()> browse) {
   // With an organ on the console the window opens even with no favourite,
   // for its "Add the organ now loaded" (#519).
-  if (p.favourites().organs.used().empty() && p.loadedOrganFile() == juce::File()) {
+  if (p.favourites().organs.used().empty() && p.loadedOrganFile() == juce::File() &&
+      p.installedOrgans().isEmpty()) {
     if (browse) browse();
     return;
   }

@@ -2348,6 +2348,17 @@ public:
   // every load that works, and saved with the other machine-wide settings.
   const std::vector<juce::File>& sampleLibraries() const { return libraries_; }
   void rememberSampleLibrary(const juce::File& root);
+
+  // The organs folder (#1024): where File > Install organ puts organs, laid
+  // out as a Hauptwerk installation is. The player's choice, on any drive;
+  // by default Masterpiece/Organs in the Documents folder. Setting it saves
+  // the choice at once.
+  juce::File organsFolder() const;
+  void setOrgansFolder(const juce::File& dir);
+  static juce::File defaultOrgansFolder();
+  // The organs installed here and in every known library, as definition
+  // files: what the Open window lists under Installed.
+  juce::Array<juce::File> installedOrgans() const;
   void setOrganRootOverride(const juce::File& dir) { organRootOverride_ = dir; }
   // The next loads list the definition's fields nothing read, in
   // LoadResult::diagnostics.unreadFields. For mp-render --check.
@@ -3073,6 +3084,7 @@ private:
   juce::String textFont_;
   FavouriteSort favouriteSort_ = FavouriteSort::Slot;
   juce::File cacheDir_; // empty: the default place
+  juce::File organsDir_; // empty: the default place
   juce::File packageDir_; // empty: none
   juce::File backupDir_;  // empty: none yet
   // Next 10% threshold to tap at, 10 through 100. Reset by whoever starts a

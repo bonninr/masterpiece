@@ -144,6 +144,11 @@ public:
   // The key find() and read() use for a path.
   static std::string key(const std::string& path);
 
+  // Where a stored file belongs in an organ's tree, '/'-separated: its own
+  // path, except a Hauptwerk definition stored at the top, which goes in
+  // OrganDefinitions/ beside the packages.
+  static std::string placedPath(const std::string& stored);
+
   // A stable name for this set of archives: their names and sizes. Used for
   // the folder its small files are unpacked into.
   std::string identity() const;

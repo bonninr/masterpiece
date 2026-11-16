@@ -42,6 +42,11 @@ private:
   void dropRow(int slot, int y);
   void rename(int slot);
   void close();
+  // The organs installed in the organs folder (#1024), shown in place of the
+  // favourites. Their rows count down from -1: row -1 is installed_[0].
+  bool showsInstalled() const { return sort_.getSelectedId() == kInstalled; }
+  static constexpr int kInstalled = 4;
+  juce::Array<juce::File> installed_;
 
   MasterpieceProcessor& proc_;
   std::function<void(const juce::File&)> open_;
@@ -55,6 +60,8 @@ private:
   juce::Label status_;
   juce::TextButton addCurrent_{TRANS("Add the organ now loaded")};
   juce::TextButton another_{TRANS("Open an organ file...")};
+  juce::TextButton install_{TRANS("Install organ...")};
+  juce::TextButton uninstall_{TRANS("Uninstall organ...")};
 };
 
 }  // namespace mp::ui
