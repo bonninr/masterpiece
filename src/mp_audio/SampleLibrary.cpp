@@ -365,8 +365,11 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
   if (cueInFile > 0) want = total;
 
   // A shortened release: read to its length after where it starts (the file's
-  // head, or its release marker), the last quarter faded to silence. An
-  // attack in the same file is untouched: its loop ends before the marker.
+  // head, or its release marker), and faded from its first sample to silence
+  // at its end, a straight line in gain, as GrandOrgue's release tail does
+  // (#1149). Held at full level and faded over its last quarter, it stopped
+  // short. An attack in the same file is untouched: its loop ends before the
+  // marker.
   int64_t fadeFrom = -1;
   const double fileRate = reader.sampleRate > 0.0 ? reader.sampleRate : 48000.0;
   const auto releaseMax = static_cast<int64_t>(releaseMaxMs * fileRate / 1000.0);
@@ -375,7 +378,7 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
     const int64_t end = std::min(total, start + releaseMax);
     if (end < total && end > start) {
       want = end;
-      fadeFrom = std::max(start, end - std::max<int64_t>(1, releaseMax / 4));
+      fadeFrom = start;
     }
   }
   const int fileChannels = std::max(1, static_cast<int>(reader.numChannels));
@@ -389,8 +392,7 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
     for (int c = 0; c < fileChannels; ++c) {
       float* d = scratch.getWritePointer(c);
       for (int64_t i = 0; i < n; ++i) {
-        const double x = static_cast<double>(i + 1) / static_cast<double>(n);
-        d[fadeFrom + i] *= static_cast<float>(0.5 * (1.0 + std::cos(3.141592653589793 * x)));
+        d[fadeFrom + i] *= static_cast<float>(1.0 - static_cast<double>(i + 1) / static_cast<double>(n));
       }
     }
   }

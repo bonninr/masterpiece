@@ -143,7 +143,7 @@ public:
   // answers a key held for any time, since the others are gone.
   static void pruneReleases(OrganModel& model, ReleaseChoice choice);
   // Each release kept up to this length after its start, in milliseconds,
-  // fading out over its last quarter; 0 keeps it whole. Read only that far:
+  // fading out over its whole length; 0 keeps it whole. Read only that far:
   // a shortened release is held in memory, never streamed.
   void setReleaseMaxMs(int ms) { releaseMaxMs_ = std::max(0, ms); }
   int releaseMaxMs() const { return releaseMaxMs_; }

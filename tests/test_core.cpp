@@ -13798,7 +13798,19 @@ public:
                    std::to_string(b->numFrames) + " frames)");
       float early = 0.0f, last = std::abs(b->sample(b->numFrames - 1, 0));
       for (int64_t f = 0; f < b->numFrames / 2; ++f) early = std::max(early, std::abs(b->sample(f, 0)));
-      MP_CHECK(early > 0.4f && last < 1.0e-3f, "it plays as recorded, then fades to silence at its end");
+      MP_CHECK(early > 0.4f && last < 1.0e-3f, "it starts as recorded and fades to silence at its end");
+      // The fade runs the whole length, a straight line in gain (#1149): the
+      // 0.5 tone is near 0.25 halfway, and near 0.375 a quarter in.
+      auto peakAround = [&](double at) {
+        const int64_t mid = static_cast<int64_t>(at * static_cast<double>(b->numFrames));
+        float p = 0.0f;
+        for (int64_t f = mid - 120; f < mid + 120; ++f) p = std::max(p, std::abs(b->sample(f, 0)));
+        return p;
+      };
+      const float half = peakAround(0.5), quarter = peakAround(0.25);
+      MP_CHECK(half > 0.22f && half < 0.28f && quarter > 0.34f && quarter < 0.41f,
+               "kept to " + std::to_string(ms) + " ms, it fades from its start: " + std::to_string(quarter) +
+                   " a quarter in, " + std::to_string(half) + " halfway");
     }
     root.deleteRecursively();
 

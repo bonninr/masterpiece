@@ -290,7 +290,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
   addAndMakeVisible(releaseLength_);
   showReleaseLength(proc_.releaseMaxMs());
   releaseLength_.setTooltip(TRANS("Each release is kept up to this length and fades out over its "
-                                  "last quarter. Shorter releases use less memory: for an organ "
+                                  "whole length. Shorter releases use less memory: for an organ "
                                   "played in a room with its own reverberation, or under an "
                                   "impulse response.") +
                             " " +
