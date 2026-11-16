@@ -7280,6 +7280,43 @@ public:
       MP_CHECK(!net.engaged(30), "a 7 still disengages when its own source lets go");
     }
 
+    // --- a momentary setter with 1/7 and 2/7 (Saint-Jean-de-Luz, #1146) --
+    // "Reset to defaults" (151) springs back. Pressed, it draws "Blower start
+    // on load" (141) and pushes in "Extended keyboard compass" (111). Let go,
+    // both stay where it put them. A momentary trigger (300) on a 4/7 wire
+    // still follows the button, so the next press fires it again.
+    {
+      mp::OrganModel m;
+      for (mp::Id id : {mp::Id{151}, mp::Id{141}, mp::Id{111}, mp::Id{300}}) addSwitch(m, id);
+      m.switches[151].latching = false;
+      m.switches[300].latching = false;
+      m.switches[111].defaultEngaged = true;
+      auto set = wire(151, 141);
+      set.disengageAction = 7;
+      auto clear = wire(151, 111);
+      clear.engageAction = 2;
+      clear.disengageAction = 7;
+      auto trigger = wire(151, 300);
+      trigger.engageAction = 4;
+      trigger.disengageAction = 7;
+      m.switchLinkages.push_back(set);
+      m.switchLinkages.push_back(clear);
+      m.switchLinkages.push_back(trigger);
+      mp::SwitchNetwork net;
+      net.reset(m);
+      MP_CHECK(!net.engaged(141) && net.engaged(111), "the starting state");
+      net.set(151, true);
+      MP_CHECK(net.engaged(141) && !net.engaged(111) && net.engaged(300), "the press sets both and fires the trigger");
+      net.set(151, false);
+      MP_CHECK(net.engaged(141), "the release leaves the blower option drawn");
+      MP_CHECK(!net.engaged(111), "and the compass pushed in");
+      MP_CHECK(!net.engaged(300), "the momentary trigger lets go with the button");
+      net.set(141, false);
+      net.set(151, true);
+      net.set(151, false);
+      MP_CHECK(net.engaged(141), "a second press draws it again and it stays");
+    }
+
     // --- the shape Lemmer actually uses --------------------------------
     // The drawn drawstop and the logical switch drive EACH OTHER, so that
     // moving either moves both; the logical one then drives the node the key

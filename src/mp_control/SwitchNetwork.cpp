@@ -214,6 +214,22 @@ void SwitchNetwork::reevaluate(const SwitchLinkage& l, bool conditionMoved) {
   // (#546).
   if (!now && l.engageAction == 2 && l.disengageAction == 7) return;
 
+  // A momentary button that sets a latching switch (1/7) leaves it set when
+  // it springs back. Every such button in the sets at hand is a setter:
+  // "Reset to defaults", "Crescendo reset", "Appel anches", a divisional
+  // Piano or Forte, a mode selector. Releasing it with the 7 read as a
+  // disengage undid the press, so Saint-Jean-de-Luz's reset switched its
+  // "Blower start on load" off and the next load was silent (#1146). A
+  // momentary destination still follows the button: a piston's trigger has
+  // to let go to fire again.
+  if (!now && l.disengageAction == 7 && !conditionMoved && model_ != nullptr) {
+    const auto src = model_->switches.find(l.sourceSwitchId);
+    const auto dst = model_->switches.find(l.destSwitchId);
+    if (src != model_->switches.end() && !src->second.latching && dst != model_->switches.end() &&
+        dst->second.latching)
+      return;
+  }
+
   // A reversible piston: each press flips what it controls, and letting
   // go does nothing -- a toggle has no state of its own to undo. Every
   // reversible in the sets at hand is wired 3/7 from a momentary piston.
