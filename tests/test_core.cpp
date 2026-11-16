@@ -16059,6 +16059,67 @@ public:
 };
 static MismatchedRar4Test g_mismatchedRar4;
 
+// A cancelled load stops the archive walk at the next file it passes, wanted
+// or not (#1139): with a few stops chosen, the next wanted sample in a solid
+// set can lie gigabytes on, and the load ran there before it heard the cancel.
+class ArchiveReadStopsTest final : public mp::test::Test {
+public:
+  ArchiveReadStopsTest() : Test("functional.archive.read-stops-between-files", Category::Functional) {}
+  using T = SolidRar4Test;
+  using S = SplitRar4Test;
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "mp-archive-read-stops";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir);
+    std::string files = S::whole("OrganDefinitions\\Set.Organ_Hauptwerk_xml", "<Hauptwerk>stops</Hauptwerk>\n") +
+                        S::whole("first.wav", T::pattern(3, 4000));
+    for (int i = 0; i < 6; ++i) files += S::whole("skipped" + std::to_string(i) + ".wav", T::pattern(4 + i, 4000));
+    files += S::whole("last.wav", T::pattern(11, 4000));
+    // One archive on its own: a main header without the volume flag.
+    std::ofstream(dir / "Set.rar", std::ios::binary)
+        << std::string("Rar!\x1a\x07\x00", 7) +
+               T::header(std::string("\x73", 1) + T::le(0, 2) + T::le(13, 2) + std::string(6, '\0')) + files +
+               T::header(std::string("\x7b", 1) + T::le(0x4000, 2) + T::le(7, 2));
+
+    mp::OrganArchive arc;
+    std::string error;
+    MP_CHECK(arc.discover((dir / "Set.rar").string(), error) && arc.inspect(error) && arc.index(error),
+             "the set is listed: " + error);
+    const std::unordered_set<std::string> wanted = {mp::OrganArchive::key("first.wav"),
+                                                    mp::OrganArchive::key("last.wav")};
+    std::vector<std::string> got;
+    auto deliver = [&got](const std::string& k, std::vector<char>&&) {
+      got.push_back(k);
+      return true;
+    };
+
+    // Not stopped: both wanted files arrive.
+    error.clear();
+    MP_CHECK(arc.read(0, wanted, deliver, error, [] { return false; }) && got.size() == 2,
+             "both files read when nothing stops the walk: " + error);
+
+    // Stopped once the first file is in: the walk ends among the skipped
+    // files, asked once for each file it passes.
+    got.clear();
+    error.clear();
+    int askedAfterStop = 0;
+    const bool read = arc.read(0, wanted, deliver, error, [&] {
+      if (got.empty()) return false;
+      ++askedAfterStop;
+      return true;
+    });
+    MP_CHECK(read && error.empty(), "a stopped walk is no error: " + error);
+    MP_CHECK(got == std::vector<std::string>({mp::OrganArchive::key("first.wav")}),
+             "the file past the skipped ones never arrives: " + std::to_string(got.size()) + " delivered");
+    MP_CHECK(askedAfterStop == 1, "the walk ends at the first file after the stop: asked " +
+                                      std::to_string(askedAfterStop) + " times after it");
+    fs::remove_all(dir, ec);
+  }
+};
+static ArchiveReadStopsTest g_archiveReadStops;
+
 // A volume of the right size with a bad stretch inside: its headers stop
 // making sense partway through. The files after that point are lost, and the
 // player is told which volume to download again (St Mary Portsea's demo,

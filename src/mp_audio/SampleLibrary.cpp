@@ -1064,7 +1064,8 @@ bool SampleLibrary::samplePresent(Id sampleId, const OrganModel& model,
 }
 
 std::unordered_map<Id, SampleLibrary::WaveformFile> SampleLibrary::readWaveformFiles(
-    const std::vector<Id>& sampleIds, const OrganModel& model, const std::string& organRootDir) const {
+    const std::vector<Id>& sampleIds, const OrganModel& model, const std::string& organRootDir,
+    const OrganArchive::Stopped& stopped) const {
   std::unordered_map<Id, WaveformFile> out;
   juce::AudioFormatManager formats;
   registerSampleFormats(formats);
@@ -1130,6 +1131,7 @@ std::unordered_map<Id, SampleLibrary::WaveformFile> SampleLibrary::readWaveformF
     if (const auto* e = archive_->find(key)) perArchive[e->archive].insert(key);
   for (size_t a = 0; a < perArchive.size(); ++a) {
     if (perArchive[a].empty()) continue;
+    if (stopped && stopped()) break;
     std::string error;
     try {
       archive_->read(a, perArchive[a], [&](const std::string& key, std::vector<char>&& bytes) {
@@ -1140,7 +1142,7 @@ std::unordered_map<Id, SampleLibrary::WaveformFile> SampleLibrary::readWaveformF
           take(id, std::unique_ptr<juce::AudioFormatReader>(formats.createReaderFor(
                        std::make_unique<juce::MemoryInputStream>(block, false))));
         return true;
-      }, error);
+      }, error, stopped);
     } catch (const std::bad_alloc&) {
     }
   }
@@ -1547,7 +1549,13 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
             queue.push_back({key, std::move(block)});
             queueChanged.notify_all();
             return true;
-          }, error);
+          }, error, [&] {
+            // Cancelled, or the decoders stopped (memory): the walk ends at
+            // the next file it passes, wanted or not (#1139).
+            if (progress != nullptr && progress->isCancelled()) return true;
+            const std::lock_guard<std::mutex> lock(queueMutex);
+            return stop;
+          });
         } catch (const std::bad_alloc&) {
           if (progress != nullptr) progress->memoryRefused();
           error = "the system refused memory while reading the archive";

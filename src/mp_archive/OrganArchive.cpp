@@ -2086,7 +2086,7 @@ bool OrganArchive::unpackSmallFiles(const std::string& dir, std::string& error,
 }
 
 bool OrganArchive::read(size_t archiveIndex, const std::unordered_set<std::string>& wanted,
-                        const Deliver& deliver, std::string& error) const {
+                        const Deliver& deliver, std::string& error, const Stopped& stopped) const {
   if (archiveIndex >= archives_.size()) return false;
   size_t remaining = 0;
   for (const auto& e : entries_)
@@ -2131,6 +2131,7 @@ bool OrganArchive::read(size_t archiveIndex, const std::unordered_set<std::strin
   std::vector<char> bytes;
   for (;;) {
     while (remaining > 0 && pass->next(name, size, encrypted)) {
+      if (stopped && stopped()) return error.empty();
       const std::string k = key(name);
       if (!wanted.count(k) || finished.count(k)) {
         if (!pass->discard()) break;

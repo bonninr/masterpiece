@@ -4458,7 +4458,9 @@ void MasterpieceProcessor::loadTremulantShapes(const std::string& organRootDir) 
   if (files.empty()) return;
   std::sort(files.begin(), files.end());
 
-  const auto read = samples_.readWaveformFiles(files, model_, organRootDir);
+  // A cancelled load leaves them unread, and its tremulants play their sine.
+  const auto read = samples_.readWaveformFiles(files, model_, organRootDir,
+                                               [this] { return loadProgress_.isCancelled(); });
   std::unordered_map<Id, int> shapeOf; // sample id -> tremShapes_ index
   int capped = 0;
   for (const Id sample : files) {
