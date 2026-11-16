@@ -3959,6 +3959,35 @@ void VoicingPanel::updateStatus() {
     s << TRANS("Changes %1 pipes")
              .replace("%1", juce::String(static_cast<int>(pipesOf(proc_.organModel(), t).size())))
       << "  -  ";
+  // One pipe: the file it plays, which names the sound of a noise rank's
+  // pipes, a shutter or the blower, where the note number says nothing (#1160).
+  if (t.scope == VoicingScope::Pipe) {
+    const auto& model = proc_.organModel();
+    juce::StringArray files;
+    for (const auto& [rankId, pipeId] : pipesOf(model, t)) {
+      const auto& rank = model.ranks.at(rankId);
+      for (const auto& pipe : rank.pipes) {
+        if (pipe.pipeId != pipeId) continue;
+        for (const auto& layer : pipe.layers)
+          for (const auto& a : layer.attacks) {
+            const auto ref = model.samples.find(a.sample.sampleId);
+            if (ref == model.samples.end() || ref->second.fileName.empty()) continue;
+            const auto name = juce::String(juce::CharPointer_UTF8(ref->second.fileName.c_str()))
+                                  .replaceCharacter('\\', '/')
+                                  .fromLastOccurrenceOf("/", false, false);
+            files.addIfNotAlreadyThere(name);
+          }
+      }
+    }
+    if (!files.isEmpty()) {
+      if (files.size() > 3) {
+        const int more = files.size() - 3;
+        files.removeRange(3, more);
+        files.add(TRANS("%1 more").replace("%1", juce::String(more)));
+      }
+      s << TRANS("Plays %1").replace("%1", files.joinIntoString(", ")) << "  -  ";
+    }
+  }
   s << TRANS("Slot %1  -  %2 rank(s), %3 pipe(s) adjusted")
            .replace("%1", proc_.voicing().usingB ? "B" : "A")
            .replace("%2", juce::String(static_cast<int>(v.ranks().size())))

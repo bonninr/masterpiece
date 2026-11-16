@@ -8055,6 +8055,10 @@ void MasterpieceProcessor::triggerNoiseFor(Id switchId, bool engaged) {
       vs.ratio = 1.0;
       vs.gain = juce::Decibels::decibelsToGain(static_cast<float>(layer.gainDb), -100.0f);
       vs.levelIndex = layerLevelIndexOf(layer);
+      // The player's voicing of the noise rank: a swell shutter or a blower
+      // set quieter in Voicing sounds quieter (#1160). Gain only; a noise
+      // keeps its recorded pitch.
+      vs.voicingGain = voicingGainOf(rankId, pipe.pipeId);
       // The organ's velocity response reaches noises too, and on every set
       // that declares one it is the NOISE layers that carry it.
       if (layer.velSensMaxAttenDb != 0.0) {

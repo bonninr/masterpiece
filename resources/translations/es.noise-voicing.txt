@@ -1,0 +1,2 @@
+"Plays %1" = "Reproduce %1"
+"%1 more" = "%1 más"
