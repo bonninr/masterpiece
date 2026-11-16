@@ -1222,8 +1222,6 @@ countries: it ch sm va
 "No pipe is chosen" = "Nessuna canna scelta"
 "Changes %1 ranks" = "Modifica %1 file"
 "Changes %1 pipes" = "Modifica %1 canne"
-"Several pairs" = "Più coppie"
-"Sends every rank of this group to one pair" = "Invia tutte le file di questo gruppo a una coppia"
 "From GrandOrgue..." = "Da GrandOrgue..."
 "From GrandOrgue" = "Da GrandOrgue"
 "The MIDI settings this organ has in GrandOrgue, from its settings file (.cmb)" = "Le impostazioni MIDI di quest'organo in GrandOrgue, dal suo file di impostazioni (.cmb)"

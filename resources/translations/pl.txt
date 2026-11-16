@@ -1222,8 +1222,6 @@ countries: pl
 "No pipe is chosen" = "Nie wybrano piszczałki"
 "Changes %1 ranks" = "Zmienia %1 szeregów"
 "Changes %1 pipes" = "Zmienia %1 piszczałek"
-"Several pairs" = "Kilka par"
-"Sends every rank of this group to one pair" = "Kieruje wszystkie szeregi tej grupy do jednej pary"
 "From GrandOrgue..." = "Z GrandOrgue..."
 "From GrandOrgue" = "Z GrandOrgue"
 "The MIDI settings this organ has in GrandOrgue, from its settings file (.cmb)" = "Ustawienia MIDI tych organów w GrandOrgue, z ich pliku ustawień (.cmb)"

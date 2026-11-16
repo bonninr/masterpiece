@@ -614,13 +614,33 @@ private:
   int faderLevel(const Fader& f) const;
   void setFaderLevel(const Fader& f, int value);
   void faderMidiMenu(Fader& f);
-  std::vector<Fader> pairFaders_, divisionFaders_, groupFaders_, rankFaders_;
-  juce::Label pairsHeading_, divisionsHeading_, groupsHeading_, ranksHeading_;
-  // A perspective's or a windchest group's pair: chosen here, it moves every
-  // rank of the group; it shows the pair while they all share one.
+  std::vector<Fader> pairFaders_, divisionFaders_, groupFaders_, mixFaders_, rankFaders_;
+  juce::Label pairsHeading_, divisionsHeading_, groupsHeading_, mixesHeading_, ranksHeading_;
+  // A mix's destination, as a division's: every rank of the mix at once.
+  std::vector<std::unique_ptr<juce::ComboBox>> mixDests_;
+  std::vector<int> mixIdOf_;  // per mix strip, the mix's id
+  bool rankInMix(size_t row, int mixId) const;
+  // The mixes were made, changed or removed: their strips are made again.
+  void mixesChanged();
+  // The ranks on show, by id, for the Mixes panel.
+  std::vector<Id> shownRankIds() const;
+  // A perspective's, a windchest group's or a division's destination: chosen
+  // here, it moves every rank of it; it shows the destination while they all
+  // share one. A destination is a pair or a speaker group.
   std::vector<std::unique_ptr<juce::ComboBox>> groupPairs_;
+  std::vector<std::unique_ptr<juce::ComboBox>> divisionDests_;
+  std::vector<int> divisionIndexOf_;  // per division strip, the live division index
   void fillGroupPairs();
   void showGroupPairs();
+  // A destination box's items: the pairs, then the speaker groups, whose
+  // item ids start at kGroupItem.
+  static constexpr int kGroupItem = 1000;
+  void fillDestinations(juce::ComboBox& box) const;
+  int destinationItem(Id rankId) const;
+  void sendRanks(const std::function<bool(size_t)>& which, int item);
+  // The pair count, the speaker groups or a pair's channels changed:
+  // every box and fader follows.
+  void outputsChanged();
 
   MasterpieceProcessor& proc_;
   juce::Label heading_;
@@ -644,6 +664,14 @@ private:
   juce::TextButton reset_{TRANS("All to pair 1")};
   // Each pair's lows to a subwoofer channel, in a box of its own.
   juce::TextButton bass_{TRANS("Bass management...")};
+  // Speaker groups: pairs that share the pipes sent to them, note by note.
+  juce::TextButton speakerGroups_{TRANS("Speaker groups...")};
+  // Each pair in stereo or mono, on which channels, and its copies.
+  juce::TextButton channels_{TRANS("Pair channels...")};
+  // Named sets of ranks, each with a strip of its own.
+  juce::TextButton mixes_{TRANS("Mixes...")};
+  // Every rank on show to one pair or speaker group, in one move.
+  juce::ComboBox sendShown_;
   // A strip per rank, side by side in a viewport that scrolls: 51 ranks do
   // not fit a window. The divisions, groups and pairs stand at the right in
   // one of their own, as a desk's group and master faders do.

@@ -1223,8 +1223,6 @@ countries: nl be sr
 "No pipe is chosen" = "Er is geen pijp gekozen"
 "Changes %1 ranks" = "Wijzigt %1 pijpenrijen"
 "Changes %1 pipes" = "Wijzigt %1 pijpen"
-"Several pairs" = "Meerdere paren"
-"Sends every rank of this group to one pair" = "Stuurt alle pijpenrijen van deze groep naar één paar"
 "From GrandOrgue..." = "Uit GrandOrgue..."
 "From GrandOrgue" = "Uit GrandOrgue"
 "The MIDI settings this organ has in GrandOrgue, from its settings file (.cmb)" = "De MIDI-instellingen van dit orgel in GrandOrgue, uit het instellingenbestand (.cmb)"

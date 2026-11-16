@@ -186,6 +186,7 @@ const char* targetName(MidiTargetKind k) {
     case MidiTargetKind::DivisionLevel: return "division-level";
     case MidiTargetKind::PairLevel: return "pair-level";
     case MidiTargetKind::GroupLevel: return "group-level";
+    case MidiTargetKind::MixLevel: return "mix-level";
     case MidiTargetKind::ReverbWet: return "reverb-wet";
     case MidiTargetKind::StripMute: return "strip-mute";
     case MidiTargetKind::StripSolo: return "strip-solo";
@@ -248,6 +249,7 @@ MidiTargetKind targetKindFrom(const std::string& s) {
   if (s == "division-level") return MidiTargetKind::DivisionLevel;
   if (s == "pair-level") return MidiTargetKind::PairLevel;
   if (s == "group-level") return MidiTargetKind::GroupLevel;
+  if (s == "mix-level") return MidiTargetKind::MixLevel;
   if (s == "reverb-wet") return MidiTargetKind::ReverbWet;
   if (s == "strip-mute") return MidiTargetKind::StripMute;
   if (s == "strip-solo") return MidiTargetKind::StripSolo;
@@ -536,6 +538,7 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
     case MidiTargetKind::DivisionLevel:
     case MidiTargetKind::PairLevel:
     case MidiTargetKind::GroupLevel:
+    case MidiTargetKind::MixLevel:
     case MidiTargetKind::ReverbWet:
     case MidiTargetKind::MasterVolume:
     case MidiTargetKind::ContinuousControl: {

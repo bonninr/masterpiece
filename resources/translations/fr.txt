@@ -1222,8 +1222,6 @@ countries: fr be ca ch lu mc
 "No pipe is chosen" = "Aucun tuyau n'est choisi"
 "Changes %1 ranks" = "Modifie %1 rangs"
 "Changes %1 pipes" = "Modifie %1 tuyaux"
-"Several pairs" = "Plusieurs paires"
-"Sends every rank of this group to one pair" = "Envoie tous les rangs de ce groupe vers une paire"
 "From GrandOrgue..." = "Depuis GrandOrgue..."
 "From GrandOrgue" = "Depuis GrandOrgue"
 "The MIDI settings this organ has in GrandOrgue, from its settings file (.cmb)" = "Les réglages MIDI de cet orgue dans GrandOrgue, depuis son fichier de réglages (.cmb)"

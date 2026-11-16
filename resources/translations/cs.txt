@@ -1222,8 +1222,6 @@ countries: cz
 "No pipe is chosen" = "Není vybrána žádná píšťala"
 "Changes %1 ranks" = "Mění %1 řad"
 "Changes %1 pipes" = "Mění %1 píšťal"
-"Several pairs" = "Více párů"
-"Sends every rank of this group to one pair" = "Pošle všechny řady této skupiny do jednoho páru"
 "From GrandOrgue..." = "Z GrandOrgue..."
 "From GrandOrgue" = "Z GrandOrgue"
 "The MIDI settings this organ has in GrandOrgue, from its settings file (.cmb)" = "Nastavení MIDI, která má tento varhanový nástroj v GrandOrgue, z jeho souboru nastavení (.cmb)"

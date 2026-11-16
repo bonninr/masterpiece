@@ -4,7 +4,6 @@
 "Solo: only the ranks under a soloed strip sound" = "Solo: alleen de rangen onder een kanaal op solo klinken"
 "The output pair's level after its swell boxes and its room, before the master volume. Red: near full scale." = "Het niveau van het uitgangspaar na zijn zwelkasten en zijn ruimte, voor het totaalvolume. Rood: dicht bij volle schaal."
 "The balance of the pipes on this strip, after the faders, before the swell boxes and the room." = "De balans van de pijpen op dit kanaal, na de faders, voor de zwelkasten en de ruimte."
-"The output pair this rank plays through" = "Het uitgangspaar waarlangs deze rang klinkt"
 "Learn a knob or a pedal for the level, and buttons for mute and solo" = "Een knop of pedaal leren voor het niveau, en knoppen voor mute en solo"
 "Learn: press the button" = "Leren: druk op de knop"
 "Press it..." = "Druk erop..."

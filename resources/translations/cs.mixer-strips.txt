@@ -4,7 +4,6 @@
 "Solo: only the ranks under a soloed strip sound" = "Sólo: znějí jen řady pod kanálem v sólu"
 "The output pair's level after its swell boxes and its room, before the master volume. Red: near full scale." = "Úroveň páru výstupů za jeho žaluziovými skříněmi a prostorem, před celkovou hlasitostí. Červená: blízko plné úrovně."
 "The balance of the pipes on this strip, after the faders, before the swell boxes and the room." = "Vyvážení píšťal tohoto kanálu, za fadery, před žaluziovými skříněmi a prostorem."
-"The output pair this rank plays through" = "Pár výstupů, kterým tato řada hraje"
 "Learn a knob or a pedal for the level, and buttons for mute and solo" = "Naučit knoflík nebo pedál pro úroveň a tlačítka pro ztlumení a sólo"
 "Learn: press the button" = "Naučit: stiskněte tlačítko"
 "Press it..." = "Stiskněte..."

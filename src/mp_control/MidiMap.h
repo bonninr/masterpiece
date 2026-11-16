@@ -140,6 +140,9 @@ enum class MidiTargetKind {
   ConsoleDisplay,
   // The sequencer's current frame recalled again, GrandOrgue's Current.
   StepperCurrent,
+  // A mix's live level (LiveLevels.h), driven like a shoe: id = the mix's
+  // number from 1.
+  MixLevel,
 };
 
 // What a ConsoleDisplay shows.
@@ -156,9 +159,19 @@ enum ConsoleText : int {
 // A mute or solo target's id: the strip's kind (0 rank, 1 division, 2 group,
 // 3 output pair, as LiveLevels::Strip) and the id that strip's level target
 // has -- a rank's or division's id, a group's or pair's place from 1.
-inline Id stripTarget(int strip, Id levelId) { return levelId * 4 + strip; }
-inline int stripTargetStrip(Id target) { return static_cast<int>(((target % 4) + 4) % 4); }
-inline Id stripTargetLevelId(Id target) { return (target - stripTargetStrip(target)) / 4; }
+// A mix (4) came later and has two bits no more: its targets stand in a
+// range of their own, above every id the four kinds reach.
+constexpr int kStripMix = 4;
+constexpr Id kStripMixBase = 1 << 29;
+inline Id stripTarget(int strip, Id levelId) {
+  return strip == kStripMix ? kStripMixBase + levelId : levelId * 4 + strip;
+}
+inline int stripTargetStrip(Id target) {
+  return target >= kStripMixBase ? kStripMix : static_cast<int>(((target % 4) + 4) % 4);
+}
+inline Id stripTargetLevelId(Id target) {
+  return target >= kStripMixBase ? target - kStripMixBase : (target - stripTargetStrip(target)) / 4;
+}
 
 // A temperament's MIDI target id: 0 for the organ's own, else a hash of the
 // library name, so a mapping survives entries added to the library.
@@ -566,6 +579,7 @@ public:
   static bool isContinuousTarget(MidiTargetKind k) {
     return k == MidiTargetKind::ContinuousControl || k == MidiTargetKind::RankLevel ||
            k == MidiTargetKind::DivisionLevel || k == MidiTargetKind::PairLevel || k == MidiTargetKind::GroupLevel ||
+           k == MidiTargetKind::MixLevel ||
            k == MidiTargetKind::ReverbWet || k == MidiTargetKind::MasterVolume;
   }
   // A raw controller value through a binding's window and sense, 0..127.

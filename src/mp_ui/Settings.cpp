@@ -4028,6 +4028,464 @@ private:
   juce::Label heading_;
   std::vector<Row> rows_;
 };
+
+// The rows of a box that grows with the pairs, in a viewport that scrolls
+// once they pass the height the screen allows.
+constexpr int kPanelRowsMax = 470;
+
+// One block per speaker group: its pairs, ticked, and how its notes are
+// spread over them. A group with no pair ticked plays on pair 1.
+class SpeakerGroupsPanel final : public juce::Component {
+public:
+  SpeakerGroupsPanel(MasterpieceProcessor& p, std::function<void()> changed)
+      : onChanged(std::move(changed)), proc_(p) {
+    addAndMakeVisible(heading_);
+    styleLabel(heading_, TRANS("Speaker groups"));
+    addAndMakeVisible(note_);
+    styleLabel(note_, TRANS("A rank sent to a speaker group sounds on its pairs, note by note."));
+    note_.setColour(juce::Label::textColourId, juce::Colours::grey);
+    addAndMakeVisible(add_);
+    add_.onClick = [this] {
+      auto groups = proc_.mixer().groups;
+      BusGroup g;
+      for (const auto& other : groups) g.groupId = juce::jmax(g.groupId, other.groupId);
+      ++g.groupId;
+      groups.push_back(g);
+      proc_.setSpeakerGroups(groups);
+      rebuild();
+      if (onChanged) onChanged();
+    };
+    addAndMakeVisible(viewport_);
+    viewport_.setViewedComponent(&holder_, false);
+    viewport_.setScrollBarsShown(true, false);
+    rebuild();
+  }
+
+  void resized() override {
+    auto r = getLocalBounds().reduced(12, 6);
+    heading_.setBounds(r.removeFromTop(kRow));
+    note_.setBounds(r.removeFromTop(kRow));
+    r.removeFromTop(4);
+    add_.setBounds(r.removeFromBottom(kRow).removeFromLeft(200).reduced(0, 1));
+    r.removeFromBottom(kGap);
+    viewport_.setBounds(r);
+    const int w = r.getWidth() - (holderHeight() > r.getHeight() ? viewport_.getScrollBarThickness() : 0);
+    holder_.setSize(w, holderHeight());
+    int y = 0;
+    for (auto& g : groups_) {
+      auto line = juce::Rectangle<int>(0, y, w, kRow);
+      g.name->setBounds(line.removeFromLeft(130));
+      g.method->setBounds(line.removeFromLeft(180).reduced(0, 1));
+      line.removeFromLeft(kGap);
+      g.remove->setBounds(line.removeFromLeft(90).reduced(0, 1));
+      y += kRow + 2;
+      for (size_t i = 0; i < g.pairs.size(); ++i) {
+        const int col = static_cast<int>(i) % kPerLine;
+        if (i > 0 && col == 0) y += kRow;
+        g.pairs[i]->setBounds(col * kTick, y, kTick, kRow);
+      }
+      y += kRow + kGap + 6;
+    }
+  }
+
+  std::function<void()> onChanged;
+
+private:
+  static constexpr int kPerLine = 12;
+  static constexpr int kTick = 46;
+  struct Group {
+    int id = 0;
+    std::unique_ptr<juce::Label> name;
+    std::unique_ptr<juce::ComboBox> method;
+    std::unique_ptr<juce::TextButton> remove;
+    std::vector<std::unique_ptr<juce::ToggleButton>> pairs;
+  };
+
+  int pairCount() const { return juce::jmax(1, static_cast<int>(proc_.mixer().buses.size())); }
+  int linesPerGroup() const { return 1 + (pairCount() + kPerLine - 1) / kPerLine; }
+  int holderHeight() const {
+    return static_cast<int>(groups_.size()) * (linesPerGroup() * kRow + kGap + 8);
+  }
+
+  void rebuild() {
+    groups_.clear();
+    holder_.removeAllChildren();
+    for (const auto& bg : proc_.mixer().groups) {
+      Group g;
+      g.id = bg.groupId;
+      g.name = std::make_unique<juce::Label>();
+      styleLabel(*g.name, TRANS("Speaker group %1").replace("%1", juce::String(bg.groupId)));
+      g.method = std::make_unique<juce::ComboBox>();
+      g.method->addItem(TRANS("Across the octave"), 1);
+      g.method->addItem(TRANS("Chromatic"), 2);
+      g.method->addItem(TRANS("Least busy"), 3);
+      g.method->addItem(TRANS("By rank"), 4);
+      g.method->setSelectedId(bg.algorithm == AllocationAlgorithm::StaticChromatic ? 2
+                              : bg.algorithm == AllocationAlgorithm::LeastBusy   ? 3
+                              : bg.algorithm == AllocationAlgorithm::StaticByRank ? 4
+                                                                                 : 1,
+                              juce::dontSendNotification);
+      g.method->setTooltip(TRANS("Across the octave: each note of an octave on the next pair, each octave and each "
+                                 "rank starting one further on. Chromatic: each note on the next pair. Least busy: "
+                                 "each pipe on the pair with the fewest pipes sounding. By rank: each rank whole "
+                                 "on one pair, the ranks taking the pairs in turn."));
+      g.method->onChange = [this] { apply(); };
+      g.remove = std::make_unique<juce::TextButton>(TRANS("Remove"));
+      const int id = bg.groupId;
+      g.remove->onClick = [this, id] {
+        auto groups = proc_.mixer().groups;
+        groups.erase(std::remove_if(groups.begin(), groups.end(), [id](const BusGroup& x) { return x.groupId == id; }),
+                     groups.end());
+        proc_.setSpeakerGroups(groups);
+        // Later: the box holding this button goes in rebuild.
+        juce::Component::SafePointer<SpeakerGroupsPanel> self(this);
+        juce::MessageManager::callAsync([self] {
+          if (self == nullptr) return;
+          self->rebuild();
+          if (self->onChanged) self->onChanged();
+        });
+      };
+      for (int p = 1; p <= pairCount(); ++p) {
+        auto t = std::make_unique<juce::ToggleButton>(juce::String(p));
+        t->setTooltip(TRANS("Pair %1").replace("%1", juce::String(p)));
+        t->setToggleState(std::find(bg.members.begin(), bg.members.end(), BusId{p}) != bg.members.end(),
+                          juce::dontSendNotification);
+        t->onClick = [this] { apply(); };
+        holder_.addAndMakeVisible(*t);
+        g.pairs.push_back(std::move(t));
+      }
+      for (juce::Component* c : {static_cast<juce::Component*>(g.name.get()), static_cast<juce::Component*>(g.method.get()),
+                                 static_cast<juce::Component*>(g.remove.get())})
+        holder_.addAndMakeVisible(*c);
+      groups_.push_back(std::move(g));
+    }
+    const int rows = juce::jmin(kPanelRowsMax, juce::jmax(kRow, holderHeight()));
+    setSize(kPerLine * kTick + 24 + 16, 12 + 2 * kRow + 4 + rows + kGap + kRow + 12);
+    resized();
+  }
+
+  void apply() {
+    std::vector<BusGroup> groups;
+    for (const auto& g : groups_) {
+      BusGroup bg;
+      bg.groupId = g.id;
+      const int m = g.method->getSelectedId();
+      bg.algorithm = m == 2   ? AllocationAlgorithm::StaticChromatic
+                     : m == 3 ? AllocationAlgorithm::LeastBusy
+                     : m == 4 ? AllocationAlgorithm::StaticByRank
+                              : AllocationAlgorithm::StaticOctaveCycled;
+      for (size_t i = 0; i < g.pairs.size(); ++i)
+        if (g.pairs[i]->getToggleState()) bg.members.push_back(BusId{static_cast<int>(i) + 1});
+      groups.push_back(std::move(bg));
+    }
+    proc_.setSpeakerGroups(groups);
+    if (onChanged) onChanged();
+  }
+
+  MasterpieceProcessor& proc_;
+  juce::Label heading_, note_;
+  juce::TextButton add_{TRANS("Add a speaker group")};
+  juce::Viewport viewport_;
+  juce::Component holder_;
+  std::vector<Group> groups_;
+};
+
+// Device channels as the player writes them, counted from 1: "1-2, 7-8" or
+// "3, 4". Answers them counted from 0; nothing it cannot read.
+std::vector<int> parseChannels(const juce::String& text) {
+  std::vector<int> out;
+  for (auto tok : juce::StringArray::fromTokens(text, ",; ", "")) {
+    tok = tok.trim();
+    if (tok.isEmpty()) continue;
+    const int a = tok.upToFirstOccurrenceOf("-", false, false).getIntValue();
+    const int b = tok.containsChar('-') ? tok.fromFirstOccurrenceOf("-", false, false).getIntValue() : a;
+    if (a < 1 || b < a || b > MasterpieceProcessor::kMaxOutputChannels) continue;
+    for (int ch = a; ch <= b; ++ch) out.push_back(ch - 1);
+  }
+  return out;
+}
+
+juce::String channelsText(const std::vector<int>& ch, bool mono) {
+  juce::StringArray parts;
+  for (size_t i = 0; i < ch.size(); ++i) {
+    if (!mono && i + 1 < ch.size()) {
+      parts.add(juce::String(ch[i] + 1) + (ch[i + 1] == ch[i] + 1 ? "-" : ", ") + juce::String(ch[i + 1] + 1));
+      ++i;
+    } else {
+      parts.add(juce::String(ch[i] + 1));
+    }
+  }
+  return parts.joinIntoString(", ");
+}
+
+// One row per pair: stereo or mono, and its device channels. The channels
+// after a pair's own are copies: the pair plays there too.
+class PairChannelsPanel final : public juce::Component {
+public:
+  PairChannelsPanel(MasterpieceProcessor& p, std::function<void()> changed)
+      : onChanged(std::move(changed)), proc_(p) {
+    addAndMakeVisible(heading_);
+    styleLabel(heading_, TRANS("Pair channels"));
+    addAndMakeVisible(note_);
+    styleLabel(note_, TRANS("Channels counted from 1. Stereo takes them two at a time: 1-2 the pair, 7-8 a copy. "
+                            "Mono takes one each: 3 the pair, 4 a copy."));
+    note_.setColour(juce::Label::textColourId, juce::Colours::grey);
+    note_.setMinimumHorizontalScale(1.0f);
+    addAndMakeVisible(allStereo_);
+    allStereo_.onClick = [this] { layOut(false); };
+    addAndMakeVisible(allMono_);
+    allMono_.onClick = [this] { layOut(true); };
+    addAndMakeVisible(viewport_);
+    viewport_.setViewedComponent(&holder_, false);
+    viewport_.setScrollBarsShown(true, false);
+    for (const auto& b : proc_.mixer().buses) {
+      Row row;
+      row.busId = b.id.value;
+      row.label = std::make_unique<juce::Label>();
+      styleLabel(*row.label, TRANS("Pair %1").replace("%1", juce::String(b.id.value)));
+      row.mode = std::make_unique<juce::ComboBox>();
+      row.mode->addItem(TRANS("Stereo"), 1);
+      row.mode->addItem(TRANS("Mono"), 2);
+      row.mode->setSelectedId(b.mono ? 2 : 1, juce::dontSendNotification);
+      row.channels = std::make_unique<juce::TextEditor>();
+      row.channels->setText(channelsText(b.deviceChannels, b.mono), false);
+      row.channels->setTooltip(TRANS("The device channels, counted from 1"));
+      auto* mode = row.mode.get();
+      auto* text = row.channels.get();
+      const int id = b.id.value;
+      auto apply = [this, id, mode, text] {
+        const bool mono = mode->getSelectedId() == 2;
+        auto ch = parseChannels(text->getText());
+        proc_.setPairLayout(id, mono, ch);
+        text->setText(channelsText(ch, mono), false);
+        if (onChanged) onChanged();
+      };
+      row.mode->onChange = apply;
+      row.channels->onReturnKey = apply;
+      row.channels->onFocusLost = apply;
+      for (juce::Component* c : {static_cast<juce::Component*>(row.label.get()),
+                                 static_cast<juce::Component*>(row.mode.get()),
+                                 static_cast<juce::Component*>(row.channels.get())})
+        holder_.addAndMakeVisible(*c);
+      rows_.push_back(std::move(row));
+    }
+    const int rows = juce::jmin(kPanelRowsMax, static_cast<int>(rows_.size()) * (kRow + 4));
+    setSize(520, 12 + 3 * kRow + 4 + rows + kGap + kRow + 12);
+  }
+
+  void resized() override {
+    auto r = getLocalBounds().reduced(12, 6);
+    heading_.setBounds(r.removeFromTop(kRow));
+    note_.setBounds(r.removeFromTop(2 * kRow));
+    r.removeFromTop(4);
+    auto buttons = r.removeFromBottom(kRow);
+    allStereo_.setBounds(buttons.removeFromLeft(200).reduced(0, 1));
+    buttons.removeFromLeft(kGap);
+    allMono_.setBounds(buttons.removeFromLeft(200).reduced(0, 1));
+    r.removeFromBottom(kGap);
+    viewport_.setBounds(r);
+    const int h = static_cast<int>(rows_.size()) * (kRow + 4);
+    const int w = r.getWidth() - (h > r.getHeight() ? viewport_.getScrollBarThickness() : 0);
+    holder_.setSize(w, h);
+    int y = 0;
+    for (auto& row : rows_) {
+      auto line = juce::Rectangle<int>(0, y, w, kRow);
+      row.label->setBounds(line.removeFromLeft(80));
+      row.mode->setBounds(line.removeFromLeft(110).reduced(0, 1));
+      line.removeFromLeft(kGap);
+      row.channels->setBounds(line.reduced(0, 1));
+      y += kRow + 4;
+    }
+  }
+
+  std::function<void()> onChanged;
+
+private:
+  // Every pair in turn from channel 1: two channels each in stereo, one in
+  // mono, without copies.
+  void layOut(bool mono) {
+    int next = 0;
+    for (auto& row : rows_) {
+      std::vector<int> ch{next};
+      if (!mono) ch.push_back(next + 1);
+      next += mono ? 1 : 2;
+      proc_.setPairLayout(row.busId, mono, ch);
+      row.mode->setSelectedId(mono ? 2 : 1, juce::dontSendNotification);
+      row.channels->setText(channelsText(ch, mono), false);
+    }
+    if (onChanged) onChanged();
+  }
+  struct Row {
+    int busId = 0;
+    std::unique_ptr<juce::Label> label;
+    std::unique_ptr<juce::ComboBox> mode;
+    std::unique_ptr<juce::TextEditor> channels;
+  };
+  MasterpieceProcessor& proc_;
+  juce::Label heading_, note_;
+  juce::TextButton allStereo_{TRANS("All stereo, in order")};
+  juce::TextButton allMono_{TRANS("All mono, in order")};
+  juce::Viewport viewport_;
+  juce::Component holder_;
+  std::vector<Row> rows_;
+};
+
+// Mixes: sets of ranks the player names, each with a strip of its own on the
+// mixer. The filter chooses the ranks: a mix is made of the ranks on show, or
+// takes them later.
+class MixesPanel final : public juce::Component {
+public:
+  MixesPanel(MasterpieceProcessor& p, std::function<std::vector<Id>()> shown, std::function<void()> changed)
+      : onChanged(std::move(changed)), proc_(p), shown_(std::move(shown)) {
+    addAndMakeVisible(heading_);
+    styleLabel(heading_, TRANS("Mixes"));
+    addAndMakeVisible(note_);
+    styleLabel(note_, TRANS("A mix is a set of ranks with a fader of its own. Filter the ranks, then make a mix of "
+                            "those on show. A rank is in one mix at most."));
+    note_.setColour(juce::Label::textColourId, juce::Colours::grey);
+    note_.setMinimumHorizontalScale(1.0f);
+    addAndMakeVisible(add_);
+    add_.onClick = [this] {
+      auto mixes = proc_.rankMixes();
+      int id = 1;
+      while (id <= LiveLevels::kMaxMixes &&
+             std::any_of(mixes.begin(), mixes.end(), [id](const auto& m) { return m.id == id; }))
+        ++id;
+      if (id > LiveLevels::kMaxMixes) return;
+      // The new mix takes its ranks from the others: a rank is in one.
+      const auto ranks = shown_();
+      for (auto& m : mixes)
+        m.ranks.erase(std::remove_if(m.ranks.begin(), m.ranks.end(),
+                                     [&ranks](Id r) { return std::find(ranks.begin(), ranks.end(), r) != ranks.end(); }),
+                      m.ranks.end());
+      MasterpieceProcessor::RankMix m;
+      m.id = id;
+      m.name = TRANS("Mix %1").replace("%1", juce::String(id)).toStdString();
+      m.ranks = ranks;
+      mixes.push_back(std::move(m));
+      proc_.setRankMixes(mixes);
+      later();
+    };
+    addAndMakeVisible(viewport_);
+    viewport_.setViewedComponent(&holder_, false);
+    viewport_.setScrollBarsShown(true, false);
+    rebuild();
+  }
+
+  void resized() override {
+    auto r = getLocalBounds().reduced(12, 6);
+    heading_.setBounds(r.removeFromTop(kRow));
+    note_.setBounds(r.removeFromTop(2 * kRow));
+    r.removeFromTop(4);
+    add_.setBounds(r.removeFromBottom(kRow).removeFromLeft(260).reduced(0, 1));
+    r.removeFromBottom(kGap);
+    viewport_.setBounds(r);
+    const int h = static_cast<int>(rows_.size()) * (kRow + 4);
+    const int w = r.getWidth() - (h > r.getHeight() ? viewport_.getScrollBarThickness() : 0);
+    holder_.setSize(w, h);
+    int y = 0;
+    for (auto& row : rows_) {
+      auto line = juce::Rectangle<int>(0, y, w, kRow);
+      row.name->setBounds(line.removeFromLeft(170).reduced(0, 1));
+      line.removeFromLeft(kGap);
+      row.count->setBounds(line.removeFromLeft(80));
+      row.take->setBounds(line.removeFromLeft(200).reduced(0, 1));
+      line.removeFromLeft(kGap);
+      row.remove->setBounds(line.removeFromLeft(90).reduced(0, 1));
+      y += kRow + 4;
+    }
+  }
+
+  std::function<void()> onChanged;
+
+private:
+  struct Row {
+    int id = 0;
+    std::unique_ptr<juce::TextEditor> name;
+    std::unique_ptr<juce::Label> count;
+    std::unique_ptr<juce::TextButton> take, remove;
+  };
+
+  // Rebuilt after the click that asked: the button pressed is in the rows.
+  void later() {
+    juce::Component::SafePointer<MixesPanel> self(this);
+    juce::MessageManager::callAsync([self] {
+      if (self == nullptr) return;
+      self->rebuild();
+      if (self->onChanged) self->onChanged();
+    });
+  }
+
+  void rebuild() {
+    rows_.clear();
+    holder_.removeAllChildren();
+    for (const auto& m : proc_.rankMixes()) {
+      Row row;
+      row.id = m.id;
+      row.name = std::make_unique<juce::TextEditor>();
+      row.name->setText(juce::String::fromUTF8(m.name.c_str()), false);
+      row.name->setTooltip(TRANS("The mix's name, on its strip"));
+      auto* text = row.name.get();
+      const int id = m.id;
+      auto rename = [this, id, text] {
+        auto mixes = proc_.rankMixes();
+        for (auto& x : mixes)
+          if (x.id == id && x.name != text->getText().trim().toStdString()) {
+            x.name = text->getText().trim().toStdString();
+            proc_.setRankMixes(mixes);
+            if (onChanged) onChanged();
+          }
+      };
+      row.name->onReturnKey = rename;
+      row.name->onFocusLost = rename;
+      row.count = std::make_unique<juce::Label>();
+      styleLabel(*row.count, TRANS("%1 ranks").replace("%1", juce::String(static_cast<int>(m.ranks.size()))));
+      row.take = std::make_unique<juce::TextButton>(TRANS("Take the ranks on show"));
+      row.take->onClick = [this, id] {
+        auto mixes = proc_.rankMixes();
+        const auto ranks = shown_();
+        for (auto& x : mixes) {
+          if (x.id == id) {
+            x.ranks = ranks;
+            continue;
+          }
+          x.ranks.erase(
+              std::remove_if(x.ranks.begin(), x.ranks.end(),
+                             [&ranks](Id r) { return std::find(ranks.begin(), ranks.end(), r) != ranks.end(); }),
+              x.ranks.end());
+        }
+        proc_.setRankMixes(mixes);
+        later();
+      };
+      row.remove = std::make_unique<juce::TextButton>(TRANS("Remove"));
+      row.remove->onClick = [this, id] {
+        auto mixes = proc_.rankMixes();
+        mixes.erase(std::remove_if(mixes.begin(), mixes.end(), [id](const auto& x) { return x.id == id; }),
+                    mixes.end());
+        proc_.setRankMixes(mixes);
+        later();
+      };
+      for (juce::Component* c : {static_cast<juce::Component*>(row.name.get()),
+                                 static_cast<juce::Component*>(row.count.get()),
+                                 static_cast<juce::Component*>(row.take.get()),
+                                 static_cast<juce::Component*>(row.remove.get())})
+        holder_.addAndMakeVisible(*c);
+      rows_.push_back(std::move(row));
+    }
+    add_.setEnabled(static_cast<int>(rows_.size()) < LiveLevels::kMaxMixes);
+    const int rows = juce::jmin(kPanelRowsMax, juce::jmax(kRow, static_cast<int>(rows_.size()) * (kRow + 4)));
+    setSize(600, 12 + 3 * kRow + 4 + rows + kGap + kRow + 12);
+    resized();
+  }
+
+  MasterpieceProcessor& proc_;
+  std::function<std::vector<Id>()> shown_;
+  juce::Label heading_, note_;
+  juce::TextButton add_{TRANS("New mix from the ranks on show")};
+  juce::Viewport viewport_;
+  juce::Component holder_;
+  std::vector<Row> rows_;
+};
 }  // namespace
 
 MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
@@ -4069,7 +4527,7 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
   narrow_.setTooltip(TRANS("More strips in view: the scales keep their ticks, without numbers"));
   narrow_.onClick = [this] {
     proc_.setNarrowStrips(narrow_.getToggleState());
-    for (auto* list : {&pairFaders_, &divisionFaders_, &groupFaders_, &rankFaders_})
+    for (auto* list : {&pairFaders_, &divisionFaders_, &groupFaders_, &mixFaders_, &rankFaders_})
       for (auto& f : *list) f.strip->setNarrow(narrow_.getToggleState());
     resized();
   };
@@ -4086,6 +4544,49 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
                                                                        }),
                                            bass_.getScreenBounds(), nullptr);
   };
+  addAndMakeVisible(speakerGroups_);
+  speakerGroups_.setTooltip(TRANS("Pairs that share the pipes sent to them, note by note"));
+  speakerGroups_.onClick = [this] {
+    juce::Component::SafePointer<MixerPanel> self(this);
+    juce::CallOutBox::launchAsynchronously(std::make_unique<SpeakerGroupsPanel>(proc_,
+                                                                                [self] {
+                                                                                  if (self != nullptr)
+                                                                                    self->outputsChanged();
+                                                                                }),
+                                           speakerGroups_.getScreenBounds(), nullptr);
+  };
+  addAndMakeVisible(channels_);
+  channels_.setTooltip(TRANS("Each pair in stereo or mono, its device channels and its copies"));
+  channels_.onClick = [this] {
+    juce::Component::SafePointer<MixerPanel> self(this);
+    juce::CallOutBox::launchAsynchronously(std::make_unique<PairChannelsPanel>(proc_,
+                                                                               [self] {
+                                                                                 if (self != nullptr)
+                                                                                   self->outputsChanged();
+                                                                               }),
+                                           channels_.getScreenBounds(), nullptr);
+  };
+  addAndMakeVisible(mixes_);
+  mixes_.setTooltip(TRANS("Named sets of ranks, each with a fader of its own"));
+  mixes_.onClick = [this] {
+    juce::Component::SafePointer<MixerPanel> self(this);
+    juce::CallOutBox::launchAsynchronously(
+        std::make_unique<MixesPanel>(
+            proc_, [self] { return self != nullptr ? self->shownRankIds() : std::vector<Id>{}; },
+            [self] {
+              if (self != nullptr) self->mixesChanged();
+            }),
+        mixes_.getScreenBounds(), nullptr);
+  };
+  addAndMakeVisible(sendShown_);
+  sendShown_.setTextWhenNothingSelected(TRANS("Send the ranks on show to..."));
+  sendShown_.setTooltip(TRANS("Sends every rank on show to one pair or speaker group"));
+  sendShown_.onChange = [this] {
+    const int item = sendShown_.getSelectedId();
+    if (item <= 0) return;
+    sendRanks([this](size_t i) { return rankShown(i); }, item);
+    sendShown_.setSelectedId(0, juce::dontSendNotification);
+  };
 
   addAndMakeVisible(status_);
   styleLabel(status_, "");
@@ -4100,10 +4601,11 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
   busViewport_.setViewedComponent(&busHolder_, false);
   busViewport_.setScrollBarsShown(false, true);
   viewport_.setScrollBarsShown(false, true);
-  for (auto* h : {&pairsHeading_, &divisionsHeading_, &groupsHeading_}) {
+  for (auto* h : {&pairsHeading_, &divisionsHeading_, &groupsHeading_, &mixesHeading_}) {
     h->setJustificationType(juce::Justification::centredLeft);
     h->setFont(juce::Font(juce::FontOptions(13.0f, juce::Font::bold)));
   }
+  styleLabel(mixesHeading_, TRANS("Mixes"));
   styleLabel(pairsHeading_, TRANS("Output pairs"));
   styleLabel(divisionsHeading_, TRANS("Divisions"));
   styleLabel(groupsHeading_, TRANS("Perspectives"));
@@ -4122,6 +4624,7 @@ LiveLevels::Strip MixerPanel::stripOf(MidiTargetKind kind) {
     case MidiTargetKind::PairLevel: return LiveLevels::Strip::Pair;
     case MidiTargetKind::DivisionLevel: return LiveLevels::Strip::Division;
     case MidiTargetKind::GroupLevel: return LiveLevels::Strip::Group;
+    case MidiTargetKind::MixLevel: return LiveLevels::Strip::Mix;
     default: return LiveLevels::Strip::Rank;
   }
 }
@@ -4134,8 +4637,9 @@ void MixerPanel::addFader(std::vector<Fader>& into, MidiTargetKind kind, Id id, 
   f.index = index;
   const auto stripKind = kind == MidiTargetKind::PairLevel       ? ChannelStrip::Kind::Pair
                          : kind == MidiTargetKind::DivisionLevel ? ChannelStrip::Kind::Division
-                         : kind == MidiTargetKind::GroupLevel    ? ChannelStrip::Kind::Group
-                                                                 : ChannelStrip::Kind::Rank;
+                         : kind == MidiTargetKind::GroupLevel || kind == MidiTargetKind::MixLevel
+                             ? ChannelStrip::Kind::Group
+                             : ChannelStrip::Kind::Rank;
   f.strip = std::make_unique<ChannelStrip>(stripKind, name, tooltip);
   f.strip->setNarrow(proc_.narrowStrips());
   f.strip->setLevel(faderLevel(f));
@@ -4172,6 +4676,7 @@ int MixerPanel::faderLevel(const Fader& f) const {
     case MidiTargetKind::PairLevel: return proc_.livePairLevel(f.index);
     case MidiTargetKind::DivisionLevel: return proc_.liveDivisionLevel(f.index);
     case MidiTargetKind::GroupLevel: return proc_.liveGroupLevel(f.index);
+    case MidiTargetKind::MixLevel: return proc_.liveMixLevel(f.index);
     case MidiTargetKind::RankLevel: return proc_.liveRankLevel(f.index);
     default: return LiveLevels::kFull;
   }
@@ -4182,6 +4687,7 @@ void MixerPanel::setFaderLevel(const Fader& f, int value) {
     case MidiTargetKind::PairLevel: proc_.setLivePairLevel(f.index, value); break;
     case MidiTargetKind::DivisionLevel: proc_.setLiveDivisionLevel(f.index, value); break;
     case MidiTargetKind::GroupLevel: proc_.setLiveGroupLevel(f.index, value); break;
+    case MidiTargetKind::MixLevel: proc_.setLiveMixLevel(f.index, value); break;
     case MidiTargetKind::RankLevel: proc_.setLiveRankLevel(f.index, value); break;
     default: break;
   }
@@ -4229,7 +4735,7 @@ void MixerPanel::timerCallback() {
   const bool showing = isShowing();
   proc_.setStripMeters(showing);
   if (!showing || proc_.organLoading()) return;
-  for (auto* list : {&pairFaders_, &divisionFaders_, &groupFaders_, &rankFaders_})
+  for (auto* list : {&pairFaders_, &divisionFaders_, &groupFaders_, &mixFaders_, &rankFaders_})
     for (auto& f : *list) {
       ChannelStrip& strip = *f.strip;
       if (!strip.isVisible()) continue;
@@ -4251,74 +4757,142 @@ void MixerPanel::timerCallback() {
 }
 
 void MixerPanel::setBusCount(int buses) {
-  auto& mixer = proc_.mixer();
-  mixer.buses.clear();
-  for (int i = 0; i < buses; ++i) {
-    MixerBus b;
-    b.id = BusId{i + 1};
-    // Consecutive pairs on the device. A player with a different layout can
-    // say so in the settings file; guessing anything cleverer here would be
-    // inventing a convention nobody asked for.
-    b.deviceChannels = {2 * i, 2 * i + 1};
-    mixer.buses.push_back(b);
-  }
-  proc_.refreshMixerBuses();
+  // A rank sent to a pair that no longer exists would go quiet for a reason
+  // nowhere on screen: the processor folds it back to the first one.
+  proc_.setPairCount(buses);
+  outputsChanged();
+}
 
+void MixerPanel::outputsChanged() {
+  const int buses = juce::jmax(1, proc_.mixBusCount());
+  busCount_.setSelectedId(buses, juce::dontSendNotification);
   // The pair faders follow the count.
-  pairFaders_.clear();
-  for (int i = 0; i < juce::jmin(buses, LiveLevels::kMaxPairs); ++i)
-    addFader(pairFaders_, MidiTargetKind::PairLevel, i + 1, i, TRANS("Pair %1").replace("%1", juce::String(i + 1)));
-  resized();
-
-  // A rank pointing at a pair that no longer exists would go quiet for a
-  // reason nowhere on screen, so fold it back to the first one.
-  for (auto& box : rankBuses_) {
-    box->clear(juce::dontSendNotification);
-    for (int i = 1; i <= buses; ++i) box->addItem(TRANS("Pair %1").replace("%1", juce::String(i)), i);
+  if (static_cast<int>(pairFaders_.size()) != juce::jmin(buses, LiveLevels::kMaxPairs)) {
+    pairFaders_.clear();
+    for (int i = 0; i < juce::jmin(buses, LiveLevels::kMaxPairs); ++i)
+      addFader(pairFaders_, MidiTargetKind::PairLevel, i + 1, i, TRANS("Pair %1").replace("%1", juce::String(i + 1)));
+    resized();
   }
   for (size_t i = 0; i < rankIds_.size(); ++i) {
-    const auto& dest = proc_.mixer().routingFor(rankIds_[i]).perspectives[0].dest;
-    int sel = 1;
-    if (std::holds_alternative<BusId>(dest)) sel = std::get<BusId>(dest).value;
-    rankBuses_[i]->setSelectedId(sel >= 1 && sel <= buses ? sel : 1,
-                                 juce::dontSendNotification);
+    fillDestinations(*rankBuses_[i]);
+    rankBuses_[i]->setSelectedId(destinationItem(rankIds_[i]), juce::dontSendNotification);
   }
   fillGroupPairs();
   pushRouting();
 }
 
-void MixerPanel::fillGroupPairs() {
+void MixerPanel::fillDestinations(juce::ComboBox& box) const {
+  box.clear(juce::dontSendNotification);
   const int buses = juce::jmax(1, proc_.mixBusCount());
-  for (auto& box : groupPairs_) {
-    box->clear(juce::dontSendNotification);
-    for (int i = 1; i <= buses; ++i) box->addItem(TRANS("Pair %1").replace("%1", juce::String(i)), i);
-  }
+  for (int i = 1; i <= buses; ++i) box.addItem(TRANS("Pair %1").replace("%1", juce::String(i)), i);
+  const auto& groups = proc_.mixer().groups;
+  if (groups.empty()) return;
+  box.addSectionHeading(TRANS("Speaker groups"));
+  for (const auto& g : groups)
+    box.addItem(TRANS("Speaker group %1").replace("%1", juce::String(g.groupId)), kGroupItem + g.groupId);
 }
 
-// Each group's box shows the pair its ranks share, or nothing while they
-// play through several.
+int MixerPanel::destinationItem(Id rankId) const {
+  // A copy: routingFor returns the routing by value, and a reference into it
+  // would outlive it.
+  const auto dest = proc_.mixer().routingFor(rankId).perspectives[0].dest;
+  if (const int* g = std::get_if<int>(&dest))
+    return proc_.mixer().group(*g) != nullptr ? kGroupItem + *g : 1;
+  const int pair = std::get<BusId>(dest).value;
+  return pair >= 1 && pair <= juce::jmax(1, proc_.mixBusCount()) ? pair : 1;
+}
+
+void MixerPanel::sendRanks(const std::function<bool(size_t)>& which, int item) {
+  if (item <= 0) return;
+  for (size_t i = 0; i < rankIds_.size(); ++i)
+    if (which(i)) rankBuses_[i]->setSelectedId(item, juce::dontSendNotification);
+  pushRouting();
+}
+
+void MixerPanel::fillGroupPairs() {
+  for (auto* list : {&groupPairs_, &divisionDests_, &mixDests_})
+    for (auto& box : *list) fillDestinations(*box);
+  // The pairs and the groups, for every rank on show.
+  fillDestinations(sendShown_);
+  sendShown_.setSelectedId(0, juce::dontSendNotification);
+  showGroupPairs();
+}
+
+bool MixerPanel::rankInMix(size_t row, int mixId) const {
+  if (row >= rankIds_.size()) return false;
+  for (const auto& m : proc_.rankMixes())
+    if (m.id == mixId) return std::find(m.ranks.begin(), m.ranks.end(), rankIds_[row]) != m.ranks.end();
+  return false;
+}
+
+std::vector<Id> MixerPanel::shownRankIds() const {
+  std::vector<Id> ids;
+  for (size_t i = 0; i < rankIds_.size(); ++i)
+    if (rankShown(i)) ids.push_back(rankIds_[i]);
+  return ids;
+}
+
+void MixerPanel::mixesChanged() {
+  mixFaders_.clear();
+  mixDests_.clear();
+  mixIdOf_.clear();
+  for (const auto& m : proc_.rankMixes()) {
+    const auto name = juce::String::fromUTF8(m.name.c_str());
+    addFader(mixFaders_, MidiTargetKind::MixLevel, m.id, m.id - 1,
+             name.isEmpty() ? TRANS("Mix %1").replace("%1", juce::String(m.id)) : name,
+             TRANS("%1 ranks").replace("%1", juce::String(static_cast<int>(m.ranks.size()))));
+    auto box = std::make_unique<juce::ComboBox>();
+    box->setTextWhenNothingSelected(TRANS("Several"));
+    box->setTooltip(TRANS("Sends every rank of this mix to one pair or speaker group"));
+    const size_t at = mixDests_.size();
+    box->onChange = [this, at] {
+      const int id = mixIdOf_[at];
+      sendRanks([this, id](size_t i) { return rankInMix(i, id); }, mixDests_[at]->getSelectedId());
+    };
+    mixFaders_.back().strip->setTopControl(box.get());
+    mixDests_.push_back(std::move(box));
+    mixIdOf_.push_back(m.id);
+  }
+  fillGroupPairs();
+  resized();
+}
+
+// Each perspective's and division's box shows the destination its ranks
+// share, or nothing while they play through several.
 void MixerPanel::showGroupPairs() {
-  for (size_t g = 0; g < groupPairs_.size(); ++g) {
+  const auto show = [this](juce::ComboBox& box, const std::function<bool(size_t)>& member) {
     int shared = 0;
     bool mixed = false;
     for (size_t i = 0; i < rankIds_.size() && !mixed; ++i) {
-      if (proc_.liveGroupOfRank(proc_.liveRankIndexOf(rankIds_[i])) != static_cast<int>(g)) continue;
-      const int pair = rankBuses_[i]->getSelectedId();
-      if (shared == 0) shared = pair;
-      else if (pair != shared) mixed = true;
+      if (!member(i)) continue;
+      const int item = rankBuses_[i]->getSelectedId();
+      if (shared == 0) shared = item;
+      else if (item != shared) mixed = true;
     }
-    groupPairs_[g]->setSelectedId(mixed ? 0 : shared, juce::dontSendNotification);
-  }
+    box.setSelectedId(mixed ? 0 : shared, juce::dontSendNotification);
+  };
+  for (size_t g = 0; g < groupPairs_.size(); ++g)
+    show(*groupPairs_[g], [this, g](size_t i) {
+      return proc_.liveGroupOfRank(proc_.liveRankIndexOf(rankIds_[i])) == static_cast<int>(g);
+    });
+  for (size_t d = 0; d < divisionDests_.size(); ++d)
+    show(*divisionDests_[d], [this, d](size_t i) {
+      return proc_.liveDivisionOfRank(proc_.liveRankIndexOf(rankIds_[i])) == divisionIndexOf_[d];
+    });
+  for (size_t m = 0; m < mixDests_.size(); ++m)
+    show(*mixDests_[m], [this, m](size_t i) { return rankInMix(i, mixIdOf_[m]); });
 }
 
 void MixerPanel::pushRouting() {
-  auto& mixer = proc_.mixer();
+  std::vector<std::pair<Id, std::variant<BusId, int>>> routes;
+  routes.reserve(rankIds_.size());
   for (size_t i = 0; i < rankIds_.size(); ++i) {
-    RankRouting r;
-    r.rankId = rankIds_[i];
-    r.perspectives[0].dest = BusId{rankBuses_[i]->getSelectedId()};
-    mixer.rankRoutings[rankIds_[i]] = r;
+    const int item = rankBuses_[i]->getSelectedId();
+    if (item > kGroupItem) routes.emplace_back(rankIds_[i], item - kGroupItem);
+    else routes.emplace_back(rankIds_[i], BusId{juce::jmax(1, item)});
   }
+  proc_.setRankRoutes(routes);
+  const auto& mixer = proc_.mixer();
   const auto d = validateMixer(proc_.organModel(), mixer);
   juce::String text = TRANS("%1 rank(s), %2 pair(s)")
                           .replace("%1", juce::String(static_cast<int>(rankIds_.size())))
@@ -4359,6 +4933,15 @@ void MixerPanel::showOutputs() {
     const int left = b.deviceChannels[0];
     const int right = b.deviceChannels.size() > 1 ? b.deviceChannels[1] : left;
     if (left >= outs || right >= outs) beyond = true;
+    // A mono pair, or one with copies, says all its channels.
+    if (b.mono || b.deviceChannels.size() > 2) {
+      endRun();
+      pairs.add(TRANS("Pair %1: %2")
+                    .replace("%1", juce::String(b.id.value))
+                    .replace("%2", channelsText(b.deviceChannels, b.mono)) +
+                (b.mono ? " (" + TRANS("mono") + ")" : juce::String()));
+      continue;
+    }
     if (const auto* bass = proc_.mixer().bassFor(b.id); bass != nullptr && bass->active()) {
       endRun();
       pairs.add(TRANS("Pair %1: %2-%3")
@@ -4395,14 +4978,19 @@ void MixerPanel::refresh() {
   divisionFaders_.clear();
   groupFaders_.clear();
   groupPairs_.clear();
+  divisionDests_.clear();
+  divisionIndexOf_.clear();
   rankFaders_.clear();
   rankGroups_.clear();
   rankGroupAbove_.clear();
   rankDivisions_.clear();
   rankHolder_.removeAllChildren();
   busHolder_.removeAllChildren();
+  mixFaders_.clear();
+  mixDests_.clear();
+  mixIdOf_.clear();
   rankHolder_.addAndMakeVisible(ranksHeading_);
-  for (auto* h : {&pairsHeading_, &divisionsHeading_}) busHolder_.addAndMakeVisible(*h);
+  for (auto* h : {&pairsHeading_, &divisionsHeading_, &mixesHeading_}) busHolder_.addAndMakeVisible(*h);
 
   for (int i = 0; i < juce::jmin(juce::jmax(1, proc_.mixBusCount()), LiveLevels::kMaxPairs); ++i)
     addFader(pairFaders_, MidiTargetKind::PairLevel, i + 1, i, TRANS("Pair %1").replace("%1", juce::String(i + 1)));
@@ -4415,6 +5003,22 @@ void MixerPanel::refresh() {
       const auto& d = proc_.organModel().divisions.at(id);
       divisionNames.push_back(d.name.empty() ? juce::String(static_cast<int>(id)) : juce::String(d.name));
       addFader(divisionFaders_, MidiTargetKind::DivisionLevel, id, proc_.liveDivisionIndexOf(id), divisionNames.back());
+      // The division's destination: every rank of it to one pair or group.
+      auto box = std::make_unique<juce::ComboBox>();
+      box->setTextWhenNothingSelected(TRANS("Several"));
+      box->setTooltip(TRANS("Sends every rank of this division to one pair or speaker group"));
+      const size_t at = divisionDests_.size();
+      box->onChange = [this, at] {
+        const int division = divisionIndexOf_[at];
+        sendRanks(
+            [this, division](size_t i) {
+              return proc_.liveDivisionOfRank(proc_.liveRankIndexOf(rankIds_[i])) == division;
+            },
+            divisionDests_[at]->getSelectedId());
+      };
+      divisionFaders_.back().strip->setTopControl(box.get());
+      divisionDests_.push_back(std::move(box));
+      divisionIndexOf_.push_back(proc_.liveDivisionIndexOf(id));
     }
   }
   // The perspectives, front against rear in one move (#930), or a
@@ -4431,15 +5035,14 @@ void MixerPanel::refresh() {
       name = name.substring(0, 1).toUpperCase() + name.substring(1);
       addFader(groupFaders_, MidiTargetKind::GroupLevel, static_cast<Id>(g + 1), static_cast<int>(g), name);
       auto box = std::make_unique<juce::ComboBox>();
-      box->setTextWhenNothingSelected(TRANS("Several pairs"));
-      box->setTooltip(TRANS("Sends every rank of this group to one pair"));
+      box->setTextWhenNothingSelected(TRANS("Several"));
+      box->setTooltip(TRANS("Sends every rank of this group to one pair or speaker group"));
       box->onChange = [this, g] {
-        const int pair = groupPairs_[g]->getSelectedId();
-        if (pair <= 0) return;
-        for (size_t i = 0; i < rankIds_.size(); ++i)
-          if (proc_.liveGroupOfRank(proc_.liveRankIndexOf(rankIds_[i])) == static_cast<int>(g))
-            rankBuses_[i]->setSelectedId(pair, juce::dontSendNotification);
-        pushRouting();
+        sendRanks(
+            [this, g](size_t i) {
+              return proc_.liveGroupOfRank(proc_.liveRankIndexOf(rankIds_[i])) == static_cast<int>(g);
+            },
+            groupPairs_[g]->getSelectedId());
       };
       groupFaders_.back().strip->setTopControl(box.get());
       groupPairs_.push_back(std::move(box));
@@ -4483,18 +5086,15 @@ void MixerPanel::refresh() {
              title + " - " + TRANS("Rank %1").replace("%1", juce::String(static_cast<int>(rankId))));
 
     auto box = std::make_unique<juce::ComboBox>();
-    for (int i = 1; i <= buses; ++i) box->addItem(TRANS("Pair %1").replace("%1", juce::String(i)), i);
-    const auto& dest = proc_.mixer().routingFor(rankId).perspectives[0].dest;
-    int sel = 1;
-    if (std::holds_alternative<BusId>(dest)) sel = std::get<BusId>(dest).value;
-    box->setSelectedId(sel >= 1 && sel <= buses ? sel : 1,
-                       juce::dontSendNotification);
+    fillDestinations(*box);
+    box->setSelectedId(destinationItem(rankId), juce::dontSendNotification);
     box->onChange = [this] { pushRouting(); };
-    box->setTooltip(TRANS("The output pair this rank plays through"));
+    box->setTooltip(TRANS("The output pair or speaker group this rank plays through"));
     rankFaders_.back().strip->setTopControl(box.get());
     rankBuses_.push_back(std::move(box));
   }
 
+  mixesChanged();
   pushRouting();
   resized();
 }
@@ -4527,6 +5127,10 @@ void MixerPanel::resized() {
   save_.setBounds(row.removeFromLeft(160).reduced(0, 1));
   row.removeFromLeft(6);
   bass_.setBounds(row.removeFromLeft(170).reduced(0, 1));
+  row.removeFromLeft(6);
+  speakerGroups_.setBounds(row.removeFromLeft(150).reduced(0, 1));
+  row.removeFromLeft(6);
+  channels_.setBounds(row.removeFromLeft(150).reduced(0, 1));
   r.removeFromTop(4);
   outputs_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(4);
@@ -4535,6 +5139,11 @@ void MixerPanel::resized() {
     narrow_.setBounds(filterRow.removeFromRight(150));
     filterRow.removeFromRight(kGap);
     together_.setBounds(filterRow.removeFromRight(150));
+    filterRow.removeFromRight(kGap);
+    // The two that act on the ranks on show, beside the filter that shows them.
+    mixes_.setBounds(filterRow.removeFromRight(90).reduced(0, 1));
+    filterRow.removeFromRight(6);
+    sendShown_.setBounds(filterRow.removeFromRight(240).reduced(0, 1));
     filterRow.removeFromRight(kGap);
     filter_.setBounds(filterRow.reduced(0, 1));
   }
@@ -4548,8 +5157,9 @@ void MixerPanel::resized() {
   const int scrollBar = viewport_.getScrollBarThickness();
   const auto sectionWidth = [&](size_t n) { return n == 0 ? 0 : static_cast<int>(n) * stripW; };
   const int busNeeded = sectionWidth(divisionFaders_.size()) + sectionWidth(groupFaders_.size()) +
-                        sectionWidth(pairFaders_.size()) +
-                        sectionGap * ((divisionFaders_.empty() ? 0 : 1) + (groupFaders_.empty() ? 0 : 1));
+                        sectionWidth(mixFaders_.size()) + sectionWidth(pairFaders_.size()) +
+                        sectionGap * ((divisionFaders_.empty() ? 0 : 1) + (groupFaders_.empty() ? 0 : 1) +
+                                      (mixFaders_.empty() ? 0 : 1));
   const int busW = rankFaders_.empty() ? r.getWidth() : juce::jmin(busNeeded, r.getWidth() * 55 / 100);
   busViewport_.setBounds(r.removeFromRight(busW));
   r.removeFromRight(sectionGap);
@@ -4582,6 +5192,7 @@ void MixerPanel::resized() {
     };
     section(divisionsHeading_, divisionFaders_);
     section(groupsHeading_, groupFaders_);
+    section(mixesHeading_, mixFaders_);
     section(pairsHeading_, pairFaders_);
   }
 

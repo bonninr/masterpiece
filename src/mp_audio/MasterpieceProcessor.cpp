@@ -18,6 +18,7 @@
 #include <tuple>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <thread>
@@ -611,13 +612,30 @@ void MasterpieceProcessor::refreshMixerBuses() {  mixBusOrder_.clear();
     mixBusOrder_.push_back(BusId{1});
     mixBusIndexOf_[1] = 0;
   }
-  busOutputs_.assign(mixBusOrder_.size(), {-1, -1});
+  busOutputs_.assign(mixBusOrder_.size(), BusOutput{});
+  busyCount_.assign(mixBusOrder_.size(), 0);
+  busyFresh_ = false;
+  placeRanksInGroups();
+  const auto valid = [](int ch) { return ch >= 0 && ch < kMaxOutputChannels; };
   for (size_t i = 0; i < mixBusOrder_.size(); ++i)
     if (const MixerBus* b = mixer_.bus(mixBusOrder_[i]); b != nullptr && !b->deviceChannels.empty()) {
-      const int left = b->deviceChannels[0];
-      const int right = b->deviceChannels.size() > 1 ? b->deviceChannels[1] : left;
-      if (left >= 0 && right >= 0 && left < kMaxOutputChannels && right < kMaxOutputChannels)
-        busOutputs_[i] = {left, right};
+      const auto& ch = b->deviceChannels;
+      BusOutput& out = busOutputs_[i];
+      out.mono = b->mono;
+      // Mono: every channel named is one place for the pair. Stereo: two at
+      // a time, and a lone channel at the end takes both sides.
+      const size_t step = b->mono ? 1 : 2;
+      for (size_t c = 0; c < ch.size(); c += step) {
+        const int left = ch[c];
+        const int right = !b->mono && c + 1 < ch.size() ? ch[c + 1] : left;
+        if (!valid(left) || !valid(right)) continue;
+        if (out.left < 0) {
+          out.left = left;
+          out.right = right;
+        } else {
+          out.copies.emplace_back(left, right);
+        }
+      }
     }
   refreshBusReverbs();
   refreshBusBass();
@@ -629,10 +647,32 @@ void MasterpieceProcessor::refreshMixerBuses() {  mixBusOrder_.clear();
 
 std::pair<int, int> MasterpieceProcessor::busOutputFor(int index, int numCh) const {
   if (index >= 0 && index < static_cast<int>(busOutputs_.size())) {
-    const auto own = busOutputs_[static_cast<size_t>(index)];
-    if (own.first >= 0 && own.first < numCh && own.second < numCh) return own;
+    const auto& own = busOutputs_[static_cast<size_t>(index)];
+    if (own.left >= 0 && own.left < numCh && own.right < numCh) return {own.left, own.right};
   }
   return {0, numCh > 1 ? 1 : 0};
+}
+
+void MasterpieceProcessor::addBusToOutput(int index, const juce::AudioBuffer<float>& bus,
+                                          juce::AudioBuffer<float>& output, int numFrames) {
+  const int numCh = output.getNumChannels();
+  const int last = bus.getNumChannels() - 1;
+  const auto add = [&](int left, int right, bool mono) {
+    // Mono: half of each side, so a sound in the middle of the pair keeps
+    // its level on the one channel.
+    const float g = mono && last > 0 ? 0.5f : 1.0f;
+    output.addFrom(left, 0, bus, 0, 0, numFrames, g);
+    output.addFrom(right, 0, bus, juce::jmin(1, last), 0, numFrames, g);
+  };
+  const auto [left, right] = busOutputFor(index, numCh);
+  const BusOutput* own = index >= 0 && index < static_cast<int>(busOutputs_.size())
+                             ? &busOutputs_[static_cast<size_t>(index)]
+                             : nullptr;
+  const bool onOwn = own != nullptr && own->left == left && own->right == right && own->left >= 0;
+  add(left, right, onOwn && own->mono);
+  if (!onOwn) return;
+  for (const auto& [l, r] : own->copies)
+    if (l < numCh && r < numCh) add(l, r, own->mono);
 }
 
 void MasterpieceProcessor::refreshBusBass() {
@@ -646,6 +686,116 @@ void MasterpieceProcessor::refreshBusBass() {
     m->prepare(sampleRate_ > 0.0 ? sampleRate_ : 48000.0, juce::jmax(1, maxBlock_));
     busBass_[i] = std::move(m);
   }
+}
+
+void MasterpieceProcessor::setPairCount(int pairs) {
+  pairs = juce::jlimit(1, kMaxOutputPairs, pairs);
+  const AudioLock lock(*this);
+  auto& buses = mixer_.buses;
+  if (static_cast<int>(buses.size()) > pairs) buses.resize(static_cast<size_t>(pairs));
+  int next = 0;
+  for (const auto& b : buses)
+    for (int ch : b.deviceChannels) next = juce::jmax(next, ch + 1);
+  // Pairs after the first two channels start on an even one, as a device
+  // numbers its pairs.
+  next += next % 2;
+  while (static_cast<int>(buses.size()) < pairs) {
+    MixerBus b;
+    b.id = BusId{static_cast<int>(buses.size()) + 1};
+    b.deviceChannels = {next, next + 1};
+    next += 2;
+    buses.push_back(std::move(b));
+  }
+  for (auto& g : mixer_.groups)
+    g.members.erase(std::remove_if(g.members.begin(), g.members.end(),
+                                   [pairs](BusId m) { return m.value < 1 || m.value > pairs; }),
+                    g.members.end());
+  for (auto& [rankId, r] : mixer_.rankRoutings)
+    if (const auto* bus = std::get_if<BusId>(&r.perspectives[0].dest); bus != nullptr && bus->value > pairs)
+      r.perspectives[0].dest = BusId{1};
+  refreshMixerBuses();
+  markSettingsDirty();
+}
+
+void MasterpieceProcessor::setPairLayout(int busId, bool mono, std::vector<int> channels) {
+  const AudioLock lock(*this);
+  for (auto& b : mixer_.buses)
+    if (b.id.value == busId) {
+      b.mono = mono;
+      channels.erase(std::remove_if(channels.begin(), channels.end(),
+                                    [](int ch) { return ch < 0 || ch >= kMaxOutputChannels; }),
+                     channels.end());
+      b.deviceChannels = std::move(channels);
+    }
+  refreshMixerBuses();
+  markSettingsDirty();
+}
+
+void MasterpieceProcessor::setSpeakerGroups(std::vector<BusGroup> groups) {
+  const AudioLock lock(*this);
+  mixer_.groups = std::move(groups);
+  for (auto& [rankId, r] : mixer_.rankRoutings)
+    if (const int* g = std::get_if<int>(&r.perspectives[0].dest); g != nullptr && mixer_.group(*g) == nullptr)
+      r.perspectives[0].dest = BusId{1};
+  refreshMixerBuses();
+  markSettingsDirty();
+}
+
+void MasterpieceProcessor::setRankRoutes(const std::vector<std::pair<Id, std::variant<BusId, int>>>& routes) {
+  const AudioLock lock(*this);
+  for (const auto& [rankId, dest] : routes) {
+    RankRouting r = mixer_.routingFor(rankId);
+    r.rankId = rankId;
+    r.perspectives[0].dest = dest;
+    mixer_.rankRoutings[rankId] = r;
+  }
+  placeRanksInGroups();
+}
+
+void MasterpieceProcessor::placeRanksInGroups() {
+  rankPlaceInGroup_.clear();
+  std::map<int, std::vector<Id>> byGroup;
+  for (const auto& [rankId, r] : mixer_.rankRoutings)
+    if (const int* g = std::get_if<int>(&r.perspectives[0].dest))
+      if (const BusGroup* group = mixer_.group(*g); group != nullptr && group->algorithm == AllocationAlgorithm::StaticByRank)
+        byGroup[*g].push_back(rankId);
+  for (auto& [g, ranks] : byGroup) {
+    std::sort(ranks.begin(), ranks.end());
+    for (size_t i = 0; i < ranks.size(); ++i) rankPlaceInGroup_[ranks[i]] = static_cast<int>(i);
+  }
+}
+
+void MasterpieceProcessor::setRankMixes(std::vector<RankMix> mixes) {
+  keepRankMixes(std::move(mixes));
+  markSettingsDirty();
+}
+
+void MasterpieceProcessor::keepRankMixes(std::vector<RankMix> mixes) {
+  // Ids from 1 to the table's size, each once; a rank in the first mix that
+  // names it.
+  std::set<int> ids;
+  std::set<Id> taken;
+  std::vector<RankMix> kept;
+  for (auto& m : mixes) {
+    if (m.id < 1 || m.id > LiveLevels::kMaxMixes || !ids.insert(m.id).second) continue;
+    m.ranks.erase(std::remove_if(m.ranks.begin(), m.ranks.end(), [&taken](Id r) { return !taken.insert(r).second; }),
+                  m.ranks.end());
+    kept.push_back(std::move(m));
+  }
+  std::sort(kept.begin(), kept.end(), [](const RankMix& a, const RankMix& b) { return a.id < b.id; });
+  rankMixes_ = std::move(kept);
+  applyRankMixes();
+}
+
+void MasterpieceProcessor::applyRankMixes() {
+  // Each rank set once to its new mix: cleared first, a rank staying in its
+  // mix would leave it for a block.
+  std::vector<int> mixOf(static_cast<size_t>(liveLevels_.rankCount()), -1);
+  for (const auto& m : rankMixes_)
+    for (Id r : m.ranks)
+      if (const int i = liveRankIndexOf(r); i >= 0 && i < static_cast<int>(mixOf.size()))
+        mixOf[static_cast<size_t>(i)] = m.id - 1;
+  for (size_t i = 0; i < mixOf.size(); ++i) liveLevels_.setRankMix(static_cast<int>(i), mixOf[i]);
 }
 
 void MasterpieceProcessor::setBusBass(int busId, float crossoverHz, int subChannel) {
@@ -672,10 +822,14 @@ bool MasterpieceProcessor::needsRoutedOutput(int numCh) const {
 }
 
 bool MasterpieceProcessor::anyBusOnItsOwnChannels(int numCh) const {
-  if (numCh <= 2) return false;
+  // A stereo device too: two mono pairs on a stereo interface are a speaker
+  // on each of its channels.
+  if (numCh < 2) return false;
   for (size_t i = 0; i < busOutputs_.size(); ++i) {
     const auto at = busOutputFor(static_cast<int>(i), numCh);
     if (at.first != 0 || at.second != 1) return true;
+    for (const auto& [l, r] : busOutputs_[i].copies)
+      if (l < numCh && r < numCh) return true;
   }
   return false;
 }
@@ -725,26 +879,46 @@ void MasterpieceProcessor::refreshBusReverbs() {
 #endif
 }
 
-int MasterpieceProcessor::mixBusForPipe(Id rankId, int midiNote) const {
+int MasterpieceProcessor::mixBusForPipe(Id rankId, int midiNote) {
   // One bus is the overwhelmingly common case and the default: skip the
   // routing lookup entirely rather than pay for it on every voice start.
   if (mixBusOrder_.size() <= 1) return 0;
 
-  const RankRouting routing = mixer_.routingFor(rankId);
-  const auto& primary = routing.perspectives[0];
+  const auto routed = mixer_.rankRoutings.find(rankId);
+  const PerspectiveRoute primary =
+      routed != mixer_.rankRoutings.end() ? routed->second.perspectives[0] : PerspectiveRoute{BusId{1}};
+  const auto indexOf = [this](BusId id) {
+    const auto it = mixBusIndexOf_.find(id.value);
+    return it == mixBusIndexOf_.end() ? -1 : it->second;
+  };
   BusId dest{0};
   if (std::holds_alternative<BusId>(primary.dest)) {
     dest = std::get<BusId>(primary.dest);
   } else if (const BusGroup* g = mixer_.group(std::get<int>(primary.dest))) {
-    dest = allocateBus(*g, midiNote, static_cast<int>(rankId),
-                       primary.algorithm, primary.noteOffset);
+    if (g->algorithm == AllocationAlgorithm::LeastBusy) {
+      if (!busyFresh_) {
+        voices_.countByMixBus(busyCount_.data(), static_cast<int>(busyCount_.size()));
+        busyFresh_ = true;
+      }
+      dest = allocateLeastBusy(*g, midiNote, static_cast<int>(rankId), primary.noteOffset, [&](BusId m) {
+        const int i = indexOf(m);
+        return i < 0 ? std::numeric_limits<int>::max() : busyCount_[static_cast<size_t>(i)];
+      });
+    } else if (g->algorithm == AllocationAlgorithm::StaticByRank) {
+      const auto place = rankPlaceInGroup_.find(rankId);
+      dest = allocateBus(*g, midiNote, place == rankPlaceInGroup_.end() ? 0 : place->second, g->algorithm,
+                         primary.noteOffset);
+    } else {
+      dest = allocateBus(*g, midiNote, static_cast<int>(rankId), g->algorithm, primary.noteOffset);
+    }
   }
 
-  const auto it = mixBusIndexOf_.find(dest.value);
   // A routing to a bus that no longer exists lands on the first one rather
   // than on silence. The validator reports it as stale; going quiet here
   // would make a deleted bus look like a broken engine.
-  return it == mixBusIndexOf_.end() ? 0 : it->second;
+  const int index = juce::jmax(0, indexOf(dest));
+  if (busyFresh_ && index < static_cast<int>(busyCount_.size())) ++busyCount_[static_cast<size_t>(index)];
+  return index;
 }
 
 int MasterpieceProcessor::busForPipe(Id pipeId) const {
@@ -1120,6 +1294,8 @@ void MasterpieceProcessor::renderMixBuses(juce::AudioBuffer<float>& output, int 
 
   // One block for the whole callback, whatever the bus count.
   voices_.beginBlock(numFrames);
+  // A Least busy group counts the voices afresh at its next note-on.
+  busyFresh_ = false;
   // EQ groups whose EQ was taken away go once their last pipe has stopped.
   if (rankEq_.groupBuses() > 0) rankEq_.beginBlock([this](int bus) { return voices_.voicesOnBus(bus); });
   const juce::int64 w0 = blockLog_.empty() ? 0 : juce::Time::getHighResolutionTicks();
@@ -1172,10 +1348,7 @@ void MasterpieceProcessor::renderMixBuses(juce::AudioBuffer<float>& output, int 
           busBass_[static_cast<size_t>(i)]->process(dest.getWritePointer(0),
                                                     dest.getNumChannels() > 1 ? dest.getWritePointer(1) : nullptr,
                                                     output.getWritePointer(bass->subChannel), numFrames);
-      const auto [left, right] = busOutputFor(i, outCh);
-      const int last = dest.getNumChannels() - 1;
-      output.addFrom(left, 0, dest, 0, 0, numFrames);
-      output.addFrom(right, 0, dest, juce::jmin(1, last), 0, numFrames);
+      addBusToOutput(i, dest, output, numFrames);
     }
     return;
   }
@@ -1708,6 +1881,7 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::DivisionLevel:
         case MidiTargetKind::GroupLevel:
         case MidiTargetKind::PairLevel:
+        case MidiTargetKind::MixLevel:
         case MidiTargetKind::ReverbWet:
           if (action.value >= 0) setLiveLevelFromMidi(action.kind, action.targetId, action.value);
           if (action.alsoDrives != nullptr)
@@ -2392,8 +2566,10 @@ juce::String MasterpieceProcessor::settingsBody() const {
   // that is a way to end up with duplicates.
   if (!mixer_.buses.empty()) {
     text << "buses";
+    // "2m:4,5" is pair 2 in mono on channels 5 and 6. A file from before
+    // reads "2m" as 2.
     for (const auto& b : mixer_.buses) {
-      text << " " << b.id.value << ":";
+      text << " " << b.id.value << (b.mono ? "m" : "") << ":";
       for (size_t i = 0; i < b.deviceChannels.size(); ++i)
         text << (i ? "," : "") << b.deviceChannels[i];
     }
@@ -2426,10 +2602,13 @@ juce::String MasterpieceProcessor::settingsBody() const {
   }
   if (!mixer_.groups.empty()) {
     text << "groups";
+    // "1:1,2,3/busy": speaker group 1 of pairs 1-3, Least busy. Across the
+    // octave, the default, is written without its word.
     for (const auto& g : mixer_.groups) {
       text << " " << g.groupId << ":";
       for (size_t i = 0; i < g.members.size(); ++i)
         text << (i ? "," : "") << g.members[i].value;
+      if (g.algorithm != AllocationAlgorithm::StaticOctaveCycled) text << "/" << allocationToken(g.algorithm);
     }
     text << "\n";
   }
@@ -2504,7 +2683,9 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
     for (const auto& tok : juce::StringArray::fromTokens(val, " ", "")) {
       if (tok.isEmpty()) continue;
       MixerBus b;
-      b.id = BusId{tok.upToFirstOccurrenceOf(":", false, false).getIntValue()};
+      const auto head = tok.upToFirstOccurrenceOf(":", false, false);
+      b.id = BusId{head.getIntValue()};
+      b.mono = head.endsWithChar('m');
       if (b.id.value == 0) continue;
       for (const auto& ch : juce::StringArray::fromTokens(
                tok.fromFirstOccurrenceOf(":", false, false), ",", ""))
@@ -2546,11 +2727,13 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
       BusGroup g;
       g.groupId = tok.upToFirstOccurrenceOf(":", false, false).getIntValue();
       if (g.groupId == 0) continue;
-      for (const auto& m : juce::StringArray::fromTokens(
-               tok.fromFirstOccurrenceOf(":", false, false), ",", ""))
-        if (m.isNotEmpty()) g.members.push_back(BusId{m.getIntValue()});
+      const auto body = tok.fromFirstOccurrenceOf(":", false, false);
+      g.algorithm = allocationFromToken(body.fromFirstOccurrenceOf("/", false, false).toStdString());
+      for (const auto& m : juce::StringArray::fromTokens(body.upToFirstOccurrenceOf("/", false, false), ",", ""))
+        if (m.isNotEmpty() && m.getIntValue() > 0) g.members.push_back(BusId{m.getIntValue()});
       mixer_.groups.push_back(std::move(g));
     }
+    refreshMixerBuses();
   }
 }
 
@@ -2690,6 +2873,14 @@ bool MasterpieceProcessor::saveSettings() const {
       text << "route " << juce::String(rankId) << " group "
            << juce::String(std::get<int>(primary.dest)) << "\n";
   }
+  // The mixes: "mix <id> <rank,rank,...> <name>", the name last because it
+  // can hold spaces; "-" for a mix with no ranks yet.
+  for (const auto& m : rankMixes_) {
+    text << "mix " << m.id << " ";
+    if (m.ranks.empty()) text << "-";
+    for (size_t i = 0; i < m.ranks.size(); ++i) text << (i ? "," : "") << juce::String(m.ranks[i]);
+    text << " " << juce::String::fromUTF8(m.name.c_str()) << "\n";
+  }
 
   // Voicing, per organ for the same reason as the routes: a rank or pipe id
   // means nothing in another instrument. BOTH slots are written, and which one
@@ -2768,6 +2959,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   // Keeping either would point this organ's rank ids at the previous organ's
   // mix, or worse, at its tuning.
   mixer_.rankRoutings.clear();
+  rankMixes_.clear();
   voicing_.a.clear();
   voicing_.b.clear();
   voicing_.usingB = false;
@@ -2999,8 +3191,20 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
       mixer_.rankRoutings[rankId] = r;
       continue;
     }
+    if (key == "mix") {
+      RankMix m;
+      m.id = val.upToFirstOccurrenceOf(" ", false, false).getIntValue();
+      const auto rest = val.fromFirstOccurrenceOf(" ", false, false).trim();
+      for (const auto& r : juce::StringArray::fromTokens(rest.upToFirstOccurrenceOf(" ", false, false), ",", ""))
+        if (r.getIntValue() > 0) m.ranks.push_back(static_cast<Id>(r.getIntValue()));
+      m.name = rest.fromFirstOccurrenceOf(" ", false, false).trim().toStdString();
+      if (m.id >= 1 && m.id <= LiveLevels::kMaxMixes) rankMixes_.push_back(std::move(m));
+      continue;
+    }
     applySettingsLine(key, val, sw);
   }
+  placeRanksInGroups();
+  keepRankMixes(std::move(rankMixes_));
   graph_.engineSwitch = sw;
   return true;
 }
@@ -6550,7 +6754,8 @@ int MasterpieceProcessor::stripIndexForTarget(int strip, Id levelId) const {
     case LiveLevels::Strip::Rank: return liveRankIndexOf(levelId);
     case LiveLevels::Strip::Division: return liveDivisionIndexOf(levelId);
     case LiveLevels::Strip::Group:
-    case LiveLevels::Strip::Pair: return static_cast<int>(levelId) - 1;
+    case LiveLevels::Strip::Pair:
+    case LiveLevels::Strip::Mix: return static_cast<int>(levelId) - 1;
   }
   return -1;
 }
@@ -6570,6 +6775,7 @@ void MasterpieceProcessor::setLiveLevelFromMidi(MidiTargetKind kind, Id targetId
     case MidiTargetKind::DivisionLevel: liveLevels_.setDivision(liveDivisionIndexOf(targetId), value); break;
     case MidiTargetKind::GroupLevel: liveLevels_.setGroup(static_cast<int>(targetId) - 1, value); break;
     case MidiTargetKind::PairLevel: liveLevels_.setPair(static_cast<int>(targetId) - 1, value); break;
+    case MidiTargetKind::MixLevel: liveLevels_.setMix(static_cast<int>(targetId) - 1, value); break;
     // Saved with the organ, as the Reverb tab's slider is.
     case MidiTargetKind::ReverbWet:
       convolver_.setMix(static_cast<float>(value) / 127.0f);
@@ -8403,7 +8609,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
 
 // While no block renders: at a load, once the live levels know the organ.
 void MasterpieceProcessor::sizeStripMeters() {
-  const size_t n = stripOffset(LiveLevels::Strip::Pair) + LiveLevels::kMaxPairs;
+  const size_t n = stripOffset(LiveLevels::Strip::Mix) + LiveLevels::kMaxMixes;
   stripLevels_.reset(new std::atomic<float>[n]);
   for (size_t i = 0; i < n; ++i) stripLevels_[i].store(0.0f, std::memory_order_relaxed);
   stripPower_.assign(n, 0.0f);
@@ -8467,6 +8673,7 @@ void MasterpieceProcessor::takeStripMeters() {
   const size_t divisions = stripOffset(LiveLevels::Strip::Division);
   const size_t groups = stripOffset(LiveLevels::Strip::Group);
   const size_t pairs = stripOffset(LiveLevels::Strip::Pair);
+  const size_t mixes = stripOffset(LiveLevels::Strip::Mix);
   voices_.takeMeterPeaks([&](int rank, int, float peak) {
     const float p = peak * peak;
     if (rank >= 0 && rank < ranks) {
@@ -8475,6 +8682,8 @@ void MasterpieceProcessor::takeStripMeters() {
       if (d >= 0) stripPower_[divisions + static_cast<size_t>(d)] += p;
       const int g = liveLevels_.rankGroup(rank);
       if (g >= 0) stripPower_[groups + static_cast<size_t>(g)] += p;
+      const int m = liveLevels_.rankMix(rank);
+      if (m >= 0) stripPower_[mixes + static_cast<size_t>(m)] += p;
     }
   });
   // A pair is the end of the desk: it reads what leaves, after the organ's
@@ -9024,6 +9233,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     }
     liveLevels_.configure(std::move(divisionOfRank), static_cast<int>(divisions.size()), std::move(groupOfRank),
                           static_cast<int>(liveGroupNames_.size()));
+    applyRankMixes();
     sizeStripMeters();
   }
   // The layer levels: each control that a pipe layer reads as its level,

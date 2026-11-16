@@ -4,7 +4,6 @@
 "Solo: only the ranks under a soloed strip sound" = "Solo : seuls les rangs sous une tranche en solo sonnent"
 "The output pair's level after its swell boxes and its room, before the master volume. Red: near full scale." = "Le niveau de la paire de sorties après ses boîtes expressives et sa salle, avant le volume général. Rouge : proche de la pleine échelle."
 "The balance of the pipes on this strip, after the faders, before the swell boxes and the room." = "L'équilibre des tuyaux de cette tranche, après les faders, avant les boîtes expressives et la salle."
-"The output pair this rank plays through" = "La paire de sorties par laquelle ce rang joue"
 "Learn a knob or a pedal for the level, and buttons for mute and solo" = "Apprendre un bouton rotatif ou une pédale pour le niveau, et des boutons pour muet et solo"
 "Learn: press the button" = "Apprendre : appuyez sur le bouton"
 "Press it..." = "Appuyez..."

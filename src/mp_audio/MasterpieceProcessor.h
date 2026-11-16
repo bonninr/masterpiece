@@ -135,6 +135,15 @@ public:
   // off) and the device channel of the subwoofer, counted from 0. Kept with
   // the pairs, in the organ's settings and in the saved defaults.
   void setBusBass(int busId, float crossoverHz, int subChannel);
+  // The output pairs, each change under the audio lock. The count keeps each
+  // remaining pair's channels; a new pair takes the two after the highest in
+  // use. A rank sent to a pair or a speaker group that is gone goes to pair 1.
+  void setPairCount(int pairs);
+  // One pair's device channels, counted from 0, and whether it is mono.
+  void setPairLayout(int busId, bool mono, std::vector<int> channels);
+  void setSpeakerGroups(std::vector<BusGroup> groups);
+  // Each rank's destination: a pair, or a speaker group by its id.
+  void setRankRoutes(const std::vector<std::pair<Id, std::variant<BusId, int>>>& routes);
   // Told on the message thread's side when that number changes, so the
   // program that owns the device can open the channels.
   std::function<void()> onOutputChannelsWanted;
@@ -1933,6 +1942,22 @@ public:
     if (!organLoading()) liveLevels_.setGroup(index, value);
   }
   int liveGroupCount() const { return liveLevels_.groupCount(); }
+  // Mixes: sets of ranks the player names, each with a fader on the mixer,
+  // kept with the organ. A mix's id is its slot from 1 to
+  // LiveLevels::kMaxMixes, so a knob learned for it stays on it when another
+  // is removed. A rank is in one mix at most: the first that names it.
+  struct RankMix {
+    int id = 0;
+    std::string name;
+    std::vector<Id> ranks;
+  };
+  const std::vector<RankMix>& rankMixes() const { return rankMixes_; }
+  void setRankMixes(std::vector<RankMix> mixes);
+  int liveMixLevel(int index) const { return liveLevels_.mix(index); }
+  void setLiveMixLevel(int index, int value) {
+    if (!organLoading()) liveLevels_.setMix(index, value);
+  }
+  int liveMixOfRank(int rankIndex) const { return liveLevels_.rankMix(rankIndex); }
   const std::vector<std::string>& liveGroupNames() const { return liveGroupNames_; }
   int liveGroupOfRank(int rankIndex) const { return liveLevels_.rankGroup(rankIndex); }
   // The division a rank's fader sits under, by those lists' indices; -1 for none.
@@ -2390,8 +2415,24 @@ private:
   // Which MIXER bus a pipe of this rank speaks through, as a dense index into
   // the per-bus buffers rather than a BusId (ids run to 1024; the buffers are
   // only as many as the player actually configured). Resolved at note-on
-  // because a group allocation depends on the key.
-  int mixBusForPipe(Id rankId, int midiNote) const;
+  // because a group allocation depends on the key, and for Least busy on
+  // the pipes sounding.
+  int mixBusForPipe(Id rankId, int midiNote);
+  // The pipes sounding through each dense bus, counted from the voices once
+  // a block when a Least busy group first asks, then kept up as pipes start.
+  // Sized with the buses, so the audio thread never allocates for it.
+  std::vector<int> busyCount_;
+  bool busyFresh_ = false;
+  // By rank: each rank's place among the ranks sent to its speaker group, in
+  // id order, so the group's pairs take its ranks in turn. Worked out under
+  // the audio lock whenever the routes or the groups change.
+  std::unordered_map<Id, int> rankPlaceInGroup_;
+  void placeRanksInGroups();
+  std::vector<RankMix> rankMixes_;
+  // Each id once and each rank once, then into the live levels.
+  void keepRankMixes(std::vector<RankMix> mixes);
+  // The mixes into the live levels, by the ranks' places there.
+  void applyRankMixes();
   // Turn incoming MIDI into voice starts and stops. Runs on the audio thread,
   // so it must not allocate: the pipe list it walks is preallocated scratch.
   void buildVoicePool(int blockFrames);
@@ -2926,8 +2967,17 @@ private:
   // buses sum straight into the output and cost nothing.
   juce::AudioBuffer<float> mixScratch_;
   // The device channels of each dense bus, left and right; -1 for a bus that
-  // names none, which plays on the first two as every bus did before.
-  std::vector<std::pair<int, int>> busOutputs_;
+  // names none, which plays on the first two as every bus did before. A mono
+  // bus has one channel, both sides, and plays left and right summed at half
+  // level on it. Copies are further channels the same signal goes to.
+  struct BusOutput {
+    int left = -1, right = -1;
+    bool mono = false;
+    std::vector<std::pair<int, int>> copies;
+  };
+  std::vector<BusOutput> busOutputs_;
+  // Adds a rendered bus to its channels and to its copies' channels.
+  void addBusToOutput(int index, const juce::AudioBuffer<float>& bus, juce::AudioBuffer<float>& output, int numFrames);
   // Where a bus with device channels of its own is rendered before it goes
   // there, and the stereo fold-down of a wider output for the recorder.
   juce::AudioBuffer<float> pairScratch_;
@@ -3024,6 +3074,7 @@ private:
       case LiveLevels::Strip::Division: return ranks;
       case LiveLevels::Strip::Group: return ranks + divisions;
       case LiveLevels::Strip::Pair: return ranks + divisions + groups;
+      case LiveLevels::Strip::Mix: return ranks + divisions + groups + LiveLevels::kMaxPairs;
     }
     return 0;
   }
