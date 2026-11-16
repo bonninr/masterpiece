@@ -1,0 +1,2 @@
+"Plays %1" = "Hraje %1"
+"%1 more" = "a %1 dalších"

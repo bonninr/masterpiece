@@ -1,0 +1,2 @@
+"Plays %1" = "Speelt %1"
+"%1 more" = "%1 meer"
