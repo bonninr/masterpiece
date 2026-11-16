@@ -3,6 +3,7 @@
 #include "MidiPorts.h"
 #include "SystemMemory.h"
 #include "../mp_archive/OrganArchive.h"
+#include "../mp_archive/OrganInstaller.h"
 
 #include "../mp_core/GrandOrgueImport.h"
 #include "../mp_core/LoadPlan.h"
@@ -3173,6 +3174,8 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   text << " " << lcdSetup_.prefix << "\n";
   if (cacheDir_.getFullPathName().isNotEmpty())
     text << "cachedir " << cacheDir_.getFullPathName() << "\n";
+  if (organsDir_.getFullPathName().isNotEmpty())
+    text << "organsfolder " << organsDir_.getFullPathName() << "\n";
   if (packageDir_.getFullPathName().isNotEmpty())
     text << "packagedir " << packageDir_.getFullPathName() << "\n";
   if (backupDir_.getFullPathName().isNotEmpty())
@@ -3436,6 +3439,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       // with a small fast disk and a large slow one wants to choose which of
       // them holds it.
       cacheDir_ = val.isEmpty() ? juce::File() : juce::File(val);
+    } else if (key == "organsfolder") {
+      organsDir_ = val.isEmpty() || !juce::File::isAbsolutePath(val) ? juce::File() : juce::File(val);
     } else if (key == "defaulteq") {
       VoicingEqSettings eq;
       if (eq.fromLine(val.toStdString())) defaultEq_ = eq;
@@ -4030,6 +4035,32 @@ void MasterpieceProcessor::seedSampleLibraries() {
   if (standard.getChildFile("OrganInstallationPackages").isDirectory() &&
       std::find(libraries_.begin(), libraries_.end(), standard) == libraries_.end())
     libraries_.push_back(standard);
+}
+
+juce::File MasterpieceProcessor::defaultOrgansFolder() {
+  return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+      .getChildFile("Masterpiece")
+      .getChildFile("Organs");
+}
+
+juce::File MasterpieceProcessor::organsFolder() const {
+  return organsDir_.getFullPathName().isNotEmpty() ? organsDir_ : defaultOrgansFolder();
+}
+
+void MasterpieceProcessor::setOrgansFolder(const juce::File& dir) {
+  organsDir_ = dir == defaultOrgansFolder() ? juce::File() : dir;
+  writeGlobalFile();
+}
+
+juce::Array<juce::File> MasterpieceProcessor::installedOrgans() const {
+  juce::Array<juce::File> out;
+  std::vector<juce::File> roots{organsFolder()};
+  for (const auto& lib : libraries_)
+    if (std::find(roots.begin(), roots.end(), lib) == roots.end()) roots.push_back(lib);
+  for (const auto& root : roots)
+    for (const auto& path : mp::installedOrganFiles(root.getFullPathName().toStdString()))
+      out.addIfNotAlreadyThere(juce::File(juce::String::fromUTF8(path.c_str())));
+  return out;
 }
 
 void MasterpieceProcessor::rememberSampleLibrary(const juce::File& root) {

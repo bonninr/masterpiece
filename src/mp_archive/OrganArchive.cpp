@@ -1599,12 +1599,18 @@ static bool isSmallFile(const std::string& rel, bool encrypted) {
 // Where a small file goes. A Hauptwerk definition belongs in
 // OrganDefinitions/, beside the packages, whatever the archive did with it. A
 // GrandOrgue one stays put: its paths are relative to its own folder.
-static fs::path smallFileTarget(const std::string& dir, std::string rel) {
+std::string OrganArchive::placedPath(const std::string& stored) {
+  std::string rel = stored;
+  std::replace(rel.begin(), rel.end(), '\\', '/');
   if ((lower(rel).find("_hauptwerk_xml") != std::string::npos ||
        lower(rel).find(".hauptwerk.xml") != std::string::npos) &&
       rel.find('/') == std::string::npos)
     rel = "OrganDefinitions/" + rel;
-  return fs::u8path(dir) / fs::u8path(rel);
+  return rel;
+}
+
+static fs::path smallFileTarget(const std::string& dir, const std::string& rel) {
+  return fs::u8path(dir) / fs::u8path(OrganArchive::placedPath(rel));
 }
 
 static bool writeWhole(const fs::path& target, const std::vector<char>& bytes) {

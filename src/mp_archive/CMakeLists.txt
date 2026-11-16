@@ -2,6 +2,7 @@
 # only module that links libarchive and unarr.
 add_library(mp_archive STATIC
   OrganArchive.h OrganArchive.cpp
+  OrganInstaller.h OrganInstaller.cpp
 )
 target_include_directories(mp_archive PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_compile_features(mp_archive PUBLIC cxx_std_20)

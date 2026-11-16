@@ -10,6 +10,7 @@
 
 #include "LoadingDialog.h"
 #include "OpenWindow.h"
+#include "InstallWindow.h"
 #include "Mobile.h"
 
 #include <future>
@@ -1845,9 +1846,10 @@ void MasterpieceEditor::askForPackage(const juce::String& package, const juce::S
                                       std::function<void(const juce::String&)> answered) {
   auto* box = new PackageAlert(
       TRANS("A package this organ plays is missing"),
-      TRANS("This organ plays package %1, \"%2\", which is not in its folder, a folder in it, nor the package "
-            "folder.\n\nChoose the archive of that package, or the folder that holds it. The choice is kept "
-            "for this organ. A package folder for every organ is set in Organ settings, Loading.")
+      (TRANS("This organ plays package %1, \"%2\", which is not in its folder, a folder in it, nor the package "
+             "folder.\n\nChoose the archive of that package, or the folder that holds it. The choice is kept "
+             "for this organ. A package folder for every organ is set in Organ settings, Loading.") +
+       "\n\n" + TRANS("To install a package from its archive, open File, Install organ."))
           .replace("%1", package)
           .replace("%2", name.isEmpty() ? TRANS("no name given") : name),
       juce::MessageBoxIconType::QuestionIcon, this);
@@ -3168,6 +3170,10 @@ void MasterpieceEditor::showFileMenu() {
   }
   // A phone or a tablet has no folder to save a file to that this can reach.
   if (!kMobile) {
+    // An organ's packages put in the organs folder, and taken out (#1024).
+    menu.addSeparator();
+    menu.addItem(30, TRANS("Install organ..."));
+    menu.addItem(31, TRANS("Uninstall organ..."));
     menu.addSeparator();
     menu.addItem(20, TRANS("Import settings..."));
     menu.addItem(21, TRANS("Export settings..."));
@@ -3192,6 +3198,13 @@ void MasterpieceEditor::showFileMenu() {
                        if (c == 20) safe->importSettings();
                        if (c == 21) safe->exportSettings(true);
                        if (c == 22) safe->exportSettings(false);
+                       if (c == 30 || c == 31) {
+                         auto open = [safe](const juce::File& f) {
+                           if (safe != nullptr) safe->loadOrgan(f);
+                         };
+                         if (c == 30) InstallPanel::showInstall(safe->proc_, open);
+                         else InstallPanel::showUninstall(safe->proc_, open);
+                       }
                        if (c == 6)
                          if (auto* app = juce::JUCEApplicationBase::getInstance())
                            app->systemRequestedQuit();
