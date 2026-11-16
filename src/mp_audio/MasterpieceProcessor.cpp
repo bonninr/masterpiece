@@ -799,6 +799,9 @@ void MasterpieceProcessor::applyRankMixes() {
 }
 
 void MasterpieceProcessor::setBusBass(int busId, float crossoverHz, int subChannel) {
+  // The bass filters are made again below, and the audio thread runs them:
+  // under the lock, as every pair setting is (#1159).
+  const AudioLock lock(*this);
   if (crossoverHz <= 0.0f || subChannel < 0) {
     mixer_.busBass.erase(busId);
   } else {
