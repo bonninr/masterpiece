@@ -121,10 +121,16 @@ public:
     //   --virtual-midi [n] publish a MIDI input port of our own
     //   --log <path>       write the load phase timings to a file
     //
-    // fromTokens(..., true) PRESERVES the quotes it split on, so every value
-    // taken from here is unquoted before use. Organ paths almost always
-    // contain spaces.
-    const auto args = juce::StringArray::fromTokens(commandLine, true);
+    // fromTokens(..., true) PRESERVES the quotes it split on, so every token
+    // is unquoted here, the options as well as their values: a launcher or a
+    // script that quotes every argument passes "--play-midi" with its quotes,
+    // and that has to read as --play-midi. Organ paths almost always contain
+    // spaces.
+    const auto args = [&commandLine] {
+      auto tokens = juce::StringArray::fromTokens(commandLine, true);
+      for (auto& t : tokens) t = t.unquoted();
+      return tokens;
+    }();
     // Say which build this is and stop. The window title carries it too, but
     // a player on a forum needs something they can copy.
     // What every option above and below does, for a player at a terminal
