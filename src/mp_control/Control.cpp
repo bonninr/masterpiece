@@ -429,8 +429,13 @@ void CouplerMatrix::walk(int sourceKeyboardId, int midiNote, float velocity,
       // from the key itself, so they do not chain, through each other or
       // through the organ's own couplers; and on a keyboard whose division is
       // reached through switches as well, where the walk does not emit it.
-      if (hasProgramCouplers_ && depth == 0 && divIt != divisionOfKeyboard_.end()) {
-        const auto pc = programByDest_.find(divIt->second);
+      // A keyboard that names no division and reaches its own through a key
+      // action has the division that key action reaches: the one its program
+      // couplers were made for (Cracow, #1156).
+      Id own = divIt != divisionOfKeyboard_.end() ? divIt->second : 0;
+      if (own == 0 && depth == 0 && hasProgramCouplers_) own = primaryDivisionFor(step.first);
+      if (hasProgramCouplers_ && depth == 0 && own != 0) {
+        const auto pc = programByDest_.find(own);
         if (pc != programByDest_.end())
           for (const ProgramCoupler& c : pc->second) {
             if (engagedSwitches.count(c.switchId) == 0) continue;
