@@ -12,10 +12,12 @@
 #include "../src/mp_audio/MasterpieceProcessor.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <functional>
 #include <string>
+#include <thread>
 #include <variant>
 #include <vector>
 
@@ -629,6 +631,71 @@ public:
   }
 };
 static MixSettingsTest g_mixSettings;
+
+// Bass management changed while the organ plays (#1159): the crossover and
+// the subwoofer's channel chosen over and over, as the panel's lists do,
+// while another thread renders twelve pairs on 24 channels with every key
+// held, under the callback lock as the device's player renders. Every block
+// stays finite, and the last setting is the one in force.
+class BassWhilePlayingTest final : public mp::test::Test {
+public:
+  BassWhilePlayingTest() : Test("functional.output.bass-while-playing", Category::Functional) {}
+  void run() override {
+    const Organ organ("mp-bass-while-playing");
+    mp::MasterpieceProcessor proc;
+    Keep global(proc.globalSettingsFile());
+    Keep organSettings(proc.settingsFileFor(organ.odf));
+    global.file.getParentDirectory().createDirectory();
+    constexpr int kOutputs = 24;
+    juce::AudioProcessor::BusesLayout layout;
+    layout.outputBuses.add(juce::AudioChannelSet::discreteChannels(kOutputs));
+    MP_CHECK(proc.setBusesLayout(layout), "the processor takes 24 outputs");
+    proc.prepareToPlay(kRate, kBlock);
+    MP_CHECK(proc.loadOrgan(organ.odf, 0, false).ok, "the organ loads");
+    proc.setPairCount(12);
+    proc.setRankRoutes({{kRank, mp::BusId{1}}});
+    proc.setStopEngaged(901, true);
+
+    std::atomic<bool> stop{false};
+    std::atomic<int> blocks{0};
+    std::atomic<bool> finite{true};
+    std::thread audio([&] {
+      juce::AudioBuffer<float> buffer(kOutputs, kBlock);
+      juce::MidiBuffer on, none;
+      for (int k = 36; k < 48; ++k) on.addEvent(juce::MidiMessage::noteOn(1, k, 0.8f), 0);
+      bool first = true;
+      while (!stop.load()) {
+        buffer.clear();
+        {
+          const juce::ScopedLock lock(proc.getCallbackLock());
+          proc.processBlock(buffer, first ? on : none);
+        }
+        first = false;
+        for (int ch = 0; ch < kOutputs; ++ch)
+          for (int i = 0; i < kBlock; ++i)
+            if (!std::isfinite(buffer.getSample(ch, i))) finite = false;
+        ++blocks;
+      }
+    });
+    const int crossovers[] = {0, 40, 60, 80, 100, 120, 150, 200};
+    for (int turn = 0; turn < 4000; ++turn) {
+      const int pair = 1 + turn % 12;
+      proc.setBusBass(pair, static_cast<float>(crossovers[turn % 8]), 2 + turn % 3);
+      if (turn % 64 == 0) std::this_thread::yield();
+    }
+    proc.setBusBass(1, 80.0f, 2);
+    const int before = blocks.load();
+    while (blocks.load() < before + 8) std::this_thread::yield();
+    stop = true;
+    audio.join();
+    MP_CHECK(finite.load(), "every block finite while the crossovers change");
+    const auto* bass = proc.mixer().bassFor(mp::BusId{1});
+    MP_CHECK(bass != nullptr && bass->active() && bass->subChannel == 2, "pair 1 ends at 80 Hz to channel 3");
+    proc.releaseResources();
+    organ.root.deleteRecursively();
+  }
+};
+static BassWhilePlayingTest g_bassWhilePlaying;
 
 }  // namespace
 
