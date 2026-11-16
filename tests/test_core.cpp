@@ -2005,6 +2005,74 @@ public:
 };
 static ProgramCouplerTest g_programCoupler;
 
+// Program couplers on an organ whose keyboards name no division and reach
+// their own through a key action each, as Cracow's do (#1156).
+class ProgramCouplerUnhintedTest final : public mp::test::Test {
+public:
+  ProgramCouplerUnhintedTest()
+      : Test("functional.control.program-couplers-unhinted", Category::Functional) {}
+  void run() override {
+    mp::OrganModel m;
+    for (int d = 1; d <= 3; ++d) {
+      mp::Division div;
+      div.divisionId = d;
+      div.name = d == 1 ? "Ped" : (d == 2 ? "I Man" : "II Man");
+      m.divisions[d] = div;
+    }
+    for (int k = 1; k <= 3; ++k) {
+      mp::Keyboard kb;
+      kb.keyboardId = k;
+      kb.assignmentCode = k;
+      kb.numKeys = k == 1 ? 32 : 61;
+      kb.firstMidiNote = 36;
+      m.keyboards[k] = kb;
+      mp::KeyAction a;
+      a.sourceKeyboard = k;
+      a.destIsKeyboard = false;
+      a.destDivision = k;
+      a.actionType = 1;
+      m.keyActions.push_back(a);
+    }
+    // The organ's own coupler: II Man onto I Man while switch 500 is drawn.
+    {
+      mp::KeyAction a;
+      a.sourceKeyboard = 2;
+      a.destIsKeyboard = false;
+      a.destDivision = 3;
+      a.conditionSwitchId = 500;
+      a.actionType = 1;
+      m.keyActions.push_back(a);
+    }
+
+    mp::CouplerMatrix flow;
+    flow.reset(m);
+    MP_CHECK(flow.primaryDivisionFor(2) == 2 && flow.primaryDivisionFor(1) == 1,
+             "each keyboard's division is the one its key action reaches");
+    flow.setProgramCouplers({{600, 2, 3, 0}, {601, 1, 2, 0}, {602, 2, 3, 12}});
+
+    const auto reaches = [](const std::vector<mp::ExpandedNote>& v, int div, int note) {
+      for (const auto& n : v)
+        if (n.divisionId == div && n.midiNote == note) return true;
+      return false;
+    };
+    const std::unordered_set<mp::Id> nothing;
+    const auto alone = flow.expand(2, 60, 1.0f, nothing);
+    MP_CHECK(alone.size() == 1 && reaches(alone, 2, 60),
+             "with no program coupler drawn, a key sounds its own division only");
+    const auto at8 = flow.expand(2, 60, 1.0f, {600});
+    MP_CHECK(at8.size() == 2 && reaches(at8, 2, 60) && reaches(at8, 3, 60),
+             "II Man to I Man 8' sounds II Man from an I Man key");
+    const auto pedal = flow.expand(1, 48, 1.0f, {601});
+    MP_CHECK(pedal.size() == 2 && reaches(pedal, 1, 48) && reaches(pedal, 2, 48),
+             "I Man to Ped 8' sounds I Man from a pedal key");
+    const auto at4 = flow.expand(2, 60, 1.0f, {602});
+    MP_CHECK(at4.size() == 2 && reaches(at4, 3, 72), "at 4' an octave up");
+    const auto own = flow.expand(2, 60, 1.0f, {500});
+    MP_CHECK(own.size() == 2 && reaches(own, 3, 60), "the organ's own coupler works as it did");
+  }
+};
+static ProgramCouplerUnhintedTest g_programCouplerUnhinted;
+
 // Panic's last word (#276): every voice still sounding is released, whatever
 // note it belongs to, a note whose note-off never came included.
 class ReleaseAllTest final : public mp::test::Test {
