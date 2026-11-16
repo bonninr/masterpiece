@@ -252,6 +252,23 @@ if(MP_FETCH_UNARR)
   set(unarr_VERSION_PATCH 0)
   set(unarr_VERSION 1.2.0)
   configure_file(${unarr_SOURCE_DIR}/unarr.h.in ${CMAKE_BINARY_DIR}/unarr-include/unarr.h @ONLY)
+  # One fix to unarr's RAR 3 decoder, compiled from a copy in the build tree.
+  # A block's new LZ tables start the repeated low distance afresh, as the
+  # RAR format's own decoder does; unarr carried it over from the block
+  # before, and a long distance then came out up to 15 bytes short. In
+  # Saint-Jean-de-Luz (Choeur) that corrupted one sample 13 GB into the
+  # solid stream, and the archive failed its checksum there.
+  file(READ ${unarr_SOURCE_DIR}/rar/uncompress-rar.c _mp_unarr_lz)
+  set(_mp_unarr_anchor "        bool ok = false;")
+  string(FIND "${_mp_unarr_lz}" "${_mp_unarr_anchor}" _mp_unarr_first)
+  string(FIND "${_mp_unarr_lz}" "${_mp_unarr_anchor}" _mp_unarr_last REVERSE)
+  if(_mp_unarr_first EQUAL -1 OR NOT _mp_unarr_first EQUAL _mp_unarr_last)
+    message(FATAL_ERROR "unarr: the LZ table reader changed; review the low-distance fix")
+  endif()
+  string(REPLACE "${_mp_unarr_anchor}"
+    "${_mp_unarr_anchor}\n        uncomp_v3->lastlowoffset = 0;\n        uncomp_v3->numlowoffsetrepeats = 0;"
+    _mp_unarr_lz "${_mp_unarr_lz}")
+  file(CONFIGURE OUTPUT ${CMAKE_BINARY_DIR}/unarr-patched/uncompress-rar.c CONTENT "${_mp_unarr_lz}" @ONLY)
   add_library(mp_unarr STATIC
     ${unarr_SOURCE_DIR}/common/conv.c
     ${unarr_SOURCE_DIR}/common/crc32.c
@@ -266,10 +283,10 @@ if(MP_FETCH_UNARR)
     ${unarr_SOURCE_DIR}/rar/parse-rar.c
     ${unarr_SOURCE_DIR}/rar/rar.c
     ${unarr_SOURCE_DIR}/rar/rarvm.c
-    ${unarr_SOURCE_DIR}/rar/uncompress-rar.c)
+    ${CMAKE_BINARY_DIR}/unarr-patched/uncompress-rar.c)
   target_include_directories(mp_unarr
     PUBLIC ${CMAKE_BINARY_DIR}/unarr-include
-    PRIVATE ${unarr_SOURCE_DIR} ${unarr_SOURCE_DIR}/common)
+    PRIVATE ${unarr_SOURCE_DIR} ${unarr_SOURCE_DIR}/common ${unarr_SOURCE_DIR}/rar)
   target_compile_definitions(mp_unarr PRIVATE UNARR_EXPORT_SYMBOLS _FILE_OFFSET_BITS=64)
   if(UNIX)
     # unarr gates fseeko/ftello on this feature macro. Without it, its FILE
