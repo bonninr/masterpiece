@@ -322,6 +322,8 @@ public:
   static constexpr uint8_t kKeptByLongest = 1;
   static constexpr uint8_t kKeptByShortest = 2;
   static constexpr uint8_t kKeptByBoth = kKeptByLongest | kKeptByShortest;
+  // A noise effect's release: kept by every choice, None included (#1161).
+  static constexpr uint8_t kKeptAlways = 4;
   struct ShapeJob {
     Id sampleId = 0;
     std::string path;          // on disk, when it is there

@@ -440,6 +440,13 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       Emitter::set(g, "RankID", rankId);
       Emitter::set(g, "Name", ini.str(chestSec, "Name", chestSec));
     }
+    // A rank that takes no retuning holds a noise: a key or a drawstop
+    // moving, a shutter, the blower. It loads whole, its releases and every
+    // note, whatever the loading choices thin out (#1161).
+    if (!ini.yes(rankSec, "AcceptsRetuning", true)) {
+      auto n = out.row("MasterpieceNoiseEffect");
+      Emitter::set(n, "RankID", rankId);
+    }
     rankFirstMidi[rankId] = firstMidiOf(rankSec);
     const int count = ini.num(rankSec, "NumberOfLogicalPipes", 0);
     auto& ids = rankPipeIds[rankId];

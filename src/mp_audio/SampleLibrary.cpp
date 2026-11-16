@@ -835,6 +835,9 @@ void SampleLibrary::pruneReleases(OrganModel& model, ReleaseChoice choice) {
   if (choice == ReleaseChoice::All) return;
   for (auto& [rankId, rank] : model.ranks) {
     (void)rankId;
+    // A noise effect keeps its releases: they are a key or a drawstop
+    // coming back, the half of the action the player hears last (#1161).
+    if (rank.noiseEffect) continue;
     for (auto& pipe : rank.pipes)
       for (auto& layer : pipe.layers) {
         auto& rel = layer.releases;
@@ -886,6 +889,11 @@ std::vector<SampleLibrary::ShapeJob> SampleLibrary::shapeJobs(
     for (const auto& pipe : rank.pipes)
       for (const auto& layer : pipe.layers) {
         if (layer.releases.empty()) continue;
+        if (rank.noiseEffect) {
+          for (const auto& r : layer.releases)
+            if (r.sample.sampleId != 0) keptBy[r.sample.sampleId] |= kKeptAlways;
+          continue;
+        }
         int64_t longest = layer.releases.front().holdTimeMsHigh, shortest = longest;
         for (const auto& r : layer.releases) {
           longest = std::max<int64_t>(longest, r.holdTimeMsHigh);
@@ -967,7 +975,7 @@ SampleLibrary::SampleShape SampleLibrary::readShape(const ShapeJob& job) {
 int64_t SampleLibrary::residentBytes(const SampleShape& shape) const {
   if (shape.frames <= 0 || shape.channels <= 0) return 0;
   // A release the release choice leaves out is never read (#591).
-  if (shape.releaseOnly) {
+  if (shape.releaseOnly && (shape.keptBy & kKeptAlways) == 0) {
     if (releaseChoice_ == ReleaseChoice::None) return 0;
     if (releaseChoice_ == ReleaseChoice::Longest && (shape.keptBy & kKeptByLongest) == 0) return 0;
     if (releaseChoice_ == ReleaseChoice::Shortest && (shape.keptBy & kKeptByShortest) == 0) return 0;

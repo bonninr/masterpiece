@@ -63,7 +63,7 @@ const std::unordered_set<std::string>& knownTables() {
     "TextInstance", "TextStyle",
     // Masterpiece's own, written by the GrandOrgue import
     "MasterpieceRankWindchest", "MasterpieceSwitchDisplay", "MasterpieceGrandOrgueObject",
-    "MasterpieceGeneralCancel",
+    "MasterpieceGeneralCancel", "MasterpieceNoiseEffect",
     // combinations
     "Combination", "CombinationElement",
     // physical modelling (parsed in M2/M3; recognised now so they don't warn)
@@ -675,6 +675,11 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     const Id rankId = fieldInt(row, "RankID", "a", 0);
     const std::string name = field(row, "Name", "b");
     if (rankId != 0 && !name.empty()) outModel.rankWindchests[rankId] = name;
+  });
+  // A GrandOrgue set's noise effects: its ranks that take no retuning (#1161).
+  forEachRow(odfRoot, "MasterpieceNoiseEffect", [&](pugi::xml_node row) {
+    const auto it = outModel.ranks.find(fieldInt(row, "RankID", "a", 0));
+    if (it != outModel.ranks.end()) it->second.noiseEffect = true;
   });
 
   // ---- M1.2: Pipe table (linked into ranks) ----
@@ -1581,6 +1586,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       return;
     }
     it->second.isNoise = true;
+    it->second.noiseEffect = true;
     it->second.noiseTriggerSwitchId = fieldInt(row, "TriggerSwitchID", "c", 0);
     if (it->second.noiseTriggerSwitchId != 0 &&
         outModel.switches.count(it->second.noiseTriggerSwitchId) == 0)
