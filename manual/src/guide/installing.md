@@ -56,7 +56,7 @@ The two ARM `.tar.gz` archives have no short address. They are on the release pa
 | macOS, Apple silicon | Apple silicon | macOS 11.0 or later |
 | macOS, Intel | x86-64 | macOS 10.15 or later; the build also runs under Rosetta on Apple silicon |
 | Linux, `.deb` and `.tar.gz` | x86-64 | A distribution whose C library is at least as new as Ubuntu 22.04's, the build host; the packages are installed and checked in Debian 12 and Ubuntu 24.04 containers |
-| Linux, Flatpak | x86-64 | Any distribution with Flatpak; the bundle uses the freedesktop 24.08 runtime, which Flatpak installs when it is missing |
+| Linux, Flatpak | x86-64 | Any distribution with Flatpak; the bundle uses the freedesktop 25.08 runtime, which Flatpak installs when it is missing |
 | Raspberry Pi, 64-bit | ARMv8-A (Pi 3 to Pi 5) | Raspberry Pi OS, 64-bit |
 | Raspberry Pi, 32-bit | ARMv7-A with NEON and VFPv4, hard-float | Raspberry Pi OS, 32-bit |
 | Android | 64-bit ARM (`arm64-v8a`); x86-64 (`x86_64`) for the emulator | Android 8.0 (API level 26) or later |
@@ -130,7 +130,7 @@ flatpak install --user ./masterpiece-<version>-linux-x86_64.flatpak
 flatpak run io.github.bonninr.Masterpiece
 ```
 
-The bundle runs on the freedesktop 24.08 runtime. Its permissions:
+The bundle runs on the freedesktop 25.08 runtime. Its permissions:
 
 | Permission | Purpose |
 |---|---|

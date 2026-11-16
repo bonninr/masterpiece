@@ -229,7 +229,7 @@ Runs as `masterpiece`. The VST3 and LV2 plugins for the PC are in
 `masterpiece-<version>-plugins-linux-x86_64.tar.gz`.
 
 **Other Linux distributions.** The Flatpak bundle runs on any x86-64
-distribution with Flatpak installed; it uses the freedesktop 24.08 runtime,
+distribution with Flatpak installed; it uses the freedesktop 25.08 runtime,
 which Flatpak installs with it when it is not there yet:
 
 ```
