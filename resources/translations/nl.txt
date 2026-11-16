@@ -132,7 +132,6 @@ countries: nl be sr
 "A note let go during its attack has not reached the level its release was recorded from. Scaled, the release starts lower, up to the recorded level at the end of the attack." = "Een noot die tijdens de aanzet wordt losgelaten, heeft het niveau niet bereikt waarvan de uitklank is opgenomen. Geschaald begint de uitklank lager, tot het opgenomen niveau aan het einde van de aanzet."
 "Whole" = "Volledig"
 "Up to %1 s" = "Tot %1 s"
-"Each release is kept up to this length and fades out over its last quarter. Shorter releases use less memory: for an organ played in a room with its own reverberation, or under an impulse response." = "Elke release wordt tot deze lengte bewaard en sterft uit over het laatste kwart. Kortere releases gebruiken minder geheugen: voor een orgel dat in een ruimte met eigen nagalm wordt bespeeld, of met een impulsrespons."
 "Creating the sample cache" = "Samplecache wordt aangemaakt"
 "The organ opens without its cache" = "Het orgel opent zonder cache"
 "Skip the cache" = "Cache overslaan"

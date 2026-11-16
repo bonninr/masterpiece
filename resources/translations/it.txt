@@ -132,7 +132,6 @@ countries: it ch sm va
 "A note let go during its attack has not reached the level its release was recorded from. Scaled, the release starts lower, up to the recorded level at the end of the attack." = "Una nota rilasciata durante l'attacco non ha raggiunto il livello da cui è stato registrato il suo rilascio. In scala, il rilascio parte più basso, fino al livello registrato alla fine dell'attacco."
 "Whole" = "Intero"
 "Up to %1 s" = "Fino a %1 s"
-"Each release is kept up to this length and fades out over its last quarter. Shorter releases use less memory: for an organ played in a room with its own reverberation, or under an impulse response." = "Ogni rilascio viene tenuto fino a questa durata e sfuma nel suo ultimo quarto. Rilasci più brevi usano meno memoria: per un organo suonato in una sala con il suo riverbero, o con una risposta all'impulso."
 "Creating the sample cache" = "Creazione della cache dei campioni"
 "The organ opens without its cache" = "L'organo si apre senza la sua cache"
 "Skip the cache" = "Salta la cache"

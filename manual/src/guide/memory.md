@@ -126,7 +126,7 @@ A release is the sound of a pipe after its key is let go. Many sets record sever
 
 **Default:** **As the organ has them**. **Takes effect:** at the next load. The settings file stores the choice as a number from 0 (all) to 3 (none) in the key `releases`.
 
-**Release length** keeps each release up to a given length after its start and fades it out over its last quarter with a raised-cosine curve.
+**Release length** keeps each release up to a given length after its start and fades it out over its whole length, a straight line in gain from the start of the release to silence at its end.
 
 | Option | Kept |
 |---|---|

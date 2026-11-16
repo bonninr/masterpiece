@@ -132,7 +132,6 @@ countries: de at ch li lu
 "A note let go during its attack has not reached the level its release was recorded from. Scaled, the release starts lower, up to the recorded level at the end of the attack." = "Ein während des Einschwingens losgelassener Ton hat den Pegel nicht erreicht, von dem aus sein Ausklang aufgenommen wurde. Skaliert beginnt der Ausklang leiser, bis zum aufgenommenen Pegel am Ende des Einschwingens."
 "Whole" = "Ganz"
 "Up to %1 s" = "Bis %1 s"
-"Each release is kept up to this length and fades out over its last quarter. Shorter releases use less memory: for an organ played in a room with its own reverberation, or under an impulse response." = "Jedes Release wird bis zu dieser Länge behalten und blendet im letzten Viertel aus. Kürzere Releases brauchen weniger Speicher: für eine Orgel, die in einem Raum mit eigenem Nachhall gespielt wird, oder mit einer Impulsantwort."
 "Creating the sample cache" = "Sample-Cache wird erstellt"
 "The organ opens without its cache" = "Die Orgel öffnet sich ohne ihren Cache"
 "Skip the cache" = "Cache überspringen"
