@@ -975,13 +975,11 @@ bool EnginePanel::loadingChanged() const {
          proc_.grandOrgueSwellFilter() != openGoSwellFilter_ ||
          proc_.preloadHeadFrames() != openPreload_ ||
          proc_.polyphonyLimit() != openPolyphony_ ||
-         sw.simpleWavOnly != openSwitch_.simpleWavOnly ||
-         sw.enableWindModel != openSwitch_.enableWindModel ||
-         sw.enableBellowsBoard != openSwitch_.enableBellowsBoard ||
-         sw.enableTremulant != openSwitch_.enableTremulant ||
-         sw.enableEnclosure != openSwitch_.enableEnclosure ||
-         sw.enableVoicing != openSwitch_.enableVoicing ||
-         sw.playAtOriginalOrganPitch != openSwitch_.playAtOriginalOrganPitch;
+         // The other engine switches apply while the organ plays (#1147): the
+         // wind model and the tremulants are read every block, the enclosures
+         // and the voicing in the mix, the original pitch at each note. The
+         // bellows board is set up when the wind system is built, at load.
+         sw.enableBellowsBoard != openSwitch_.enableBellowsBoard;
 }
 
 void EnginePanel::showSaved(juce::TextButton& button) {
