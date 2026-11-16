@@ -258,6 +258,14 @@ struct Rank {
   // them separately (and so Options::includeKeyNoises can drop them).
   bool isNoise = false;
   Id noiseTriggerSwitchId = 0;
+  // A noise effect: its pipes hold the sound of the action, a key going down
+  // and coming up, a drawstop, a shutter, the blower, often as a silent
+  // attack with the sound in its releases. It loads whole, every note and
+  // every release, whatever the loading choices thin out (#1161). A rank of
+  // the Noise table is one; a rank whose every pipe is on tuning scheme 4,
+  // no tuning at all, is one; a GrandOrgue rank that does not accept
+  // retuning is one.
+  bool noiseEffect = false;
 };
 
 struct StopRankEntry {

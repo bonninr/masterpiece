@@ -63,7 +63,7 @@ const std::unordered_set<std::string>& knownTables() {
     "TextInstance", "TextStyle",
     // Masterpiece's own, written by the GrandOrgue import
     "MasterpieceRankWindchest", "MasterpieceSwitchDisplay", "MasterpieceGrandOrgueObject",
-    "MasterpieceGeneralCancel",
+    "MasterpieceGeneralCancel", "MasterpieceNoiseEffect",
     // combinations
     "Combination", "CombinationElement",
     // physical modelling (parsed in M2/M3; recognised now so they don't warn)
@@ -676,6 +676,11 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     const std::string name = field(row, "Name", "b");
     if (rankId != 0 && !name.empty()) outModel.rankWindchests[rankId] = name;
   });
+  // A GrandOrgue set's noise effects: its ranks that take no retuning (#1161).
+  forEachRow(odfRoot, "MasterpieceNoiseEffect", [&](pugi::xml_node row) {
+    const auto it = outModel.ranks.find(fieldInt(row, "RankID", "a", 0));
+    if (it != outModel.ranks.end()) it->second.noiseEffect = true;
+  });
 
   // ---- M1.2: Pipe table (linked into ranks) ----
   // Count first: vectors must not reallocate after pipeById takes addresses.
@@ -690,10 +695,17 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     }
   }
   std::unordered_map<Id, Pipe*> pipeById;
+  // Per rank, its pipes on tuning scheme 4 and all its pipes (#1161).
+  std::unordered_map<Id, std::pair<size_t, size_t>> untunedPipes;
   forEachRow(odfRoot, "Pipe_SoundEngine01", [&](pugi::xml_node row) {
     Pipe p;
     p.pipeId = fieldInt(row, "PipeID", "a", 0);
     const Id rankId = fieldInt(row, "RankID", "b", 0);
+    {
+      auto& [untuned, all] = untunedPipes[rankId];
+      ++all;
+      if (fieldInt(row, "Pitch_Tempered_BaseTuningSchemeCode", "e", 1) == 4) ++untuned;
+    }
     p.midiNote = fieldInt(row, "NormalMIDINoteNumber", "d", 60);
     p.palletSwitchId = fieldInt(row, "ControllingPalletSwitchID", "c", 0);
     p.baseTuningDeviationCents =
@@ -779,6 +791,14 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     rankIt->second.pipes.push_back(std::move(p));
     pipeById[p.pipeId] = &rankIt->second.pipes.back();
   });
+  // A rank whose every pipe is on tuning scheme 4 takes no tuning at all:
+  // the sets use it for their noises, the key and stop actions, the blower,
+  // the shutters, and for nothing that speaks. A noise effect (#1161).
+  for (const auto& [rankId, counts] : untunedPipes) {
+    if (counts.first == 0 || counts.first != counts.second) continue;
+    const auto it = outModel.ranks.find(rankId);
+    if (it != outModel.ranks.end()) it->second.noiseEffect = true;
+  }
 
   // ---- M1.2: Layer table (linked into pipes; reserve like pipes above) ----
   {
@@ -1581,6 +1601,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       return;
     }
     it->second.isNoise = true;
+    it->second.noiseEffect = true;
     it->second.noiseTriggerSwitchId = fieldInt(row, "TriggerSwitchID", "c", 0);
     if (it->second.noiseTriggerSwitchId != 0 &&
         outModel.switches.count(it->second.noiseTriggerSwitchId) == 0)

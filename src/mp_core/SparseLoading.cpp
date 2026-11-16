@@ -61,7 +61,7 @@ SparsePlan planSparseLoading(const OrganModel& model, int every,
     // tremulant list: that lists every pipe a synthesised tremulant reaches,
     // which is nearly every pipe of most organs. Those pipes are fine to
     // borrow, because the tremulant follows the pipe id, and the id stays.
-    if (rank.isNoise || rank.percussive || protectedRanks.count(rankId) != 0 ||
+    if (rank.isNoise || rank.noiseEffect || rank.percussive || protectedRanks.count(rankId) != 0 ||
         rank.pipes.size() < 8) {
       ++plan.ranksLeftAlone;
       continue;
