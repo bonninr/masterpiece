@@ -542,7 +542,7 @@ private:
   juce::ToggleButton testNote_{TRANS("Test note")};
   juce::TextButton midi_{TRANS("MIDI")};
   uint32_t shownSteps_ = 0;
-  int shownTestKey_ = -1;
+  uint32_t shownKeys_ = 0;  // the processor's key count, as last followed
   juce::Label scopeLabel_;
   juce::ComboBox scope_;   // the whole rank, one note of it, or one side of the chest
   juce::Label noteLabel_;

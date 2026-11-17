@@ -3349,14 +3349,18 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
     const bool perPipe = scope_.getSelectedId() == 2;
     note_.setEnabled(perPipe);
     noteLabel_.setEnabled(perPipe);
-    keysChoose_.setEnabled(perPipe);
+    // Choosing pipes by key belongs to one pipe at a time.
+    if (!perPipe) keysChoose_.setToggleState(false, juce::dontSendNotification);
     loadCurrentIntoSliders();
   };
   addAndMakeVisible(keysChoose_);
-  keysChoose_.setToggleState(true, juce::dontSendNotification);
-  keysChoose_.setEnabled(false);
-  keysChoose_.setTooltip(TRANS("A key played with the test note chooses its pipe. Off, the pipe chosen stays, and "
-                               "the keys play its neighbours beside it."));
+  keysChoose_.setToggleState(false, juce::dontSendNotification);
+  keysChoose_.setTooltip(TRANS("A key played chooses its pipe, with the test note or without it. Off, the pipe "
+                               "chosen stays, and the test note plays its neighbours beside it."));
+  keysChoose_.onClick = [this] {
+    shownKeys_ = proc_.keysPressed();
+    if (keysChoose_.getToggleState() && scope_.getSelectedId() != 2) scope_.setSelectedId(2, juce::sendNotificationSync);
+  };
 
   addAndMakeVisible(noteLabel_);
   styleLabel(noteLabel_, TRANS("MIDI note"));
@@ -3805,9 +3809,10 @@ void VoicingPanel::timerCallback() {
     shownSteps_ = steps;
     loadCurrentIntoSliders();
   }
-  const int key = proc_.testNoteKey();
-  if (key != shownTestKey_) {
-    shownTestKey_ = key;
+  // Any key played, with the test note or without it (#1188).
+  if (const uint32_t keys = proc_.keysPressed(); keys != shownKeys_) {
+    shownKeys_ = keys;
+    const int key = proc_.lastKeyPressed();
     if (key >= 0 && scope_.getSelectedId() == 2 && keysChoose_.getToggleState() &&
         static_cast<int>(note_.getValue()) != key)
       note_.setValue(key, juce::sendNotificationSync);
@@ -4881,8 +4886,10 @@ private:
 }  // namespace
 
 // A mixer tab in a window of its own: the strips side by side, scrolling
-// when they outgrow it. Closing it puts the tab back.
-class MixerPanel::StripWindow final : public juce::DocumentWindow {
+// when they outgrow it. Closing it puts the tab back. It floats above the
+// Organ settings window it comes from, which stays above the console: opened
+// as an ordinary window, it went behind that one, out of sight (#1188).
+class MixerPanel::StripWindow final : public juce::DocumentWindow, private juce::Timer {
 public:
   StripWindow(const juce::String& title, std::function<void()> closed, std::function<void()> laidOut)
       : juce::DocumentWindow(title, juce::Colour(0xff15171c),
@@ -4894,6 +4901,14 @@ public:
     view.setViewedComponent(&holder, false);
     view.setScrollBarsShown(false, true);
     setContentNonOwned(&view, false);
+    // Above the others while this program is in front, as the console's
+    // floating windows are; not above anyone else's.
+    if (kLiveOnTop) startTimer(250);
+  }
+  ~StripWindow() override { stopTimer(); }
+  void timerCallback() override {
+    const bool front = juce::Process::isForegroundProcess();
+    if (isVisible() && isAlwaysOnTop() != front) setAlwaysOnTop(front);
   }
   void closeButtonPressed() override {
     // After this call returns: closing takes this window away.
@@ -4964,7 +4979,7 @@ void MixerPanel::setDetached(Source s, bool on) {
                                   juce::jmax(busViewport_.getHeight(), ChannelStrip::kMinHeight) + 40);
     w->centreWithSize(wide, high);
     keepOnScreen(*w);
-    showInPlace(*w);
+    showFloating(*w, true, true);
   } else {
     for (auto& f : sourceFaders(s)) busHolder_.addChildComponent(*f.strip);
     w.reset();

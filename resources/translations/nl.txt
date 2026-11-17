@@ -1205,7 +1205,6 @@ countries: nl be sr
 "Pipes on the C side" = "Pijpen aan de C-kant"
 "Pipes on the C# side" = "Pijpen aan de Cis-kant"
 "Keys choose the note" = "Toetsen kiezen de noot"
-"A key played with the test note chooses its pipe. Off, the pipe chosen stays, and the keys play its neighbours beside it." = "Een toets gespeeld met de proeftoon kiest zijn pijp. Uit: de gekozen pijp blijft, en de toetsen spelen zijn buren ernaast."
 "One rank" = "Eén pijpenrij"
 "Ranks of a stop" = "Pijpenrijen van een register"
 "Ranks of a division" = "Pijpenrijen van een werk"

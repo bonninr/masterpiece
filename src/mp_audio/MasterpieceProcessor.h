@@ -2064,6 +2064,12 @@ public:
   }
   // The key the test note sounds at, or -1.
   int testNoteKey() const { return testNoteKey_.load(std::memory_order_acquire); }
+  // The last key pressed, on any keyboard, from MIDI or the screen, and a
+  // count that moves with every press, so the same key twice is seen twice.
+  // The Voicing tab's "Keys choose the note" follows it (#1188). -1 before
+  // any key.
+  int lastKeyPressed() const { return lastKey_.load(std::memory_order_acquire); }
+  uint32_t keysPressed() const { return keysPressed_.load(std::memory_order_acquire); }
   // Plays the test note again, so a change to the voicing is heard.
   void restartTestNote() { testNoteRestart_.store(true, std::memory_order_release); }
   // After a pipe's or a rank's level in the voicing has changed: the pipes
@@ -3008,6 +3014,13 @@ private:
   std::vector<std::vector<std::pair<int, float>>> sendsInto_;
   std::vector<char> busSends_;
   std::vector<juce::AudioBuffer<float>> sendTap_;
+  // The target's own fader on what the other outputs send into it, as it
+  // stood last block, ramped from there to where it stands now (#1188).
+  std::array<float, LiveLevels::kMaxPairs> sendIntoWas_ = [] {
+    std::array<float, LiveLevels::kMaxPairs> a{};
+    a.fill(1.0f);
+    return a;
+  }();
   void refreshSends();
   void sizeSendTaps();
   // Adds a rendered bus to its channels and to its copies' channels.
@@ -3045,6 +3058,12 @@ private:
   std::atomic<uint32_t> voicingSteps_{0};
   std::atomic<bool> testNoteOn_{false}, testNoteRestart_{false};
   std::atomic<int> testNoteKey_{-1};
+  std::atomic<int> lastKey_{-1};
+  std::atomic<uint32_t> keysPressed_{0};
+  void keyPressed(int midiNote) {
+    lastKey_.store(midiNote, std::memory_order_release);
+    keysPressed_.fetch_add(1, std::memory_order_acq_rel);
+  }
   // Audio thread: the test note's voices, one a rank, and the velocity it
   // was struck at. Room for every rank is kept when the target is set.
   std::vector<uint64_t> testNoteIds_;
