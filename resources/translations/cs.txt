@@ -1204,7 +1204,6 @@ countries: cz
 "Pipes on the C side" = "Píšťaly na straně C"
 "Pipes on the C# side" = "Píšťaly na straně Cis"
 "Keys choose the note" = "Klávesy vybírají tón"
-"A key played with the test note chooses its pipe. Off, the pipe chosen stays, and the keys play its neighbours beside it." = "Klávesa zahraná se zkušebním tónem vybere svou píšťalu. Vypnuto: vybraná píšťala zůstává a klávesy hrají její sousedy vedle ní."
 "One rank" = "Jedna řada"
 "Ranks of a stop" = "Řady rejstříku"
 "Ranks of a division" = "Řady oddílu"

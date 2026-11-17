@@ -1204,7 +1204,6 @@ countries: pl
 "Pipes on the C side" = "Piszczałki strony C"
 "Pipes on the C# side" = "Piszczałki strony Cis"
 "Keys choose the note" = "Klawisze wybierają dźwięk"
-"A key played with the test note chooses its pipe. Off, the pipe chosen stays, and the keys play its neighbours beside it." = "Klawisz zagrany z dźwiękiem próbnym wybiera swoją piszczałkę. Wyłączone: wybrana piszczałka zostaje, a klawisze grają jej sąsiadki obok."
 "One rank" = "Jeden szereg"
 "Ranks of a stop" = "Szeregi głosu"
 "Ranks of a division" = "Szeregi sekcji"

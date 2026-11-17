@@ -1204,7 +1204,6 @@ countries: fr be ca ch lu mc
 "Pipes on the C side" = "Tuyaux du côté d'ut"
 "Pipes on the C# side" = "Tuyaux du côté d'ut dièse"
 "Keys choose the note" = "Les touches choisissent la note"
-"A key played with the test note chooses its pipe. Off, the pipe chosen stays, and the keys play its neighbours beside it." = "Une touche jouée avec la note d'essai choisit son tuyau. Désactivé, le tuyau choisi reste, et les touches jouent ses voisins à côté."
 "One rank" = "Un rang"
 "Ranks of a stop" = "Rangs d'un jeu"
 "Ranks of a division" = "Rangs d'un plan sonore"

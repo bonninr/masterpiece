@@ -1204,7 +1204,6 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Pipes on the C side" = "Tubos del lado de Do"
 "Pipes on the C# side" = "Tubos del lado de Do#"
 "Keys choose the note" = "Las teclas eligen la nota"
-"A key played with the test note chooses its pipe. Off, the pipe chosen stays, and the keys play its neighbours beside it." = "Una tecla tocada con la nota de prueba elige su tubo. Desactivado, el tubo elegido se queda y las teclas tocan sus vecinos a su lado."
 "One rank" = "Una hilera"
 "Ranks of a stop" = "Hileras de un registro"
 "Ranks of a division" = "Hileras de una división"

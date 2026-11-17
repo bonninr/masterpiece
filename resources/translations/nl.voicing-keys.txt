@@ -1,0 +1,1 @@
+"A key played chooses its pipe, with the test note or without it. Off, the pipe chosen stays, and the test note plays its neighbours beside it." = "Een gespeelde toets kiest zijn pijp, met de proeftoon of zonder. Uit: de gekozen pijp blijft, en de proeftoon speelt zijn buren ernaast."

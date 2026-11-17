@@ -42,8 +42,8 @@ struct MixerBus {
   std::string name;
   // Other outputs this one also plays into, by id: four speaker outputs
   // feeding the main mix as well. The signal is taken after this output's
-  // fader and its room, and joins the target before the target's room and
-  // fader. sendDb holds each send's level, in step with sends; a missing
+  // fader and its room, and joins the target before the target's room, and
+  // through the target's fader (#1188). sendDb holds each send's level, in step with sends; a missing
   // entry is 0 dB.
   std::vector<int> sends;
   std::vector<float> sendDb;

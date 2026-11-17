@@ -1204,7 +1204,6 @@ countries: de at ch li lu
 "Pipes on the C side" = "Pfeifen der C-Seite"
 "Pipes on the C# side" = "Pfeifen der Cis-Seite"
 "Keys choose the note" = "Tasten wählen den Ton"
-"A key played with the test note chooses its pipe. Off, the pipe chosen stays, and the keys play its neighbours beside it." = "Eine mit dem Prüfton gespielte Taste wählt ihre Pfeife. Aus: Die gewählte Pfeife bleibt, und die Tasten spielen ihre Nachbarn daneben."
 "One rank" = "Eine Reihe"
 "Ranks of a stop" = "Reihen eines Registers"
 "Ranks of a division" = "Reihen eines Werks"

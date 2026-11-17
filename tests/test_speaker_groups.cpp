@@ -590,6 +590,31 @@ public:
     MP_CHECK(lower[2] == alone[2], "a lower send leaves output 2 as it was");
     const float ratio = peakOf(lower[0]) / peakOf(alone[2]);
     MP_CHECK(std::fabs(ratio - 0.501f) < 0.002f, "the send at -6 dB: output 1 at " + std::to_string(ratio));
+    // Output 1 made only of what output 2 sends: its own fader sets its level
+    // (#1188). Down to nothing, it falls silent once the fader has glided
+    // there; output 2 plays on as it was.
+    const auto tailPeak = [](const std::vector<float>& c) {
+      return peakOf(std::vector<float>(c.end() - static_cast<std::ptrdiff_t>(c.size() / 4), c.end()));
+    };
+    const auto faded = render(
+        organ.odf, 4, {36},
+        [](mp::MasterpieceProcessor& p) {
+          pairsTo(p, 2, mp::BusId{2});
+          p.setOutputSends(2, {1});
+          p.setLivePairLevel(0, 0);
+        },
+        {901}, 80);
+    const auto open = render(
+        organ.odf, 4, {36},
+        [](mp::MasterpieceProcessor& p) {
+          pairsTo(p, 2, mp::BusId{2});
+          p.setOutputSends(2, {1});
+        },
+        {901}, 80);
+    MP_CHECK(tailPeak(open[0]) > 0.01f, "with its fader at full, output 1 sounds: " + std::to_string(tailPeak(open[0])));
+    MP_CHECK(tailPeak(faded[0]) < 1.0e-4f,
+             "its fader down, output 1 falls silent: " + std::to_string(tailPeak(faded[0])));
+    MP_CHECK(faded[2] == open[2], "and output 2 plays on as it was");
     // Two outputs playing into each other: one of the sends is left out, and
     // nothing feeds back.
     const auto loop = render(organ.odf, 4, {36}, [](mp::MasterpieceProcessor& p) {

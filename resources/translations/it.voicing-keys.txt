@@ -1,0 +1,1 @@
+"A key played chooses its pipe, with the test note or without it. Off, the pipe chosen stays, and the test note plays its neighbours beside it." = "Un tasto suonato sceglie la sua canna, con la nota di prova o senza. Disattivato, la canna scelta resta e la nota di prova suona le sue vicine accanto."

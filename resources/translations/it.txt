@@ -1204,7 +1204,6 @@ countries: it ch sm va
 "Pipes on the C side" = "Canne del lato Do"
 "Pipes on the C# side" = "Canne del lato Do#"
 "Keys choose the note" = "I tasti scelgono la nota"
-"A key played with the test note chooses its pipe. Off, the pipe chosen stays, and the keys play its neighbours beside it." = "Un tasto suonato con la nota di prova sceglie la sua canna. Disattivato, la canna scelta resta e i tasti suonano le sue vicine accanto."
 "One rank" = "Una fila"
 "Ranks of a stop" = "File di un registro"
 "Ranks of a division" = "File di una divisione"

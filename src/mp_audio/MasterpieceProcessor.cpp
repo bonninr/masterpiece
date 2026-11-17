@@ -1457,14 +1457,20 @@ void MasterpieceProcessor::renderMixBuses(juce::AudioBuffer<float>& output, int 
       juce::AudioBuffer<float>& dest = captured ? (*mixBusCapture_)[static_cast<size_t>(i)] : pair;
       dest.clear(0, numFrames);
       renderOneMixBus(dest, buses <= 1 ? -1 : i);
-      // What other outputs play into this one, before its room.
-      if (ordered)
+      // What other outputs play into this one, before its room, through its
+      // own fader, mute and solo: its own pipes already passed them, and an
+      // output made only of what the others send has nothing else (#1188).
+      if (ordered && !sendsInto_[static_cast<size_t>(i)].empty()) {
+        const float into = liveLevels_.pairGain(i);
+        float& was = sendIntoWas_[static_cast<size_t>(juce::jlimit(0, LiveLevels::kMaxPairs - 1, i))];
         for (const auto& [from, gain] : sendsInto_[static_cast<size_t>(i)]) {
           const auto& tap = sendTap_[static_cast<size_t>(from)];
           if (gain <= 0.0f || tap.getNumSamples() < numFrames) continue;
           for (int ch = 0; ch < juce::jmin(dest.getNumChannels(), tap.getNumChannels()); ++ch)
-            dest.addFrom(ch, 0, tap, ch, 0, numFrames, gain);
+            dest.addFromWithRamp(ch, 0, tap.getReadPointer(ch), numFrames, gain * was, gain * into);
         }
+        was = into;
+      }
 #if MP_ENABLE_DSP
       if (!graph_.engineSwitch.simpleWavOnly && i < static_cast<int>(busConvolvers_.size()) &&
           busConvolvers_[static_cast<size_t>(i)] != nullptr)
@@ -2112,9 +2118,12 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
                               blockTimeMs_, keyHits_);
       // The test note takes a mapped key as it takes any other (#1057): once
       // for the press, however many manuals the binding sends it to.
-      if (msg.isNoteOn() && testNoteOn_.load(std::memory_order_acquire)) {
+      if (msg.isNoteOn()) {
         const auto hit = std::find_if(keyHits_.begin(), keyHits_.end(), [](const auto& h) { return h.on; });
-        if (hit != keyHits_.end() && testNoteKeyDown(hit->midiNote, hit->velocity)) continue;
+        if (hit != keyHits_.end()) keyPressed(hit->midiNote);
+        if (hit != keyHits_.end() && testNoteOn_.load(std::memory_order_acquire) &&
+            testNoteKeyDown(hit->midiNote, hit->velocity))
+          continue;
       }
       if (logging)
         juce::Logger::writeToLog(
@@ -5109,6 +5118,7 @@ int MasterpieceProcessor::clickChannelForKeyboard(Id keyboardId) const {
 }
 
 void MasterpieceProcessor::startNote(int channel, int midiNote, int velocity) {
+  if (velocity > 0) keyPressed(midiNote);
   if (testNoteOn_.load(std::memory_order_acquire) && testNoteKeyDown(midiNote, velocity)) return;
   // Keyed on the key the player pressed, sounded on the transposed one: the
   // release finds its note by the key, so changing the transposer while a
