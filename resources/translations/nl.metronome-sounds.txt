@@ -1,0 +1,4 @@
+"Sound" = "Geluid"
+"Electronic beep" = "Elektronische piep"
+"Wood block" = "Houtblok"
+"Pendulum, with a bell on the first beat" = "Slinger, met een bel op de eerste tel"

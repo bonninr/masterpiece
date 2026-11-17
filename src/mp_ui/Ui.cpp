@@ -2129,7 +2129,41 @@ public:
   }
   void closeButtonPressed() override { showFloating(*this, false, false); }
 };
+
+// The metronome's own window: never modal, so stops and couplers can be
+// drawn while it is open (#1180).
+class MetronomeWindow : public juce::DocumentWindow {
+public:
+  explicit MetronomeWindow(MasterpieceProcessor& p)
+      : juce::DocumentWindow(TRANS("Metronome"), juce::Colour(0xff15171c), juce::DocumentWindow::closeButton),
+        proc_(p) {
+    setUsingNativeTitleBar(true);
+    setContentOwned(new MetronomePanel(p), false);
+    setResizable(false, false);
+    setSize(470, 250);
+    fitToScreen(*this);
+  }
+  void closeButtonPressed() override {
+    proc_.rememberMetronome();
+    showFloating(*this, false, false);
+  }
+
+private:
+  MasterpieceProcessor& proc_;
+};
 }  // namespace
+
+void MasterpieceEditor::showMetronome(bool show) {
+  if (metronomeWindow_ == nullptr) {
+    if (!show) return;
+    metronomeWindow_ = std::make_unique<MetronomeWindow>(proc_);
+    // Below the tuner's place at the main window's top left.
+    const auto b = getScreenBounds();
+    if (!kMobile) metronomeWindow_->setTopLeftPosition(b.getX() + 40, b.getY() + 140);
+  }
+  if (!show) proc_.rememberMetronome();
+  showFloating(*metronomeWindow_, show, juce::Process::isForegroundProcess());
+}
 
 void MasterpieceEditor::toggleRecorder() {
   if (recorderWindow_ == nullptr) {
@@ -3325,6 +3359,7 @@ void MasterpieceEditor::showViewMenu() {
   menu.addItem(19, TRANS("Couplers"), true, couplersWindow_ != nullptr && couplersWindow_->isVisible());
   menu.addItem(5, TRANS("Recorder"), true, recorderWindow_ != nullptr && recorderWindow_->isVisible());
   menu.addItem(22, TRANS("Tuner"), true, tunerWindow_ != nullptr && tunerWindow_->isVisible());
+  menu.addItem(23, TRANS("Metronome"), true, metronomeWindow_ != nullptr && metronomeWindow_->isVisible());
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&viewMenu_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
                        if (safe == nullptr || c == 0) return;
@@ -3332,6 +3367,9 @@ void MasterpieceEditor::showViewMenu() {
                        // The settings windows follow it on their own.
                        if (c == 5) safe->toggleRecorder();
                        if (c == 22) safe->toggleTuner();
+                       if (c == 23)
+                         safe->showMetronome(safe->metronomeWindow_ == nullptr ||
+                                             !safe->metronomeWindow_->isVisible());
                        if (c == 15) safe->toggleStopList();
                        if (c == 11) safe->toggleSwell();
                        if (c == 12) safe->toggleKeyboard();
@@ -3382,7 +3420,10 @@ void MasterpieceEditor::showSettingsMenu() {
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this), tabs](int c) {
                        if (safe == nullptr || c < 40 || c - 40 >= tabs.size()) return;
-                       if (safe->onSettingsTab) safe->onSettingsTab(TRANS(tabs[c - 40]));
+                       // The metronome opens beside the console, where stops can
+                       // still be drawn (#1180); its Settings tab stays too.
+                       if (tabs[c - 40] == "Metronome") safe->showMetronome(true);
+                       else if (safe->onSettingsTab) safe->onSettingsTab(TRANS(tabs[c - 40]));
                        else if (safe->onSettings) safe->onSettings();
                      });
 }
@@ -3599,6 +3640,10 @@ void MasterpieceEditor::timerCallback() {
   if (kLiveOnTop && tunerWindow_ != nullptr && tunerWindow_->isVisible()) {
     const bool front = juce::Process::isForegroundProcess();
     if (tunerWindow_->isAlwaysOnTop() != front) tunerWindow_->setAlwaysOnTop(front);
+  }
+  if (kLiveOnTop && metronomeWindow_ != nullptr && metronomeWindow_->isVisible()) {
+    const bool front = juce::Process::isForegroundProcess();
+    if (metronomeWindow_->isAlwaysOnTop() != front) metronomeWindow_->setAlwaysOnTop(front);
   }
 
   // The swell strip follows a pedal moved over MIDI.

@@ -1,0 +1,4 @@
+"Sound" = "Son"
+"Electronic beep" = "Bip électronique"
+"Wood block" = "Bloc de bois"
+"Pendulum, with a bell on the first beat" = "Balancier, avec une cloche au premier temps"

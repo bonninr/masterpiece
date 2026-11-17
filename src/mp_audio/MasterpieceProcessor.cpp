@@ -3109,7 +3109,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (textSize_ != 100) text << "textsize " << textSize_ << "\n";
   if (textFont_.isNotEmpty()) text << "textfont " << textFont_ << "\n";
   text << "metronome " << juce::String(metronome_.tempo(), 1) << " " << metronome_.beatsPerBar() << " "
-       << juce::String(metronome_.level(), 2) << "\n";
+       << juce::String(metronome_.level(), 2) << " " << static_cast<int>(metronome_.sound()) << "\n";
   // The limiter's three settings on one line: it is on or off, it holds the
   // output under a ceiling, and it lets the gain come back at a rate.
   text << "limiter " << (limiter_.enabled() ? 1 : 0) << " "
@@ -3462,6 +3462,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
         metronome_.setTempo(parts[0].getDoubleValue());
         metronome_.setBeatsPerBar(parts[1].getIntValue());
         metronome_.setLevel(static_cast<float>(parts[2].getDoubleValue()));
+        // The sound came later (#1181): a line without it is the beep.
+        metronome_.setSound(static_cast<Metronome::Sound>(parts.size() >= 4 ? parts[3].getIntValue() : 0));
       }
     } else if (key == "limiter") {
       // "limiter <on> <ceilingDb> <releaseMs>". The two settings are read

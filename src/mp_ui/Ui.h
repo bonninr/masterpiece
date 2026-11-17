@@ -636,6 +636,10 @@ private:
   void toggleRecorder();
   std::unique_ptr<juce::DocumentWindow> tunerWindow_;
   void toggleTuner();
+  // The metronome beside the console (#1180): stops and couplers stay at
+  // hand while it is open, which the Settings window holds back.
+  std::unique_ptr<juce::DocumentWindow> metronomeWindow_;
+  void showMetronome(bool show);
   // One keyboard playing the whole organ (#358).
   void toggleSplitKeyboard();
   std::unique_ptr<SplitKeyboardWindow> splitWindow_;
