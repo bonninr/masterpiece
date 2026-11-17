@@ -778,6 +778,14 @@ void MasterpieceProcessor::setPairLayout(int busId, bool mono, std::vector<int> 
 }
 
 void MasterpieceProcessor::setSpeakerGroups(std::vector<BusGroup> groups) {
+  // What the settings file can hold, as its reader takes it: a group has a
+  // number, and its members are outputs, numbered from 1. Anything else
+  // would be saved and then dropped on the next start.
+  groups.erase(std::remove_if(groups.begin(), groups.end(), [](const BusGroup& g) { return g.groupId == 0; }),
+               groups.end());
+  for (auto& g : groups)
+    g.members.erase(std::remove_if(g.members.begin(), g.members.end(), [](BusId m) { return m.value <= 0; }),
+                    g.members.end());
   const AudioLock lock(*this);
   mixer_.groups = std::move(groups);
   for (auto& [rankId, r] : mixer_.rankRoutings)
