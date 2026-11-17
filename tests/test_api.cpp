@@ -141,15 +141,34 @@ public:
     MP_CHECK(m.count(Type::Windchest) == static_cast<int>(proc.organModel().wind.size()), "every windchest");
     MP_CHECK(m.count(Type::Route) == m.count(Type::Rank), "a route per rank");
     if (m.count(Type::Route) > 0) {
-      int pair = 0;
-      MP_CHECK(m.get(Type::Route, 0, pair, e) && pair >= 1, "a rank plays through a pair, from 1");
+      int output = 0;
+      MP_CHECK(m.get(Type::Route, 0, output, e) && output >= 1, "a rank plays through an output, from 1");
       v = proc.mixBusCount() + 1;
-      MP_CHECK(m.set(Type::Route, 0, v) == Error::BadValue, "only to a pair the mixer has");
+      MP_CHECK(m.set(Type::Route, 0, v) == Error::BadValue, "only to an output or a group the mixer has");
       v = juce::jmax(1, proc.mixBusCount());
       int now = 0;
       MP_CHECK(m.set(Type::Route, 0, v) == Error::None && m.get(Type::Route, 0, now, e) && now == v,
-               "routed to the last pair and read back");
+               "routed to the last output and read back");
       MP_CHECK(m.describe(Type::Route, 0, e)["rank"].toString() == "0", "the route names its rank");
+      MP_CHECK(m.describe(Type::Route, 0, e)["to"].toString() ==
+                   "Output " + juce::String(proc.mixBusAt(v - 1).value),
+               "and the output it plays through");
+      // A speaker group counts after the outputs.
+      mp::BusGroup group;
+      group.groupId = 1;
+      group.members = {proc.mixBusAt(0)};
+      proc.setSpeakerGroups({group});
+      v = proc.mixBusCount() + 1;
+      MP_CHECK(m.set(Type::Route, 0, v) == Error::None && m.get(Type::Route, 0, now, e) && now == v,
+               "routed to the speaker group and read back");
+      bool inGroup = false;
+      for (const auto& [id, r] : proc.mixer().rankRoutings)
+        if (const int* g = std::get_if<int>(&r.perspectives[0].dest); g != nullptr && *g == 1) inGroup = true;
+      MP_CHECK(inGroup, "the mixer has a rank routed to the group");
+      MP_CHECK(m.describe(Type::Route, 0, e)["to"].toString() == "Speaker group 1", "named as the mixer names it");
+      v = proc.mixBusCount() + 2;
+      MP_CHECK(m.set(Type::Route, 0, v) == Error::BadValue, "only to a group the mixer has");
+      proc.setSpeakerGroups({});
     }
     MP_CHECK(m.setProgram(ProgramProp::RoomWet, 40) == Error::None, "the room's wet share");
     int wet = 0;

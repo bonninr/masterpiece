@@ -26,6 +26,14 @@ std::vector<int64_t> sortedIds(const Map& m) {
 
 juce::String text(const std::string& s) { return juce::String::fromUTF8(s.c_str()); }
 
+// An output as the mixer names it: the player's name, or "Output" and its
+// number, as the Outputs tab shows it.
+juce::String outputName(const MasterpieceProcessor& proc, int denseIndex) {
+  const BusId id = proc.mixBusAt(denseIndex);
+  if (const MixerBus* b = proc.mixer().bus(id); b != nullptr && !b->name.empty()) return text(b->name);
+  return "Output " + juce::String(id.value);
+}
+
 // A name as a player reads it: sets mark a helper with "__" and often a short
 // tag after it ("__Img_14. GO  Principale 8"); both go, and doubled spaces.
 std::string readable(const std::string& raw) {
@@ -341,12 +349,18 @@ int ControlModel::valueOf(Type type, int index) {
     case Type::Ranklevel:
       return proc_.liveRankLevel(proc_.liveRankIndexOf(static_cast<Id>(ranks_[static_cast<size_t>(index)].id)));
     case Type::Route: {
-      // The pair as the Mixer tab lists them, from 1.
+      // The outputs as the mixer lists them, from 1, then the speaker groups.
+      // A rank with no route of its own plays where the default sends it.
       const RankRouting r = proc_.mixer().routingFor(static_cast<Id>(ranks_[static_cast<size_t>(index)].id));
       const auto& dest = r.perspectives[0].dest;
-      if (std::holds_alternative<BusId>(dest))
+      if (std::holds_alternative<BusId>(dest)) {
         for (int i = 0; i < proc_.mixBusCount(); ++i)
           if (proc_.mixBusAt(i) == std::get<BusId>(dest)) return i + 1;
+      } else {
+        const auto& groups = proc_.mixer().groups;
+        for (size_t g = 0; g < groups.size(); ++g)
+          if (groups[g].groupId == std::get<int>(dest)) return proc_.mixBusCount() + static_cast<int>(g) + 1;
+      }
       return 1;
     }
     case Type::Windchest: {
@@ -521,7 +535,19 @@ juce::var ControlModel::object(Type type, int index) {
       o->setProperty("depth", t.depth);
       break;
     }
-    case Type::Route:
+    case Type::Route: {
+      o->setProperty("name", text(ranks_[static_cast<size_t>(index)].name));
+      o->setProperty("rank", index);
+      // Where it plays, by the name the mixer gives it.
+      const int to = valueOf(Type::Route, index);
+      const int outputs = proc_.mixBusCount();
+      const auto& groups = proc_.mixer().groups;
+      if (to <= outputs)
+        o->setProperty("to", outputName(proc_, to - 1));
+      else if (static_cast<size_t>(to - outputs - 1) < groups.size())
+        o->setProperty("to", "Speaker group " + juce::String(groups[static_cast<size_t>(to - outputs - 1)].groupId));
+      break;
+    }
     case Type::Ranklevel:
       o->setProperty("name", text(ranks_[static_cast<size_t>(index)].name));
       o->setProperty("rank", index);
@@ -540,7 +566,7 @@ juce::var ControlModel::object(Type type, int index) {
       }
       break;
     case Type::Pair:
-      o->setProperty("name", "Pair " + juce::String(index + 1));
+      o->setProperty("name", outputName(proc_, index));
       break;
     case Type::Mute:
     case Type::Solo: {
@@ -558,7 +584,7 @@ juce::var ControlModel::object(Type type, int index) {
         o->setProperty("name", static_cast<size_t>(g) < names.size() ? text(names[static_cast<size_t>(g)])
                                                                       : "Group " + juce::String(g + 1));
       } else {
-        o->setProperty("name", "Pair " + juce::String(index - ranks - divisions - groups + 1));
+        o->setProperty("name", outputName(proc_, index - ranks - divisions - groups));
       }
       break;
     }
@@ -746,15 +772,18 @@ Error ControlModel::set(Type type, int index, int& value) {
     if (type == Type::Mute) proc_.setLiveMuted(strip, s.index, value == 1);
     else proc_.setLiveSoloed(strip, s.index, value == 1);
   } else if (type == Type::Route) {
-    // As the Mixer tab does: the rank's main perspective to that pair, heard
-    // from the next note.
-    // Its other perspectives stay where they were.
-    if (value < 1 || value > proc_.mixBusCount()) return Error::BadValue;
+    // As Rank routing does: the rank's main perspective to that output or
+    // speaker group, heard from the next note. Its other perspectives stay
+    // where they were. Through the processor, which holds the audio thread
+    // off the routes while they change and places the rank in its group.
+    const int outputs = proc_.mixBusCount();
+    const auto& groups = proc_.mixer().groups;
+    if (value < 1 || value > outputs + static_cast<int>(groups.size())) return Error::BadValue;
     const auto id = static_cast<Id>(ranks_[static_cast<size_t>(index)].id);
-    RankRouting r = proc_.mixer().routingFor(id);
-    r.rankId = id;
-    r.perspectives[0].dest = proc_.mixBusAt(value - 1);
-    proc_.mixer().rankRoutings[id] = r;
+    const std::variant<BusId, int> dest =
+        value <= outputs ? std::variant<BusId, int>(proc_.mixBusAt(value - 1))
+                         : std::variant<BusId, int>(groups[static_cast<size_t>(value - outputs - 1)].groupId);
+    proc_.setRankRoutes({{id, dest}});
     proc_.markSettingsDirty();
   } else if (type == Type::Tremulant) {
     if (value < 0 || value > 1) return Error::BadValue;

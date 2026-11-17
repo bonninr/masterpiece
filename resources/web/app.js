@@ -245,7 +245,7 @@ function controlPanel() {
   return el("section", {}, el("h2", {}, "Shoes and controls"), box);
 }
 
-// The live levels: a fader for each division and each output pair, heard at
+// The live levels: a fader for each division and each output, by its name, heard at
 // once; 127 is the organ as voiced, 203 is 24 dB over it (LiveLevels.h).
 function levelText(v) {
   if (v <= 0) return "off";
