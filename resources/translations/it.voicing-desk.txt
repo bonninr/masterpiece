@@ -1,0 +1,3 @@
+"Pipe %1" = "Canna %1"
+"The rank's own level or tuning, which each pipe adds to its own" = "Il livello o l'accordatura propri del registro, che ogni canna somma ai propri"
+"Each pipe's own level or tuning, lowest note on the left. A click on a pipe's fader chooses that pipe for the faders above; a drag sets it; a double-click puts it back." = "Il livello o l'accordatura propri di ogni canna, la nota più grave a sinistra. Un clic sul fader di una canna la sceglie per i fader in alto; un trascinamento la regola; un doppio clic la ripristina."
