@@ -4602,6 +4602,9 @@ private:
       return v.contains("k") ? n * 1000.0 : n;
     };
     s.setValue(now > 0.0f ? now : 10.0, juce::dontSendNotification);
+    // The value may not have moved from where the range put it, and the box
+    // shows its text in the format above only once asked.
+    s.updateText();
     s.setChangeNotificationOnlyOnRelease(true);
     s.setTooltip(TRANS("The filter's frequency; at the left end, or a double-click, it is off. A value can be typed."));
   }
@@ -4632,6 +4635,7 @@ private:
     row->delay.setTextValueSuffix(" ms");
     row->delay.setDoubleClickReturnValue(true, 0.0);
     row->delay.setValue(now.delayMs, juce::dontSendNotification);
+    row->delay.updateText();
     row->delay.setChangeNotificationOnlyOnRelease(true);
     row->delay.setTooltip(TRANS("Holds the output back, to set drivers at different depths in time: 1 ms is 34 cm"));
     row->invert.setToggleState(now.invert, juce::dontSendNotification);
