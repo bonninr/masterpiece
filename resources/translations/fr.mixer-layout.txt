@@ -1,0 +1,6 @@
+"Master" = "Général"
+"The master volume, the same as the top bar's" = "Le volume général, le même que celui de la barre du haut"
+"Learn a knob or a pedal for the master volume" = "Apprendre un bouton ou une pédale pour le volume général"
+"The loudest output, after the master volume. Red: near full scale." = "La sortie la plus forte, après le volume général. Rouge : proche de la pleine échelle."
+"To rename the mix, double-click its name; to remove it, right-click its strip." = "Pour renommer le mix, double-cliquez sur son nom ; pour le retirer, faites un clic droit sur sa tranche."
+"Remove the mix" = "Retirer le mix"

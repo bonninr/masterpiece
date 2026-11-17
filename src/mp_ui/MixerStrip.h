@@ -104,9 +104,17 @@ public:
   // Narrow: the scale's ticks without numbers, the readout without its unit.
   void setNarrow(bool on);
   const juce::String& name() const { return name_; }
+  // A name the player gives: a double-click on it types a new one (#1188).
+  void setRenamable(std::function<void(const juce::String&)> renamed);
+  void editName() { label_.showEditor(); }
+  // The master volume's strip: the level and its meter, without mute and
+  // solo.
+  void setMaster();
 
   std::function<void(int)> onLevel;
   std::function<void(bool)> onMute, onSolo;
+  // A right-click anywhere on the strip, for the strip's own menu.
+  std::function<void()> onMenu;
 
   juce::Slider fader{juce::Slider::LinearVertical, juce::Slider::NoTextBox};
   juce::TextButton mute{"M"}, solo{"S"};
@@ -132,6 +140,13 @@ private:
   juce::Component* top_ = nullptr;
   juce::Rectangle<int> scale_;
   bool narrow_ = false;
+  struct MenuClick final : juce::MouseListener {
+    explicit MenuClick(ChannelStrip& s) : strip(s) {}
+    void mouseDown(const juce::MouseEvent& e) override {
+      if (e.mods.isPopupMenu() && strip.onMenu) strip.onMenu();
+    }
+    ChannelStrip& strip;
+  } menuClick_{*this};
 };
 
 }  // namespace mp

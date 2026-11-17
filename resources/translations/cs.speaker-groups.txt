@@ -11,5 +11,3 @@
 "Stereo" = "Stereo"
 "Mixes" = "Mixy"
 "Mix %1" = "Mix %1"
-"The mix's name, on its strip" = "Název mixu, na jeho kanálu"
-"Mixes..." = "Mixy..."
