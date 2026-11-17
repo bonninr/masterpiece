@@ -502,6 +502,8 @@ private:
   juce::Label mapStatus_;
 };
 
+class VoicingPipeDesk;  // Settings.cpp
+
 // Voicing: the player's own adjustments to a rank or a single pipe, the way a
 // voicer goes round an organ with a knife and a tuning cone. Rank level here;
 // the per-pipe rows are reached by picking a rank and a note.
@@ -551,27 +553,41 @@ private:
   juce::TextButton everyPipe_{TRANS("Every pipe...")};
   juce::Component::SafePointer<juce::DialogWindow> everyPipeWindow_;
   void showEveryPipe();
+  // Every fader stands upright at a fixed size, so a wide window keeps them
+  // together as on a desk (#1188).
   juce::Label gainLabel_, tuneLabel_;
-  juce::Slider gain_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
-  juce::Slider tune_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Slider gain_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
+  juce::Slider tune_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
   // The rank's EQ (RankEq.h): a high shelf and a low shelf, heard at once.
   juce::Label brightLabel_, bassLabel_;
-  juce::Slider bright_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
-  juce::Slider bass_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Slider bright_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
+  juce::Slider bass_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
   // A division's EQ, which its ranks hear added to their own.
   juce::Label divisionLabel_, divBrightLabel_, divBassLabel_;
   juce::ComboBox division_;
-  juce::Slider divBright_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
-  juce::Slider divBass_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Slider divBright_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
+  juce::Slider divBass_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
   // Where the rank and the division stand: pan and stereo width, heard at once.
   juce::Label panLabel_, widthLabel_, divPanLabel_, divWidthLabel_;
-  juce::Slider pan_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
-  juce::Slider width_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
-  juce::Slider divPan_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
-  juce::Slider divWidth_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Slider pan_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
+  juce::Slider width_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
+  juce::Slider divPan_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
+  juce::Slider divWidth_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
   std::vector<Id> divisionIds_;
   void loadDivision();
   void pushDivision();
+  // Every pipe of the rank on the page (#1188): the rank's own level or
+  // tuning at the left, then a fader per pipe, lowest note first, a gap
+  // between octaves. A click on a pipe's fader chooses that pipe above.
+  juce::Label pipesLabel_, deskFieldLabel_;
+  juce::ComboBox deskField_;  // level or tuning
+  juce::Label rankFaderLabel_;
+  juce::Slider rankFader_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
+  std::unique_ptr<VoicingPipeDesk> desk_;
+  juce::Viewport deskView_;
+  VoicingField deskField() const;
+  void refreshDesk();
+  void setDeskRange();
   juce::TextButton abSwap_{"A / B"};
   juce::TextButton abCopy_{TRANS("Copy to other")};
   juce::TextButton resetOne_{TRANS("Reset this")};
