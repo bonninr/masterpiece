@@ -399,6 +399,25 @@ public:
     const auto gone = old.mixer().routingFor(kRank).perspectives[0].dest;
     MP_CHECK(std::holds_alternative<mp::BusId>(gone) && std::get<mp::BusId>(gone).value == 1,
              "a rank sent to a group that is gone goes to pair 1");
+
+    // Only what the file can hold: no output 0, no group 0. Found by the
+    // fuzz (seeds 2003, 2012, 2020): a member 0 was saved, then dropped on
+    // the next start.
+    mp::BusGroup odd, none;
+    odd.groupId = 3;
+    odd.members = {mp::BusId{1}, mp::BusId{0}, mp::BusId{1}};
+    none.groupId = 0;
+    none.members = {mp::BusId{1}};
+    old.setSpeakerGroups({odd, none});
+    MP_CHECK(old.mixer().groups.size() == 1 &&
+                 old.mixer().groups[0].members == (std::vector<mp::BusId>{mp::BusId{1}, mp::BusId{1}}),
+             "the group without output 0, and no group 0");
+    MP_CHECK(old.saveGlobalDefaults(), "the global file is written");
+    const auto saved = global.file.loadFileAsString();
+    mp::MasterpieceProcessor reread;
+    reread.loadGlobalDefaults();
+    MP_CHECK(reread.saveGlobalDefaults() && global.file.loadFileAsString() == saved,
+             "and the file reads back to itself");
   }
 };
 static SettingsTest g_settings;
