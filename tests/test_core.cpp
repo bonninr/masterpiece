@@ -7052,6 +7052,47 @@ public:
     MP_CHECK(out.empty(),
              "falling further past 120 does nothing: that row only ever starts "
              "it, which is the whole point of two rows");
+
+    // --- rows sharing a threshold are one step (#1183) ---------------------
+    // Alessandria's load sequence: a control rising to 127 engages two init
+    // switches, one per blower, and each stays engaged.
+    mp::OrganModel initModel;
+    auto initRow = [](mp::Id control, int value, mp::Id sw) {
+      mp::ContinuousControlStageSwitch r;
+      r.controlId = control;
+      r.value = value;
+      r.controlledSwitchId = sw;
+      r.engageWhenIncreasing = true;
+      return r;
+    };
+    initModel.controlStageSwitches = {initRow(9002, 127, 109), initRow(9002, 127, 209)};
+    mp::StageSwitchBank init;
+    init.reset(initModel);
+    out.clear();
+    init.moveControl(9002, 0, 127, out);
+    std::unordered_map<mp::Id, bool> initState;
+    for (const auto& c : out) initState[c.switchId] = c.engage;
+    MP_CHECK(initState.size() == 2 && initState[109] && initState[209],
+             "both switches at one threshold stay engaged");
+
+    // A crescendo whose step engages two switches at once leaves both behind
+    // together at the next step.
+    mp::OrganModel pairModel;
+    pairModel.controlStageSwitches = {step(51, 10, 901), step(51, 10, 902), step(51, 20, 903)};
+    mp::StageSwitchBank pair;
+    pair.reset(pairModel);
+    out.clear();
+    pair.moveControl(51, 0, 10, out);
+    std::unordered_map<mp::Id, bool> pairState;
+    for (const auto& c : out) pairState[c.switchId] = c.engage;
+    MP_CHECK(pairState[901] && pairState[902], "a step of two switches engages both");
+    MP_CHECK(pair.currentStep(51) == 1, "and reads as the first step");
+    out.clear();
+    pair.moveControl(51, 10, 20, out);
+    pairState.clear();
+    for (const auto& c : out) pairState[c.switchId] = c.engage;
+    MP_CHECK(pairState.count(901) && !pairState[901] && pairState.count(902) && !pairState[902] && pairState[903],
+             "the next step leaves both behind");
   }
 };
 

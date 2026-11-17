@@ -9137,6 +9137,23 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   stageValues_.clear();
   for (Id id : stages_.stagedControls())
     stageValues_.emplace_back(id, controls_.value(id));
+  // In the order their delays end. At load the delays settle at once, and a
+  // set's start-up can rely on which comes first: Alessandria's "Blower init
+  // 1" (a 50 ms ramp) has to land before "Blower init 2" (100 ms), which
+  // releases it; landing the other way round left the blower held on by
+  // "Start blower on organ load" (#1183). Then by id, as before.
+  {
+    std::unordered_map<Id, double> rampMs;
+    for (const auto& l : model_.controlLinkages)
+      if (l.linkType == 2 && l.willisMsPerStep > 0.0)
+        rampMs[l.destControlId] = std::max(rampMs[l.destControlId], l.willisMsPerStep);
+    const auto rampOf = [&rampMs](Id id) {
+      const auto it = rampMs.find(id);
+      return it == rampMs.end() ? 0.0 : it->second;
+    };
+    std::stable_sort(stageValues_.begin(), stageValues_.end(),
+                     [&rampOf](const auto& a, const auto& b) { return rampOf(a.first) < rampOf(b.first); });
+  }
 
   // Start the organ. An organ does not come up running: it has controls whose
   // only job is to move once at load and fire the things that have to happen
