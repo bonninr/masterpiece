@@ -439,6 +439,10 @@ private:
   void showOutputMenu();
   void showOutputs();
   juce::ToggleButton feedback_{TRANS("Send stop changes on the MIDI output")};
+  // The values the echo sends, lit and dark (#1185): a pad grid's colours.
+  juce::Label echoLitLabel_, echoDarkLabel_;
+  juce::ComboBox echoLit_, echoDark_;
+  void pushEchoValues();
   juce::ToggleButton holdEcho_{TRANS("Send events leave out a console's own message")};
   juce::ToggleButton cancelResets_{
       TRANS("General Cancel also puts the keyboards back on their own manuals")};

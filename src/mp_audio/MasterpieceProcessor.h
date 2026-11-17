@@ -1823,6 +1823,14 @@ public:
     writeGlobalFile();
   }
   bool midiSendsHoldEcho() const { return midiSendsHoldEcho_; }
+  // The values the echo sends (#1185). A pad grid takes a Note On's velocity
+  // as a colour: lit in one colour, dark in a dimmer one. `lit` 1..127, 127
+  // by default; `dark` 0..127, or -1 for a Note Off, the default. A
+  // controller sends the same values, a Note Off's as 0. Kept in the general
+  // settings.
+  void setMidiFeedbackValues(int lit, int dark);
+  int midiFeedbackLit() const { return midiFeedbackOn_.load(std::memory_order_relaxed); }
+  int midiFeedbackDark() const { return midiFeedbackOff_.load(std::memory_order_relaxed); }
 
   // Console LCD panels. Configured by the player, because the framing belongs
   // to their hardware and not to the organ — see LcdPanel.h.
@@ -2882,6 +2890,12 @@ private:
   void routeEchoes();
   bool midiFeedback_ = false;
   bool midiSendsHoldEcho_ = false;
+  // The echo's values for a lit and a dark button (#1185): 1..127, and
+  // 0..127 or -1 for a Note Off.
+  std::atomic<int> midiFeedbackOn_{127};
+  std::atomic<int> midiFeedbackOff_{-1};
+  // A lamp echoed to the button `source` learned from, lit or dark.
+  void addEcho(juce::MidiBuffer& echo, const MidiSource& source, bool lit) const;
   std::vector<uint8_t> loadMessage_;  // changed under the AudioLock
   std::vector<uint8_t> unloadMessage_;  // changed under the AudioLock
   // The ready lamp's own messages, changed under the AudioLock; and the

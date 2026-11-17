@@ -3159,6 +3159,8 @@ bool MasterpieceProcessor::writeGlobalFile() const {
     text << "scorepage " << page.kind << " " << page.channel << " " << page.forward << " " << page.back << "\n";
   if (midiFeedback_) text << "midifeedback 1\n";
   if (midiSendsHoldEcho_) text << "midisendsholdecho 1\n";
+  if (midiFeedbackOn_.load() != 127 || midiFeedbackOff_.load() != -1)
+    text << "midifeedbackvalues " << midiFeedbackOn_.load() << " " << midiFeedbackOff_.load() << "\n";
   for (const auto& [role, channel] : defaultConsole_) {
     text << "consolechannel " << role << " " << channel;
     // The device last: its name can hold spaces.
@@ -3414,6 +3416,12 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       midiFeedback_ = val.getIntValue() != 0;
     } else if (key == "midisendsholdecho") {
       midiSendsHoldEcho_ = val.getIntValue() != 0;
+    } else if (key == "midifeedbackvalues") {
+      const auto f = juce::StringArray::fromTokens(val, " ", "");
+      if (f.size() >= 2) {
+        midiFeedbackOn_.store(juce::jlimit(1, 127, f[0].getIntValue()));
+        midiFeedbackOff_.store(juce::jlimit(-1, 127, f[1].getIntValue()));
+      }
     } else if (key == "library") {
       const juce::File dir(val);
       if (val.isNotEmpty() &&
@@ -6810,21 +6818,9 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
     // A switch with sends of its own is lit by those, every block.
     if (midiFeedback_ && (midiOut_ != nullptr || outgoingProbe) &&
         !midiMap_.hasSends(MidiTargetKind::Switch, movedId)) {
-      if (const auto* b = midiMap_.bindingFor(MidiTargetKind::Switch, movedId)) {
-        const int ch = b->source.channel > 0 ? b->source.channel : 1;
-        // To the console the binding listens to, where its port is known.
-        auto& echo = echoBuffer(b->source.deviceId);
-        if (b->source.kind == MidiSourceKind::Note) {
-          echo.addEvent(
-              nowEngaged ? juce::MidiMessage::noteOn(ch, b->source.number, 1.0f)
-                         : juce::MidiMessage::noteOff(ch, b->source.number),
-              0);
-        } else if (b->source.kind == MidiSourceKind::ControlChange) {
-          echo.addEvent(juce::MidiMessage::controllerEvent(
-                                 ch, b->source.number, nowEngaged ? 127 : 0),
-                             0);
-        }
-      }
+      // To the console the binding listens to, where its port is known.
+      if (const auto* b = midiMap_.bindingFor(MidiTargetKind::Switch, movedId))
+        addEcho(echoBuffer(b->source.deviceId), b->source, nowEngaged);
     }
 
     // The mechanical sound belongs to the switch that actually moved.
@@ -10924,16 +10920,30 @@ void MasterpieceProcessor::sendLampsAfterLoad() {
   if (!midiFeedback_ || (midiOut_ == nullptr && !outgoingProbe)) return;
   for (const auto& b : midiMap_.bindings()) {
     if (b.targetKind != MidiTargetKind::Switch || midiMap_.hasSends(MidiTargetKind::Switch, b.targetId)) continue;
-    const bool on = switches_.engaged(b.targetId);
-    const int ch = b.source.channel > 0 ? b.source.channel : 1;
-    auto& echo = echoBuffer(b.source.deviceId);
-    if (b.source.kind == MidiSourceKind::Note)
-      echo.addEvent(on ? juce::MidiMessage::noteOn(ch, b.source.number, 1.0f)
-                       : juce::MidiMessage::noteOff(ch, b.source.number),
-                    0);
-    else if (b.source.kind == MidiSourceKind::ControlChange)
-      echo.addEvent(juce::MidiMessage::controllerEvent(ch, b.source.number, on ? 127 : 0), 0);
+    addEcho(echoBuffer(b.source.deviceId), b.source, switches_.engaged(b.targetId));
   }
+}
+
+void MasterpieceProcessor::addEcho(juce::MidiBuffer& echo, const MidiSource& source, bool lit) const {
+  const int ch = source.channel > 0 ? source.channel : 1;
+  const int on = midiFeedbackOn_.load(std::memory_order_relaxed);
+  const int off = midiFeedbackOff_.load(std::memory_order_relaxed);
+  if (source.kind == MidiSourceKind::Note) {
+    if (lit) echo.addEvent(juce::MidiMessage::noteOn(ch, source.number, static_cast<juce::uint8>(on)), 0);
+    else if (off < 0) echo.addEvent(juce::MidiMessage::noteOff(ch, source.number), 0);
+    else echo.addEvent(juce::MidiMessage::noteOn(ch, source.number, static_cast<juce::uint8>(off)), 0);
+  } else if (source.kind == MidiSourceKind::ControlChange) {
+    echo.addEvent(juce::MidiMessage::controllerEvent(ch, source.number, lit ? on : std::max(0, off)), 0);
+  }
+}
+
+void MasterpieceProcessor::setMidiFeedbackValues(int lit, int dark) {
+  lit = juce::jlimit(1, 127, lit);
+  dark = juce::jlimit(-1, 127, dark);
+  if (lit == midiFeedbackOn_.load() && dark == midiFeedbackOff_.load()) return;
+  midiFeedbackOn_.store(lit);
+  midiFeedbackOff_.store(dark);
+  writeGlobalFile();
 }
 
 void MasterpieceProcessor::holdEchoOf(const MidiSource& source) {
@@ -11102,14 +11112,7 @@ void MasterpieceProcessor::emitPistonLamps() {
     pistonLamps_[i] = lit;
     // A button with sends of its own is lit by those, in emitSends().
     if (midiMap_.hasSends(b.targetKind, b.targetId)) continue;
-    const int ch = b.source.channel > 0 ? b.source.channel : 1;
-    auto& echo = echoBuffer(b.source.deviceId);
-    if (b.source.kind == MidiSourceKind::Note)
-      echo.addEvent(lit != 0 ? juce::MidiMessage::noteOn(ch, b.source.number, 1.0f)
-                             : juce::MidiMessage::noteOff(ch, b.source.number),
-                    0);
-    else if (b.source.kind == MidiSourceKind::ControlChange)
-      echo.addEvent(juce::MidiMessage::controllerEvent(ch, b.source.number, lit != 0 ? 127 : 0), 0);
+    addEcho(echoBuffer(b.source.deviceId), b.source, lit != 0);
   }
 }
 

@@ -1,0 +1,5 @@
+"Lit" = "Aan"
+"Unlit" = "Uit"
+"Note Off" = "Note Off"
+"The velocity sent to a button when its stop comes on. On a pad grid it picks the colour" = "De aanslagsnelheid die een knop krijgt wanneer zijn register aangaat. Op een padraster kiest die de kleur"
+"What a button is sent when its stop goes off: a Note Off, or a velocity for a dimmer colour on a pad grid" = "Wat een knop krijgt wanneer zijn register uitgaat: een Note Off, of een aanslagsnelheid voor een gedimde kleur op een padraster"

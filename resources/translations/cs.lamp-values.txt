@@ -1,0 +1,5 @@
+"Lit" = "Svítí"
+"Unlit" = "Nesvítí"
+"Note Off" = "Note Off"
+"The velocity sent to a button when its stop comes on. On a pad grid it picks the colour" = "Velocity odeslaná tlačítku, když se jeho rejstřík zapne. Na mřížce padů určuje barvu"
+"What a button is sent when its stop goes off: a Note Off, or a velocity for a dimmer colour on a pad grid" = "Co tlačítko dostane, když se jeho rejstřík vypne: Note Off, nebo velocity pro tlumenější barvu na mřížce padů"
