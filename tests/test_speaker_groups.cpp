@@ -1,8 +1,8 @@
 // Speaker groups, mono pairs and copies of a pair on further channels.
 //
 // A rank sent to a speaker group plays each pipe through one of the group's
-// pairs, chosen at note-on: Across the octave and Chromatic by the key and
-// the rank, Least busy by the pipes already sounding. A mono pair plays left
+// pairs, chosen at note-on by the key and the rank: a note sounds from the
+// same output every time it is played (#1023). A mono pair plays left
 // and right at half level each on its one channel; a pair's further channels
 // carry exactly what its own carry.
 #include "MpTest.h"
@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cstdio>
 #include <functional>
+#include <random>
 #include <string>
 #include <thread>
 #include <variant>
@@ -31,12 +32,13 @@ constexpr int kBlock = 256;
 constexpr mp::Id kRank = 201;
 
 // `ranks` ranks of twelve pipes, keys 36 to 47, each a looped tone, each on a
-// stop of its own: rank 201 on stop 901, 202 on 902, and so on.
+// stop of its own: rank 201 on stop 901, 202 on 902, and so on. With
+// `oneStop`, every rank on stop 901, as a stop plays its perspectives.
 struct Organ {
   juce::File odf;
   juce::File root;
 
-  explicit Organ(const juce::String& name, int ranks = 1) {
+  explicit Organ(const juce::String& name, int ranks = 1, bool oneStop = false) {
     root = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile(name);
     root.deleteRecursively();
     const auto defs = root.getChildFile("OrganDefinitions");
@@ -58,14 +60,16 @@ struct Organ {
     }
     juce::String pipes, layers, attacks, rankRows, stops, stopRanks, switches;
     for (int r = 0; r < ranks; ++r) {
-      const juce::String rank(201 + r), stop(901 + r), sw(1101 + r);
+      const juce::String rank(201 + r), stop(oneStop ? 901 : 901 + r), sw(oneStop ? 1101 : 1101 + r);
       rankRows << "<Rank><RankID>" << rank << "</RankID><Name>R" << rank << "</Name></Rank>";
-      stops << "<Stop><StopID>" << stop << "</StopID><Name>S" << stop << "</Name><DivisionID>801</DivisionID>"
-            << "<ControllingSwitchID>" << sw << "</ControllingSwitchID></Stop>";
+      if (!oneStop || r == 0) {
+        stops << "<Stop><StopID>" << stop << "</StopID><Name>S" << stop << "</Name><DivisionID>801</DivisionID>"
+              << "<ControllingSwitchID>" << sw << "</ControllingSwitchID></Stop>";
+        switches << "<Switch><SwitchID>" << sw << "</SwitchID><Name>W" << sw << "</Name><Latching>Y</Latching></Switch>";
+      }
       stopRanks << "<StopRank><StopID>" << stop << "</StopID><RankID>" << rank
                 << "</RankID><MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
                 << "<NumberOfMappedDivisionInputNodes>12</NumberOfMappedDivisionInputNodes></StopRank>";
-      switches << "<Switch><SwitchID>" << sw << "</SwitchID><Name>W" << sw << "</Name><Latching>Y</Latching></Switch>";
       for (int k = 0; k < 12; ++k) {
         const juce::String key(36 + k), pipe(3000 + 100 * r + k), layer(4000 + 100 * r + k),
             attack(5000 + 100 * r + k);
@@ -204,7 +208,8 @@ public:
           pairsTo(p, 4, 1);
           p.setSpeakerGroups({group});
         });
-        const int want = mp::allocateBus(group, key, static_cast<int>(kRank), algo, 0).value;
+        // The salt is the rank's stop family: 0, the organ's only one.
+        const int want = mp::allocateBus(group, key, 0, algo, 0).value;
         const auto got = soundingPairs(out);
         MP_CHECK(got == std::vector<int>{want}, std::string(mp::allocationToken(algo)) + ": key " +
                                                     std::to_string(key) + " sounds on pair " + std::to_string(want) +
@@ -228,49 +233,48 @@ public:
 };
 static SpreadTest g_spread;
 
-// Least busy: four keys pressed in one block on a group of four pairs sound
-// one on each, and a fifth key goes where the octave would put it among
-// equals.
-class LeastBusyTest final : public mp::test::Test {
+// A note sounds from the same output every time it is played, whatever else
+// is held: alone, or with three other keys down, key 38 is on one pair, for
+// each method (#1023). The first previews' "busy" method reads as Across the
+// octave.
+class SameSpeakerTest final : public mp::test::Test {
 public:
-  LeastBusyTest() : Test("functional.output.speaker-groups.least-busy", Category::Functional) {}
+  SameSpeakerTest() : Test("functional.output.speaker-groups.same-speaker", Category::Functional) {}
   void run() override {
-    const Organ organ("mp-speaker-groups-busy");
+    MP_CHECK(mp::allocationFromToken("busy") == mp::AllocationAlgorithm::StaticOctaveCycled,
+             "the old Least busy reads as Across the octave");
+    const Organ organ("mp-speaker-groups-same");
     mp::MasterpieceProcessor probe;
     Keep global(probe.globalSettingsFile());
     Keep organSettings(probe.settingsFileFor(organ.odf));
     global.file.getParentDirectory().createDirectory();
 
-    mp::BusGroup group;
-    group.groupId = 7;
-    group.members = {mp::BusId{1}, mp::BusId{2}, mp::BusId{3}, mp::BusId{4}};
-    group.algorithm = mp::AllocationAlgorithm::LeastBusy;
-    const auto setUp = [&](mp::MasterpieceProcessor& p) {
-      pairsTo(p, 4, 7);
-      p.setSpeakerGroups({group});
-    };
-    // Four keys that Across the octave puts on two pairs only: 36 and 40
-    // land together, and 37 and 41.
-    mp::BusGroup octave = group;
-    octave.algorithm = mp::AllocationAlgorithm::StaticOctaveCycled;
-    const int salt = static_cast<int>(kRank);
-    const auto pairOf = [&](int key) {
-      return mp::allocateBus(octave, key, salt, octave.algorithm, 0).value;
-    };
-    MP_CHECK(pairOf(36) == pairOf(40) && pairOf(37) == pairOf(41),
-             "across the octave, 36 and 40 share a pair, and 37 and 41");
-    const auto out = render(organ.odf, 8, {36, 37, 40, 41}, setUp);
-    const auto got = soundingPairs(out);
-    MP_CHECK(got == (std::vector<int>{1, 2, 3, 4}), "least busy, the four keys sound on all four pairs: " + list(got));
-
-    // One key alone goes where the octave would put it.
-    const auto one = render(organ.odf, 8, {38}, setUp);
-    MP_CHECK(soundingPairs(one) == std::vector<int>{pairOf(38)},
-             "a key alone sounds on pair " + std::to_string(pairOf(38)) + ", it sounds on " + list(soundingPairs(one)));
+    for (auto method : {mp::AllocationAlgorithm::StaticOctaveCycled, mp::AllocationAlgorithm::StaticChromatic,
+                        mp::AllocationAlgorithm::StaticByRank}) {
+      mp::BusGroup group;
+      group.groupId = 7;
+      group.members = {mp::BusId{1}, mp::BusId{2}, mp::BusId{3}, mp::BusId{4}};
+      group.algorithm = method;
+      const auto setUp = [&](mp::MasterpieceProcessor& p) {
+        pairsTo(p, 4, 7);
+        p.setSpeakerGroups({group});
+      };
+      const auto alone = soundingPairs(render(organ.odf, 8, {38}, setUp));
+      MP_CHECK(alone.size() == 1, std::string("key 38 alone sounds on one pair (") + mp::allocationToken(method) +
+                                      "): " + list(alone));
+      // Played with three keys already down, the first of them in the same
+      // block: the pair is the same.
+      const auto withOthers = soundingPairs(render(organ.odf, 8, {36, 37, 40, 38}, setUp));
+      MP_CHECK(!alone.empty() && std::find(withOthers.begin(), withOthers.end(), alone.front()) != withOthers.end(),
+               std::string("with others held, key 38 still has pair ") + list(alone) + " (" +
+                   mp::allocationToken(method) + "): " + list(withOthers));
+      const auto again = soundingPairs(render(organ.odf, 8, {38}, setUp));
+      MP_CHECK(again == alone, std::string("played again, the same pair (") + mp::allocationToken(method) + ")");
+    }
     organ.root.deleteRecursively();
   }
 };
-static LeastBusyTest g_leastBusy;
+static SameSpeakerTest g_sameSpeaker;
 
 // A mono pair: left and right at half level each on its one channel. A
 // pair's copies carry exactly what its own channels carry.
@@ -352,12 +356,12 @@ public:
     a.members = {mp::BusId{1}, mp::BusId{2}};
     b.groupId = 2;
     b.members = {mp::BusId{2}, mp::BusId{3}};
-    b.algorithm = mp::AllocationAlgorithm::LeastBusy;
+    b.algorithm = mp::AllocationAlgorithm::StaticByRank;
     proc.setSpeakerGroups({a, b});
     MP_CHECK(proc.saveGlobalDefaults(), "the global file is written");
     const auto text = global.file.loadFileAsString();
     MP_CHECK(text.contains("buses 1:0,1 2m:4,5 3:6,7,10,11"), "the pairs line: " + text.toStdString());
-    MP_CHECK(text.contains("groups 1:1,2 2:2,3/busy"), "the groups line: " + text.toStdString());
+    MP_CHECK(text.contains("groups 1:1,2 2:2,3/rank"), "the groups line: " + text.toStdString());
 
     mp::MasterpieceProcessor next;
     next.loadGlobalDefaults();
@@ -369,7 +373,7 @@ public:
                  m.buses[2].deviceChannels == (std::vector<int>{6, 7, 10, 11}),
              "pair 3 with its copy");
     MP_CHECK(m.groups.size() == 2 && m.groups[0].algorithm == mp::AllocationAlgorithm::StaticOctaveCycled &&
-                 m.groups[1].algorithm == mp::AllocationAlgorithm::LeastBusy &&
+                 m.groups[1].algorithm == mp::AllocationAlgorithm::StaticByRank &&
                  m.groups[1].members == (std::vector<mp::BusId>{mp::BusId{2}, mp::BusId{3}}),
              "the two groups with their methods");
 
@@ -453,6 +457,240 @@ public:
   }
 };
 static ByRankTest g_byRank;
+
+// One key of one stop sounds from one member of a speaker group, however many
+// ranks the stop plays (its perspectives); a second stop starts one member
+// further on. The ranks go there by the default destination, with no route of
+// their own (#1023).
+class OneKeyOneOutputTest final : public mp::test::Test {
+public:
+  OneKeyOneOutputTest() : Test("functional.output.speaker-groups.one-key-one-output", Category::Functional) {}
+  void run() override {
+    mp::MasterpieceProcessor probe;
+    Keep global(probe.globalSettingsFile());
+    global.file.getParentDirectory().createDirectory();
+
+    mp::BusGroup group;
+    group.groupId = 1;
+    group.members = {mp::BusId{1}, mp::BusId{2}, mp::BusId{3}, mp::BusId{4}};
+    const auto setUp = [&](mp::MasterpieceProcessor& p) {
+      p.setPairCount(4);
+      p.setSpeakerGroups({group});
+      p.setDefaultDestination(1);
+    };
+
+    // Three ranks on one stop.
+    {
+      const Organ organ("mp-speaker-groups-one-stop", 3, true);
+      Keep organSettings(probe.settingsFileFor(organ.odf));
+      std::vector<int> used;
+      for (int key = 36; key < 48; ++key) {
+        const auto got = soundingPairs(render(organ.odf, 8, {key}, setUp, {901}, 6));
+        MP_CHECK(got.size() == 1, "key " + std::to_string(key) + " of a three-rank stop sounds on one pair, on " +
+                                      list(got));
+        if (!got.empty()) used.push_back(got[0]);
+      }
+      std::sort(used.begin(), used.end());
+      used.erase(std::unique(used.begin(), used.end()), used.end());
+      MP_CHECK(used.size() == 4, "and the twelve keys use all four pairs: " + list(used));
+      organ.root.deleteRecursively();
+    }
+    // Two stops of one rank each: one key, two pairs.
+    {
+      const Organ organ("mp-speaker-groups-two-stops", 2);
+      Keep organSettings(probe.settingsFileFor(organ.odf));
+      const auto got = soundingPairs(render(organ.odf, 8, {36}, setUp, {901, 902}, 6));
+      MP_CHECK(got.size() == 2, "one key on two stops sounds on two pairs, on " + list(got));
+      organ.root.deleteRecursively();
+    }
+  }
+};
+static OneKeyOneOutputTest g_oneKeyOneOutput;
+
+// The stop families: the ranks one stop plays are one family, a rank two
+// stops share joins them, an alternate (tremmed) rank goes with its stop, and
+// a rank no stop names is a family of its own.
+class RankFamiliesTest final : public mp::test::Test {
+public:
+  RankFamiliesTest() : Test("functional.output.speaker-groups.families", Category::Functional) {}
+  void run() override {
+    mp::OrganModel m;
+    for (mp::Id r : {11, 12, 13, 14, 15, 16, 17}) m.ranks[r].rankId = r;
+    const auto stop = [&m](mp::Id id, std::vector<std::pair<mp::Id, mp::Id>> ranks) {
+      mp::Stop s;
+      s.stopId = id;
+      for (const auto& [r, alt] : ranks) {
+        mp::StopRankEntry e;
+        e.rankId = r;
+        e.alternateRankId = alt;
+        s.ranks.push_back(e);
+      }
+      m.stops[id] = s;
+    };
+    stop(1, {{11, 0}, {12, 0}});  // a stop of two perspectives
+    stop(2, {{13, 16}});          // a stop with its tremmed rank
+    stop(3, {{12, 0}, {14, 0}});  // a stop sharing rank 12 with stop 1
+    const auto f = mp::rankFamilies(m);
+    MP_CHECK(f.at(11) == f.at(12) && f.at(12) == f.at(14), "stops 1 and 3 share rank 12: one family");
+    MP_CHECK(f.at(13) == f.at(16), "a stop's tremmed rank is in its family");
+    MP_CHECK(f.at(11) != f.at(13) && f.at(15) != f.at(17) && f.at(15) != f.at(11),
+             "other stops and unplayed ranks are families of their own");
+    MP_CHECK(f.at(11) == 0 && f.at(13) == 1 && f.at(15) == 2 && f.at(17) == 3,
+             "numbered in the order of their lowest rank");
+  }
+};
+static RankFamiliesTest g_rankFamilies;
+
+// An output that also plays into another: four speaker outputs feeding the
+// main one. Its signal reaches both, bit for bit.
+class OutputSendsTest final : public mp::test::Test {
+public:
+  OutputSendsTest() : Test("functional.output.sends", Category::Functional) {}
+  void run() override {
+    const Organ organ("mp-output-sends");
+    mp::MasterpieceProcessor probe;
+    Keep global(probe.globalSettingsFile());
+    Keep organSettings(probe.settingsFileFor(organ.odf));
+    global.file.getParentDirectory().createDirectory();
+
+    const auto alone = render(organ.odf, 4, {36}, [](mp::MasterpieceProcessor& p) { pairsTo(p, 2, mp::BusId{2}); });
+    MP_CHECK(peakOf(alone[0]) == 0.0f && peakOf(alone[2]) > 0.01f, "output 2 alone sounds on 3-4 only");
+    const auto sent = render(organ.odf, 4, {36}, [](mp::MasterpieceProcessor& p) {
+      pairsTo(p, 2, mp::BusId{2});
+      p.setOutputSends(2, {1});
+    });
+    MP_CHECK(sent[2] == alone[2] && sent[3] == alone[3], "output 2 still sounds on 3-4 as it did");
+    MP_CHECK(sent[0] == alone[2] && sent[1] == alone[3], "and plays into output 1 on 1-2, bit for bit");
+
+    // A send at -6 dB: output 2 as it was, output 1 at half its level.
+    const auto lower = render(organ.odf, 4, {36}, [](mp::MasterpieceProcessor& p) {
+      pairsTo(p, 2, mp::BusId{2});
+      p.setOutputSends(2, {1});
+      p.setOutputSendLevel(2, 1, -6.0f);
+    });
+    MP_CHECK(lower[2] == alone[2], "a lower send leaves output 2 as it was");
+    const float ratio = peakOf(lower[0]) / peakOf(alone[2]);
+    MP_CHECK(std::fabs(ratio - 0.501f) < 0.002f, "the send at -6 dB: output 1 at " + std::to_string(ratio));
+    // Two outputs playing into each other: one of the sends is left out, and
+    // nothing feeds back.
+    const auto loop = render(organ.odf, 4, {36}, [](mp::MasterpieceProcessor& p) {
+      pairsTo(p, 2, mp::BusId{2});
+      p.setOutputSends(2, {1});
+      p.setOutputSends(1, {2});
+    });
+    MP_CHECK(loop[2] == alone[2] && loop[0] == alone[2], "a loop of sends plays once: " +
+                                                             std::to_string(peakOf(loop[0])) + " " +
+                                                             std::to_string(peakOf(loop[2])));
+
+    mp::MasterpieceProcessor p;
+    p.setPairCount(2);
+    p.setOutputSends(2, {1, 2});
+    p.setOutputSendLevel(2, 1, -4.5f);
+    p.setOutputName(1, "Main mix");
+    MP_CHECK(p.mixer().buses[1].sends == std::vector<int>{1}, "an output does not play into itself");
+    MP_CHECK(p.saveGlobalDefaults(), "the global file is written");
+    const auto text = global.file.loadFileAsString();
+    MP_CHECK(text.contains("buses 1:0,1 2:2,3>1@-4.5") && text.contains("busname 1 Main mix"),
+             "the sends and the name are saved: " + text.toStdString());
+    mp::MasterpieceProcessor next;
+    next.loadGlobalDefaults();
+    MP_CHECK(next.mixer().buses.size() == 2 && next.mixer().buses[1].sends == std::vector<int>{1} &&
+                 next.mixer().buses[1].sendLevelDb(1) == -4.5f && next.mixer().buses[0].name == "Main mix",
+             "and come back, with the send's level");
+    organ.root.deleteRecursively();
+  }
+};
+static OutputSendsTest g_outputSends;
+
+// The outputs, speaker groups and default destination are the machine's: in
+// the global file, the same for every organ. An organ file's own copy, from
+// before, is read only while the machine has none, and then becomes it.
+class MachineMixerTest final : public mp::test::Test {
+public:
+  MachineMixerTest() : Test("functional.output.machine-mixer", Category::Functional) {}
+  void run() override {
+    const Organ organ("mp-machine-mixer", 2);
+    mp::MasterpieceProcessor probe;
+    Keep global(probe.globalSettingsFile());
+    Keep organSettings(probe.settingsFileFor(organ.odf));
+    global.file.getParentDirectory().createDirectory();
+    organSettings.file.getParentDirectory().createDirectory();
+
+    // The machine has four outputs and a group as the default.
+    {
+      mp::MasterpieceProcessor p;
+      p.setPairCount(4);
+      mp::BusGroup g;
+      g.groupId = 1;
+      g.members = {mp::BusId{1}, mp::BusId{2}, mp::BusId{3}, mp::BusId{4}};
+      p.setSpeakerGroups({g});
+      p.setDefaultDestination(1);
+      MP_CHECK(p.saveGlobalDefaults(), "the global file is written");
+      const auto text = global.file.loadFileAsString();
+      MP_CHECK(text.contains("defaultroute group 1") && text.contains("groups 1:1,2,3,4"),
+               "the default and the group are in it: " + text.toStdString());
+    }
+    // An organ file with outputs of its own, from before.
+    organSettings.file.replaceWithText("buses 1:0,1 2:2,3\nroute 201 bus 2\n");
+    {
+      mp::MasterpieceProcessor p;
+      p.loadGlobalDefaults();
+      MP_CHECK(p.loadOrgan(organ.odf, 0, false).ok, "the organ loads");
+      MP_CHECK(p.mixer().buses.size() == 4, "the machine's four outputs stay, the organ file's two are left alone");
+      const auto d = p.mixer().defaultDest;
+      MP_CHECK(std::holds_alternative<int>(d) && std::get<int>(d) == 1, "the default is the group");
+      const auto r = p.mixer().routingFor(201).perspectives[0].dest;
+      MP_CHECK(std::holds_alternative<mp::BusId>(r) && std::get<mp::BusId>(r).value == 2,
+               "the organ's own route to output 2 holds");
+      const auto other = p.mixer().routingFor(999).perspectives[0].dest;
+      MP_CHECK(std::holds_alternative<int>(other) && std::get<int>(other) == 1,
+               "a rank with no route follows the default");
+    }
+    // 0.9.0 and the preview wrote a route to output 1 for every rank, the
+    // only default they had (#1023). Read from a file of then, output 1
+    // follows the default; any other output holds.
+    organSettings.file.replaceWithText("route 201 bus 1\nroute 202 bus 2\n");
+    {
+      mp::MasterpieceProcessor p;
+      p.loadGlobalDefaults();
+      MP_CHECK(p.loadOrgan(organ.odf, 0, false).ok, "the organ loads with routes from before");
+      const auto r1 = p.mixer().routingFor(201).perspectives[0].dest;
+      MP_CHECK(std::holds_alternative<int>(r1) && std::get<int>(r1) == 1,
+               "an old route to output 1 follows the default, the group");
+      const auto r2 = p.mixer().routingFor(202).perspectives[0].dest;
+      MP_CHECK(std::holds_alternative<mp::BusId>(r2) && std::get<mp::BusId>(r2).value == 2,
+               "an old route to output 2 holds");
+      // Chosen by hand now, output 1 is saved as a choice.
+      p.setRankRoutes({{201, mp::BusId{1}}});
+      MP_CHECK(p.saveSettings(), "the organ's settings are saved");
+      const auto text = organSettings.file.loadFileAsString();
+      MP_CHECK(text.contains("routing 2") && text.contains("route 201 bus 1"),
+               "the file says its routes are chosen by hand: " + text.toStdString());
+    }
+    {
+      mp::MasterpieceProcessor p;
+      p.loadGlobalDefaults();
+      MP_CHECK(p.loadOrgan(organ.odf, 0, false).ok, "the organ loads with routes chosen by hand");
+      const auto r1 = p.mixer().routingFor(201).perspectives[0].dest;
+      MP_CHECK(std::holds_alternative<mp::BusId>(r1) && std::get<mp::BusId>(r1).value == 1,
+               "a route to output 1 chosen by hand holds");
+    }
+    // A machine with no mixer of its own takes the organ file's.
+    global.file.replaceWithText("");
+    organSettings.file.replaceWithText("buses 1:0,1 2:2,3 3:4,5\n");
+    {
+      mp::MasterpieceProcessor p;
+      p.loadGlobalDefaults();
+      MP_CHECK(p.loadOrgan(organ.odf, 0, false).ok, "the organ loads again");
+      MP_CHECK(p.mixer().buses.size() == 3, "the organ file's three outputs become the machine's");
+      MP_CHECK(p.saveSettingsIfDirty(), "and are saved");
+      MP_CHECK(global.file.loadFileAsString().contains("buses 1:0,1 2:2,3 3:4,5"),
+               "to the global file: " + global.file.loadFileAsString().toStdString());
+    }
+    organ.root.deleteRecursively();
+  }
+};
+static MachineMixerTest g_machineMixer;
 
 float worstDiff(const Channels& a, const Channels& b, size_t from) {
   float worst = 0.0f;
@@ -697,6 +935,178 @@ public:
   }
 };
 static BassWhilePlayingTest g_bassWhilePlaying;
+
+// Every output setting changed at random while the organ plays (#1023): the
+// output count, stereo and mono, channels the device has and channels it
+// lacks, names, sends in chains and in loops at every level, speaker groups,
+// routes to outputs and groups that are gone, mixes, bass. Between rounds the
+// device goes away and comes back with another channel count and block size,
+// as a player unplugging an interface does. Every block stays finite; the
+// settings file reads back to itself; the same settings render the same
+// twice. MP_FUZZ_SEED picks another sequence.
+class OutputFuzzTest final : public mp::test::Test {
+public:
+  OutputFuzzTest() : Test("functional.output.fuzz-while-playing", Category::Functional) {}
+  void run() override {
+    const Organ organ("mp-output-fuzz", 4);
+    mp::MasterpieceProcessor proc;
+    Keep global(proc.globalSettingsFile());
+    Keep organSettings(proc.settingsFileFor(organ.odf));
+    global.file.getParentDirectory().createDirectory();
+    const auto seedText = juce::SystemStats::getEnvironmentVariable("MP_FUZZ_SEED", "1023");
+    std::mt19937 rng(static_cast<unsigned>(seedText.getLargeIntValue()));
+    const auto roll = [&rng](int lo, int hi) { return std::uniform_int_distribution<int>(lo, hi)(rng); };
+    const char* names[] = {"Front", "Gallery left", "a>b@c,d:e 1:2", "Gal\xc3\xa9rie", "line\nbreak\ttab", "  ", ""};
+
+    struct Device {
+      int channels, block;
+    };
+    const Device devices[] = {{24, 256}, {2, 64}, {8, 512}, {32, 128}, {1, 256}, {64, 1024}, {6, 96}};
+    bool loaded = false;
+    std::string firstFailure;
+    for (const auto& device : devices) {
+      // The device as the player opens it.
+      juce::AudioProcessor::BusesLayout layout;
+      layout.outputBuses.add(device.channels == 2   ? juce::AudioChannelSet::stereo()
+                             : device.channels == 1 ? juce::AudioChannelSet::mono()
+                                                    : juce::AudioChannelSet::discreteChannels(device.channels));
+      if (!proc.setBusesLayout(layout)) continue;
+      proc.prepareToPlay(kRate, device.block);
+      if (!loaded) {
+        MP_CHECK(proc.loadOrgan(organ.odf, 0, false).ok, "the organ loads");
+        for (mp::Id stop : {901, 902, 903, 904}) proc.setStopEngaged(stop, true);
+        loaded = true;
+      }
+
+      std::atomic<bool> stop{false};
+      std::atomic<int> blocks{0};
+      std::atomic<bool> finite{true};
+      std::thread audio([&] {
+        juce::AudioBuffer<float> buffer(device.channels, device.block);
+        juce::MidiBuffer on, off, none;
+        for (int k = 36; k < 48; ++k) on.addEvent(juce::MidiMessage::noteOn(1, k, 0.8f), 0);
+        for (int k = 36; k < 48; k += 3) off.addEvent(juce::MidiMessage::noteOff(1, k), 0);
+        int n = 0;
+        while (!stop.load()) {
+          // Whole blocks and part blocks, as a driver gives them.
+          const int frames = n % 5 == 4 ? 1 + n % device.block : device.block;
+          juce::AudioBuffer<float> view(buffer.getArrayOfWritePointers(), device.channels, frames);
+          view.clear();
+          {
+            const juce::ScopedLock lock(proc.getCallbackLock());
+            proc.processBlock(view, n % 40 == 0 ? on : n % 40 == 20 ? off : none);
+          }
+          for (int ch = 0; ch < device.channels; ++ch)
+            for (int i = 0; i < frames; ++i)
+              if (!std::isfinite(view.getSample(ch, i))) finite = false;
+          ++n;
+          ++blocks;
+        }
+      });
+
+      for (int turn = 0; turn < 1500; ++turn) {
+        const int outputs = static_cast<int>(proc.mixer().buses.size());
+        const int bus = roll(1, std::max(1, outputs) + 1);  // now and then one that is gone
+        switch (roll(0, 11)) {
+          case 0: proc.setPairCount(roll(1, 12)); break;
+          case 1: {
+            std::vector<int> ch;
+            for (int i = roll(0, 4); i > 0; --i) ch.push_back(roll(0, 70));  // past the device too
+            proc.setPairLayout(bus, roll(0, 1) == 1, ch);
+            break;
+          }
+          case 2: {
+            std::vector<int> sends;
+            for (int i = roll(0, 3); i > 0; --i) sends.push_back(roll(1, outputs + 1));
+            proc.setOutputSends(bus, sends);
+            break;
+          }
+          case 3: proc.setOutputSendLevel(bus, roll(1, outputs + 1), static_cast<float>(roll(-90, 20))); break;
+          case 4: proc.setOutputName(bus, names[roll(0, 6)]); break;
+          case 5: {
+            std::vector<mp::BusGroup> groups;
+            for (int g = roll(0, 3); g > 0; --g) {
+              mp::BusGroup group;
+              group.groupId = g;
+              for (int m = roll(0, 4); m > 0; --m) group.members.push_back(mp::BusId{roll(0, outputs + 1)});
+              group.algorithm = static_cast<mp::AllocationAlgorithm>(roll(0, 2));
+              groups.push_back(group);
+            }
+            proc.setSpeakerGroups(groups);
+            break;
+          }
+          case 6: {
+            std::vector<std::pair<mp::Id, std::variant<mp::BusId, int>>> routes;
+            for (mp::Id r : {201, 202, 203, 204})
+              if (roll(0, 2) > 0)
+                routes.push_back({r, roll(0, 1) == 0 ? std::variant<mp::BusId, int>(mp::BusId{roll(0, outputs + 1)})
+                                                     : std::variant<mp::BusId, int>(roll(1, 4))});
+            proc.setRankRoutes(routes);
+            break;
+          }
+          case 7:
+            proc.setDefaultDestination(roll(0, 1) == 0 ? std::variant<mp::BusId, int>(mp::BusId{roll(1, outputs)})
+                                                       : std::variant<mp::BusId, int>(roll(1, 4)));
+            break;
+          case 8: {
+            std::vector<mp::MasterpieceProcessor::RankMix> mixes;
+            for (int m = roll(0, 3); m > 0; --m) {
+              mp::MasterpieceProcessor::RankMix mix;
+              mix.id = m;
+              mix.name = names[roll(0, 6)];
+              for (mp::Id r : {201, 202, 203, 204})
+                if (roll(0, 1) == 1) mix.ranks.push_back(r);
+              mixes.push_back(mix);
+            }
+            proc.setRankMixes(mixes);
+            break;
+          }
+          case 9: proc.setBusBass(bus, static_cast<float>(roll(0, 4) * 40), roll(-1, 70)); break;
+          case 10: proc.setLivePairLevel(roll(0, 11), roll(0, 203)); break;
+          default: std::this_thread::yield(); break;
+        }
+        if (turn % 50 == 0) {
+          const int before = blocks.load();
+          while (blocks.load() < before + 1) std::this_thread::yield();
+        }
+      }
+      const int before = blocks.load();
+      while (blocks.load() < before + 4) std::this_thread::yield();
+      stop = true;
+      audio.join();
+      if (!finite.load() && firstFailure.empty())
+        firstFailure = std::to_string(device.channels) + " channels, block " + std::to_string(device.block);
+      // The device goes away.
+      proc.releaseResources();
+    }
+    MP_CHECK(loaded, "a layout was taken");
+    MP_CHECK(firstFailure.empty(), "every block finite, first failure on " + firstFailure + ", seed " +
+                                       seedText.toStdString());
+
+    // The settings read back to themselves.
+    MP_CHECK(proc.saveGlobalDefaults(), "the global file is written");
+    const auto first = global.file.loadFileAsString();
+    MP_CHECK(!first.contains("line\n") && !first.contains("\t"), "a name stays on its line: " + first.toStdString());
+    {
+      mp::MasterpieceProcessor next;
+      next.loadGlobalDefaults();
+      MP_CHECK(next.saveGlobalDefaults(), "the global file is written again");
+    }
+    const auto second = global.file.loadFileAsString();
+    MP_CHECK(first == second, "the settings file reads back to itself, seed " + seedText.toStdString() + ":\n" +
+                                  first.toStdString() + "\n---\n" + second.toStdString());
+
+    // The settings the fuzz left render the same twice.
+    const auto again = [&] {
+      return render(organ.odf, 24, {36, 38, 41, 43}, [](mp::MasterpieceProcessor& p) { p.loadGlobalDefaults(); },
+                    {901, 902, 903, 904}, 12);
+    };
+    const auto a = again(), b = again();
+    MP_CHECK(a == b, "the same settings render the same twice");
+    organ.root.deleteRecursively();
+  }
+};
+static OutputFuzzTest g_outputFuzz;
 
 }  // namespace
 

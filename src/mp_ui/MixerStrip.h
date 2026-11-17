@@ -27,6 +27,13 @@ public:
                         float endAngle, juce::Slider& s) override;
   int getSliderThumbRadius(juce::Slider& s) override;
   juce::Label* createSliderTextBox(juce::Slider& s) override;
+  // A box on a strip: a small font and a narrow arrow, so a name such as
+  // "Default" fits the strip's width.
+  juce::Font getComboBoxFont(juce::ComboBox& box) override;
+  void drawComboBox(juce::Graphics& g, int w, int h, bool down, int buttonX, int buttonY, int buttonW, int buttonH,
+                    juce::ComboBox& box) override;
+  void positionComboBoxText(juce::ComboBox& box, juce::Label& label) override;
+  static constexpr int kComboArrow = 12;
 
   // The cap's size along the travel and across it. A vertical fader shorter
   // than kShortTravel takes the short cap.

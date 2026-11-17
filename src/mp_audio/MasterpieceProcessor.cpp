@@ -33,8 +33,8 @@ namespace mp {
 // Every stage after the mixer holds a state per output pair: each covers them all.
 static_assert(OutputLimiter::kMaxPairs >= MasterpieceProcessor::kMaxOutputPairs);
 static_assert(OutputCompressor::kMaxPairs >= MasterpieceProcessor::kMaxOutputPairs);
-static_assert(RankEq::kMaxPairs >= MasterpieceProcessor::kMaxOutputPairs);
-static_assert(LiveLevels::kMaxPairs >= MasterpieceProcessor::kMaxOutputPairs);
+static_assert(RankEq::kMaxPairs >= MasterpieceProcessor::kMaxOutputs);
+static_assert(LiveLevels::kMaxPairs >= MasterpieceProcessor::kMaxOutputs);
 static_assert(VoicingEq::kMaxChannels >= MasterpieceProcessor::kMaxOutputChannels);
 
 namespace {
@@ -385,6 +385,7 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   sampleRate_ = sampleRate > 0.0 ? sampleRate : 48000.0;
   maxBlock_ = juce::jmax(1, samplesPerBlock);
   pairScratch_.setSize(2, maxBlock_, false, true, false);
+  sizeSendTaps();
   recordScratch_.setSize(2, maxBlock_, false, true, false);
 #if MP_ENABLE_DSP
   // One filter per enclosure and one LFO per tremulant, built here so the
@@ -613,8 +614,6 @@ void MasterpieceProcessor::refreshMixerBuses() {  mixBusOrder_.clear();
     mixBusIndexOf_[1] = 0;
   }
   busOutputs_.assign(mixBusOrder_.size(), BusOutput{});
-  busyCount_.assign(mixBusOrder_.size(), 0);
-  busyFresh_ = false;
   placeRanksInGroups();
   const auto valid = [](int ch) { return ch >= 0 && ch < kMaxOutputChannels; };
   for (size_t i = 0; i < mixBusOrder_.size(); ++i)
@@ -637,12 +636,58 @@ void MasterpieceProcessor::refreshMixerBuses() {  mixBusOrder_.clear();
         }
       }
     }
+  refreshSends();
   refreshBusReverbs();
   refreshBusBass();
   if (const int wanted = outputChannelsWanted(); wanted != lastOutputChannelsWanted_) {
     lastOutputChannelsWanted_ = wanted;
     if (onOutputChannelsWanted) onOutputChannelsWanted();
   }
+}
+
+// Sends (#1023): who plays into whom, at what gain, and an order that renders
+// every output before the outputs it plays into. A send that would close a
+// loop (A into B, B into A) is left out. Resolved here, so a block only walks
+// the lists; with no sends the order is the buses' own and the lists empty.
+void MasterpieceProcessor::refreshSends() {
+  const size_t n = mixBusOrder_.size();
+  std::vector<std::vector<std::pair<int, float>>> into(n);
+  for (size_t i = 0; i < n; ++i)
+    if (const MixerBus* b = mixer_.bus(mixBusOrder_[i]))
+      for (int target : b->sends) {
+        const auto t = mixBusIndexOf_.find(target);
+        if (t == mixBusIndexOf_.end() || static_cast<size_t>(t->second) == i) continue;
+        const float db = b->sendLevelDb(target);
+        const float gain = db <= kSendFloorDb ? 0.0f : juce::Decibels::decibelsToGain(db);
+        into[static_cast<size_t>(t->second)].emplace_back(static_cast<int>(i), gain);
+      }
+  sendsInto_.assign(n, {});
+  busSends_.assign(n, 0);
+  renderOrder_.clear();
+  std::vector<int> state(n, 0);  // 0 not yet seen, 1 being placed, 2 placed
+  std::function<void(int)> place = [&](int t) {
+    state[static_cast<size_t>(t)] = 1;
+    for (const auto& [from, gain] : into[static_cast<size_t>(t)]) {
+      if (state[static_cast<size_t>(from)] == 1) continue;  // closes a loop
+      if (state[static_cast<size_t>(from)] == 0) place(from);
+      sendsInto_[static_cast<size_t>(t)].emplace_back(from, gain);
+      busSends_[static_cast<size_t>(from)] = 1;
+    }
+    state[static_cast<size_t>(t)] = 2;
+    renderOrder_.push_back(t);
+  };
+  for (size_t t = 0; t < n; ++t)
+    if (state[t] == 0) place(static_cast<int>(t));
+  sizeSendTaps();
+}
+
+void MasterpieceProcessor::sizeSendTaps() {
+  sendTap_.resize(busSends_.size());
+  for (size_t i = 0; i < busSends_.size(); ++i)
+    if (busSends_[i] != 0)
+      sendTap_[i].setSize(2, maxBlock_, false, true, false);
+    else
+      sendTap_[i].setSize(0, 0);
 }
 
 std::pair<int, int> MasterpieceProcessor::busOutputFor(int index, int numCh) const {
@@ -689,7 +734,7 @@ void MasterpieceProcessor::refreshBusBass() {
 }
 
 void MasterpieceProcessor::setPairCount(int pairs) {
-  pairs = juce::jlimit(1, kMaxOutputPairs, pairs);
+  pairs = juce::jlimit(1, kMaxOutputs, pairs);
   const AudioLock lock(*this);
   auto& buses = mixer_.buses;
   if (static_cast<int>(buses.size()) > pairs) buses.resize(static_cast<size_t>(pairs));
@@ -713,8 +758,9 @@ void MasterpieceProcessor::setPairCount(int pairs) {
   for (auto& [rankId, r] : mixer_.rankRoutings)
     if (const auto* bus = std::get_if<BusId>(&r.perspectives[0].dest); bus != nullptr && bus->value > pairs)
       r.perspectives[0].dest = BusId{1};
+  keepDefaultDestination();
   refreshMixerBuses();
-  markSettingsDirty();
+  markMixerDirty();
 }
 
 void MasterpieceProcessor::setPairLayout(int busId, bool mono, std::vector<int> channels) {
@@ -728,7 +774,7 @@ void MasterpieceProcessor::setPairLayout(int busId, bool mono, std::vector<int> 
       b.deviceChannels = std::move(channels);
     }
   refreshMixerBuses();
-  markSettingsDirty();
+  markMixerDirty();
 }
 
 void MasterpieceProcessor::setSpeakerGroups(std::vector<BusGroup> groups) {
@@ -737,8 +783,9 @@ void MasterpieceProcessor::setSpeakerGroups(std::vector<BusGroup> groups) {
   for (auto& [rankId, r] : mixer_.rankRoutings)
     if (const int* g = std::get_if<int>(&r.perspectives[0].dest); g != nullptr && mixer_.group(*g) == nullptr)
       r.perspectives[0].dest = BusId{1};
+  keepDefaultDestination();
   refreshMixerBuses();
-  markSettingsDirty();
+  markMixerDirty();
 }
 
 void MasterpieceProcessor::setRankRoutes(const std::vector<std::pair<Id, std::variant<BusId, int>>>& routes) {
@@ -752,17 +799,90 @@ void MasterpieceProcessor::setRankRoutes(const std::vector<std::pair<Id, std::va
   placeRanksInGroups();
 }
 
+void MasterpieceProcessor::followDefault(const std::vector<Id>& ranks) {
+  const AudioLock lock(*this);
+  for (Id rankId : ranks) mixer_.rankRoutings.erase(rankId);
+  placeRanksInGroups();
+}
+
 void MasterpieceProcessor::placeRanksInGroups() {
+  rankFamily_ = rankFamilies(model_);
   rankPlaceInGroup_.clear();
-  std::map<int, std::vector<Id>> byGroup;
-  for (const auto& [rankId, r] : mixer_.rankRoutings)
-    if (const int* g = std::get_if<int>(&r.perspectives[0].dest))
-      if (const BusGroup* group = mixer_.group(*g); group != nullptr && group->algorithm == AllocationAlgorithm::StaticByRank)
-        byGroup[*g].push_back(rankId);
-  for (auto& [g, ranks] : byGroup) {
-    std::sort(ranks.begin(), ranks.end());
-    for (size_t i = 0; i < ranks.size(); ++i) rankPlaceInGroup_[ranks[i]] = static_cast<int>(i);
+  // By stop: each family's place among the families sent to the group, in
+  // the order of their numbers, every rank of a family at its family's place.
+  // The ranks with no route of their own count where the default sends them.
+  std::map<int, std::map<int, std::vector<Id>>> byGroup;
+  for (const auto& [rankId, rank] : model_.ranks) {
+    (void)rank;
+    const auto routed = mixer_.rankRoutings.find(rankId);
+    const auto& dest = routed != mixer_.rankRoutings.end() ? routed->second.perspectives[0].dest : mixer_.defaultDest;
+    if (const int* g = std::get_if<int>(&dest))
+      if (const BusGroup* group = mixer_.group(*g); group != nullptr && group->algorithm == AllocationAlgorithm::StaticByRank) {
+        const auto f = rankFamily_.find(rankId);
+        byGroup[*g][f == rankFamily_.end() ? 0 : f->second].push_back(rankId);
+      }
   }
+  for (auto& [g, families] : byGroup) {
+    int place = 0;
+    for (auto& [family, ranks] : families) {
+      for (Id r : ranks) rankPlaceInGroup_[r] = place;
+      ++place;
+    }
+  }
+}
+
+void MasterpieceProcessor::setDefaultDestination(std::variant<BusId, int> dest) {
+  const AudioLock lock(*this);
+  mixer_.defaultDest = dest;
+  keepDefaultDestination();
+  placeRanksInGroups();
+  markMixerDirty();
+}
+
+void MasterpieceProcessor::keepDefaultDestination() {
+  if (const int* g = std::get_if<int>(&mixer_.defaultDest); g != nullptr && mixer_.group(*g) == nullptr)
+    mixer_.defaultDest = BusId{1};
+  if (const BusId* b = std::get_if<BusId>(&mixer_.defaultDest); b != nullptr && b->value != 1 && mixer_.bus(*b) == nullptr)
+    mixer_.defaultDest = BusId{1};
+}
+
+void MasterpieceProcessor::setOutputName(int busId, std::string name) {
+  // One line in the settings file: a line break or a tab becomes a space,
+  // and the ends are trimmed.
+  for (char& c : name)
+    if (static_cast<unsigned char>(c) < 0x20) c = ' ';
+  name = juce::String::fromUTF8(name.c_str()).trim().toStdString();
+  const AudioLock lock(*this);
+  for (auto& b : mixer_.buses)
+    if (b.id.value == busId) b.name = std::move(name);
+  markMixerDirty();
+}
+
+void MasterpieceProcessor::setOutputSends(int busId, std::vector<int> sends) {
+  const AudioLock lock(*this);
+  sends.erase(std::remove(sends.begin(), sends.end(), busId), sends.end());
+  for (auto& b : mixer_.buses)
+    if (b.id.value == busId) {
+      // A send kept keeps its level; a new one starts at 0 dB.
+      std::vector<float> levels;
+      for (int target : sends) levels.push_back(b.sendLevelDb(target));
+      b.sends = std::move(sends);
+      b.sendDb = std::move(levels);
+    }
+  refreshMixerBuses();
+  markMixerDirty();
+}
+
+void MasterpieceProcessor::setOutputSendLevel(int busId, int target, float db) {
+  const AudioLock lock(*this);
+  for (auto& b : mixer_.buses)
+    if (b.id.value == busId) {
+      b.sendDb.resize(b.sends.size(), 0.0f);
+      for (size_t i = 0; i < b.sends.size(); ++i)
+        if (b.sends[i] == target) b.sendDb[i] = juce::jlimit(kSendFloorDb, kSendTopDb, db);
+    }
+  refreshMixerBuses();
+  markMixerDirty();
 }
 
 void MasterpieceProcessor::setRankMixes(std::vector<RankMix> mixes) {
@@ -811,9 +931,8 @@ void MasterpieceProcessor::setBusBass(int busId, float crossoverHz, int subChann
     mixer_.busBass[busId] = b;
   }
   refreshMixerBuses();
-  // Kept with the pairs: in the organ's settings, and in the defaults when
-  // the player saves them as such.
-  markSettingsDirty();
+  // Kept with the outputs, the machine's.
+  markMixerDirty();
 }
 
 bool MasterpieceProcessor::needsRoutedOutput(int numCh) const {
@@ -889,7 +1008,10 @@ int MasterpieceProcessor::mixBusForPipe(Id rankId, int midiNote) {
 
   const auto routed = mixer_.rankRoutings.find(rankId);
   const PerspectiveRoute primary =
-      routed != mixer_.rankRoutings.end() ? routed->second.perspectives[0] : PerspectiveRoute{BusId{1}};
+      routed != mixer_.rankRoutings.end() ? routed->second.perspectives[0] : PerspectiveRoute{mixer_.defaultDest};
+  // The stop family: one key of one stop sounds from one member.
+  const auto family = rankFamily_.find(rankId);
+  const int salt = family == rankFamily_.end() ? 0 : family->second;
   const auto indexOf = [this](BusId id) {
     const auto it = mixBusIndexOf_.find(id.value);
     return it == mixBusIndexOf_.end() ? -1 : it->second;
@@ -898,30 +1020,19 @@ int MasterpieceProcessor::mixBusForPipe(Id rankId, int midiNote) {
   if (std::holds_alternative<BusId>(primary.dest)) {
     dest = std::get<BusId>(primary.dest);
   } else if (const BusGroup* g = mixer_.group(std::get<int>(primary.dest))) {
-    if (g->algorithm == AllocationAlgorithm::LeastBusy) {
-      if (!busyFresh_) {
-        voices_.countByMixBus(busyCount_.data(), static_cast<int>(busyCount_.size()));
-        busyFresh_ = true;
-      }
-      dest = allocateLeastBusy(*g, midiNote, static_cast<int>(rankId), primary.noteOffset, [&](BusId m) {
-        const int i = indexOf(m);
-        return i < 0 ? std::numeric_limits<int>::max() : busyCount_[static_cast<size_t>(i)];
-      });
-    } else if (g->algorithm == AllocationAlgorithm::StaticByRank) {
+    if (g->algorithm == AllocationAlgorithm::StaticByRank) {
       const auto place = rankPlaceInGroup_.find(rankId);
       dest = allocateBus(*g, midiNote, place == rankPlaceInGroup_.end() ? 0 : place->second, g->algorithm,
                          primary.noteOffset);
     } else {
-      dest = allocateBus(*g, midiNote, static_cast<int>(rankId), g->algorithm, primary.noteOffset);
+      dest = allocateBus(*g, midiNote, salt, g->algorithm, primary.noteOffset);
     }
   }
 
   // A routing to a bus that no longer exists lands on the first one rather
   // than on silence. The validator reports it as stale; going quiet here
   // would make a deleted bus look like a broken engine.
-  const int index = juce::jmax(0, indexOf(dest));
-  if (busyFresh_ && index < static_cast<int>(busyCount_.size())) ++busyCount_[static_cast<size_t>(index)];
-  return index;
+  return juce::jmax(0, indexOf(dest));
 }
 
 int MasterpieceProcessor::busForPipe(Id pipeId) const {
@@ -1297,8 +1408,6 @@ void MasterpieceProcessor::renderMixBuses(juce::AudioBuffer<float>& output, int 
 
   // One block for the whole callback, whatever the bus count.
   voices_.beginBlock(numFrames);
-  // A Least busy group counts the voices afresh at its next note-on.
-  busyFresh_ = false;
   // EQ groups whose EQ was taken away go once their last pipe has stopped.
   if (rankEq_.groupBuses() > 0) rankEq_.beginBlock([this](int bus) { return voices_.voicesOnBus(bus); });
   const juce::int64 w0 = blockLog_.empty() ? 0 : juce::Time::getHighResolutionTicks();
@@ -1331,17 +1440,36 @@ void MasterpieceProcessor::renderMixBuses(juce::AudioBuffer<float>& output, int 
   // below, every bus is summed into the first pair, as on a stereo device.
   if (needsRoutedOutput(outCh)) {
     if (pairScratch_.getNumSamples() < numFrames) pairScratch_.setSize(2, numFrames, false, false, true);
-    for (int i = 0; i < buses; ++i) {
+    const bool ordered = static_cast<int>(renderOrder_.size()) == buses &&
+                         static_cast<int>(sendsInto_.size()) == buses && static_cast<int>(sendTap_.size()) == buses;
+    for (int k = 0; k < buses; ++k) {
+      const int i = ordered ? renderOrder_[static_cast<size_t>(k)] : k;
       const bool captured = mixBusCapture_ != nullptr && i < static_cast<int>(mixBusCapture_->size());
       juce::AudioBuffer<float> pair(pairScratch_.getArrayOfWritePointers(), 2, numFrames);
       juce::AudioBuffer<float>& dest = captured ? (*mixBusCapture_)[static_cast<size_t>(i)] : pair;
       dest.clear(0, numFrames);
       renderOneMixBus(dest, buses <= 1 ? -1 : i);
+      // What other outputs play into this one, before its room.
+      if (ordered)
+        for (const auto& [from, gain] : sendsInto_[static_cast<size_t>(i)]) {
+          const auto& tap = sendTap_[static_cast<size_t>(from)];
+          if (gain <= 0.0f || tap.getNumSamples() < numFrames) continue;
+          for (int ch = 0; ch < juce::jmin(dest.getNumChannels(), tap.getNumChannels()); ++ch)
+            dest.addFrom(ch, 0, tap, ch, 0, numFrames, gain);
+        }
 #if MP_ENABLE_DSP
       if (!graph_.engineSwitch.simpleWavOnly && i < static_cast<int>(busConvolvers_.size()) &&
           busConvolvers_[static_cast<size_t>(i)] != nullptr)
         busConvolvers_[static_cast<size_t>(i)]->process(dest);
 #endif
+      // Kept for the outputs this one plays into, before its bass goes to
+      // the subwoofer: the main mix keeps the speakers' lows.
+      if (ordered && busSends_[static_cast<size_t>(i)] != 0) {
+        auto& tap = sendTap_[static_cast<size_t>(i)];
+        if (tap.getNumSamples() >= numFrames)
+          for (int ch = 0; ch < juce::jmin(dest.getNumChannels(), tap.getNumChannels()); ++ch)
+            tap.copyFrom(ch, 0, dest, ch, 0, numFrames);
+      }
       meterPair(i, dest, numFrames);
       // Its lows to the subwoofer's channel, when the output has it; the
       // highs go on to the pair.
@@ -1351,7 +1479,11 @@ void MasterpieceProcessor::renderMixBuses(juce::AudioBuffer<float>& output, int 
           busBass_[static_cast<size_t>(i)]->process(dest.getWritePointer(0),
                                                     dest.getNumChannels() > 1 ? dest.getWritePointer(1) : nullptr,
                                                     output.getWritePointer(bass->subChannel), numFrames);
-      addBusToOutput(i, dest, output, numFrames);
+      // An output with no channels of its own that plays into others is
+      // heard through them only.
+      const bool sendsOnly = ordered && busSends_[static_cast<size_t>(i)] != 0 &&
+                             i < static_cast<int>(busOutputs_.size()) && busOutputs_[static_cast<size_t>(i)].left < 0;
+      if (!sendsOnly) addBusToOutput(i, dest, output, numFrames);
     }
     return;
   }
@@ -2558,11 +2690,22 @@ juce::String MasterpieceProcessor::settingsBody() const {
   if (const auto* g = apvts_.getRawParameterValue("masterGain"))
     text << "gain " << juce::String(g->load(), 4) << "\n";
 
-  // The mixer's BUSES and GROUPS, but not its routes. A bus is the player's
-  // audio hardware — the same eight outputs whichever organ is loaded — so it
-  // belongs in the tier that carries across organs. Routes name rank ids,
-  // which mean nothing outside the organ that declared them, and are written
-  // per organ in saveSettings.
+  return text;
+}
+
+bool MasterpieceProcessor::isMixerKey(const juce::String& key) {
+  return key == "buses" || key == "busname" || key == "defaultroute" || key == "busir" || key == "busbass" ||
+         key == "groups";
+}
+
+juce::String MasterpieceProcessor::mixerLines() const {
+  juce::String text;
+  // The machine's mixer: outputs, their rooms and bass, speaker groups and
+  // the default destination, written to the global file whenever they change
+  // and read from there alone. An output is the player's audio hardware, the
+  // same whichever organ is loaded, so a new set plays through it with no
+  // setup. Routes name rank ids, which mean nothing outside the organ that
+  // declared them, and are written per organ in saveSettings.
   //
   // One line each, replacing wholesale rather than accumulating: a per-line
   // encoding has to define what a second `bus 1` means, and every answer to
@@ -2571,13 +2714,26 @@ juce::String MasterpieceProcessor::settingsBody() const {
     text << "buses";
     // "2m:4,5" is pair 2 in mono on channels 5 and 6. A file from before
     // reads "2m" as 2.
+    // "2:2,3>1" also plays into output 1; "2:2,3>1@-6" at -6 dB.
     for (const auto& b : mixer_.buses) {
       text << " " << b.id.value << (b.mono ? "m" : "") << ":";
       for (size_t i = 0; i < b.deviceChannels.size(); ++i)
         text << (i ? "," : "") << b.deviceChannels[i];
+      for (size_t i = 0; i < b.sends.size(); ++i) {
+        text << (i ? "," : ">") << b.sends[i];
+        if (const float db = b.sendLevelDb(b.sends[i]); db != 0.0f) text << "@" << juce::String(db, 1);
+      }
     }
     text << "\n";
   }
+  // An output's name, last on its line because it can hold spaces.
+  for (const auto& b : mixer_.buses)
+    if (!b.name.empty()) text << "busname " << b.id.value << " " << juce::String::fromUTF8(b.name.c_str()) << "\n";
+  // Where the ranks with no route of their own play, on every organ.
+  if (const int* g = std::get_if<int>(&mixer_.defaultDest))
+    text << "defaultroute group " << *g << "\n";
+  else if (const int bus = std::get<BusId>(mixer_.defaultDest).value; bus != 1)
+    text << "defaultroute bus " << bus << "\n";
   // A bus's own room. One line per bus rather than a single packed line,
   // because a path can contain anything including spaces, so it has to be last
   // on its line.
@@ -2605,7 +2761,7 @@ juce::String MasterpieceProcessor::settingsBody() const {
   }
   if (!mixer_.groups.empty()) {
     text << "groups";
-    // "1:1,2,3/busy": speaker group 1 of pairs 1-3, Least busy. Across the
+    // "1:1,2,3/rank": speaker group 1 of pairs 1-3, By stop. Across the
     // octave, the default, is written without its word.
     for (const auto& g : mixer_.groups) {
       text << " " << g.groupId << ":";
@@ -2690,12 +2846,31 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
       b.id = BusId{head.getIntValue()};
       b.mono = head.endsWithChar('m');
       if (b.id.value == 0) continue;
-      for (const auto& ch : juce::StringArray::fromTokens(
-               tok.fromFirstOccurrenceOf(":", false, false), ",", ""))
+      const auto body = tok.fromFirstOccurrenceOf(":", false, false);
+      for (const auto& ch : juce::StringArray::fromTokens(body.upToFirstOccurrenceOf(">", false, false), ",", ""))
         if (ch.isNotEmpty()) b.deviceChannels.push_back(ch.getIntValue());
+      for (const auto& s : juce::StringArray::fromTokens(body.fromFirstOccurrenceOf(">", false, false), ",", ""))
+        if (s.getIntValue() > 0 && s.getIntValue() != b.id.value) {
+          b.sends.push_back(s.getIntValue());
+          const float db = s.containsChar('@') ? s.fromFirstOccurrenceOf("@", false, false).getFloatValue() : 0.0f;
+          b.sendDb.push_back(juce::jlimit(kSendFloorDb, kSendTopDb, db));
+        }
+      // The names come on their own lines after this one.
+      for (const auto& old : mixer_.buses)
+        if (old.id == b.id) b.name = old.name;
       mixer_.buses.push_back(std::move(b));
     }
     refreshMixerBuses();
+  } else if (key == "busname") {
+    const int busId = val.upToFirstOccurrenceOf(" ", false, false).getIntValue();
+    const auto name = val.fromFirstOccurrenceOf(" ", false, false).trim();
+    for (auto& b : mixer_.buses)
+      if (b.id.value == busId) b.name = name.toStdString();
+  } else if (key == "defaultroute") {
+    const auto kind = val.upToFirstOccurrenceOf(" ", false, false).trim();
+    const int id = val.fromFirstOccurrenceOf(" ", false, false).trim().getIntValue();
+    if (id > 0) mixer_.defaultDest = kind == "group" ? std::variant<BusId, int>{id} : std::variant<BusId, int>{BusId{id}};
+    placeRanksInGroups();
   } else if (key == "busbass") {
     const auto parts = juce::StringArray::fromTokens(val, " ", "");
     if (parts.size() >= 3 && parts[0].getIntValue() != 0) {
@@ -2867,6 +3042,8 @@ bool MasterpieceProcessor::saveSettings() const {
   for (const auto& [rankId, routing] : mixer_.rankRoutings)
     routed.push_back(rankId);
   std::sort(routed.begin(), routed.end());
+  // Every route below was chosen by hand, output 1 too (see the reading).
+  text << "routing 2\n";
   for (Id rankId : routed) {
     const auto& primary = mixer_.rankRoutings.at(rankId).perspectives[0];
     if (std::holds_alternative<BusId>(primary.dest))
@@ -2998,6 +3175,12 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   if (f.getFullPathName().isEmpty() || !f.existsAsFile()) return false;
 
   auto sw = graph_.engineSwitch;
+  bool adoptMixer = false;
+  // A file written before "routing 2" knew one default, output 1, and wrote
+  // a route for every rank once the mixer had been opened. Its routes to
+  // output 1 follow the default now: unchanged to the ear, and the ranks
+  // move with the player's default destination (#1023).
+  bool routesByHand = false;
   for (const auto& line : juce::StringArray::fromLines(f.loadFileAsString())) {
     if (line.trim().isEmpty() || line.trimStart().startsWith("#")) continue;
     const auto key = line.upToFirstOccurrenceOf(" ", false, false).trim();
@@ -3177,6 +3360,10 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
       voicing_.usingB = val.trim() == "b";
       continue;
     }
+    if (key == "routing") {
+      routesByHand = val.getIntValue() >= 2;
+      continue;
+    }
     if (key == "route") {
       // "route <rankId> bus|group <id>". Applied straight away: unlike a
       // control value there is nothing downstream that resets it.
@@ -3187,6 +3374,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
           rest.fromFirstOccurrenceOf(" ", false, false).trim().getIntValue();
       const Id rankId = static_cast<Id>(rankStr.getLargeIntValue());
       if (rankId == 0 || destId == 0) continue;
+      if (!routesByHand && kind != "group" && destId == 1) continue;
       RankRouting r = mixer_.routingFor(rankId);
       r.rankId = rankId;
       if (kind == "group") r.perspectives[0].dest = destId;
@@ -3204,8 +3392,18 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
       if (m.id >= 1 && m.id <= LiveLevels::kMaxMixes) rankMixes_.push_back(std::move(m));
       continue;
     }
+    if (isMixerKey(key)) {
+      // From before the mixer was the machine's: the first organ file that
+      // carries one gives it to the machine; after that they are left alone.
+      if (!mixerInGlobal_) {
+        applySettingsLine(key, val, sw);
+        adoptMixer = true;
+      }
+      continue;
+    }
     applySettingsLine(key, val, sw);
   }
+  if (adoptMixer) markMixerDirty();
   placeRanksInGroups();
   keepRankMixes(std::move(rankMixes_));
   graph_.engineSwitch = sw;
@@ -3248,6 +3446,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   juce::String text;
   text << "# Masterpiece defaults for organs that have no settings of their own\n";
   text << globalBody_;
+  if (mixerInGlobal_) text << mixerLines();
   // A new key: the old one was written on every save, whether or not anyone
   // chose it, so it cannot tell a choice from a default. Only this one counts.
   text << "reopenlastorgan " << (reopenLastOrgan_ ? 1 : 0) << "\n";
@@ -3690,6 +3889,9 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       }
     } else if (key == "favouritesort") {
       favouriteSort_ = static_cast<FavouriteSort>(juce::jlimit(0, 2, val.getIntValue()));
+    } else if (isMixerKey(key)) {
+      applySettingsLine(key, val, sw);
+      mixerInGlobal_ = true;
     } else {
       applySettingsLine(key, val, sw);
       body << line << "\n";
@@ -4313,6 +4515,12 @@ bool MasterpieceProcessor::saveMidiMapIfDirty() {
 }
 
 bool MasterpieceProcessor::saveSettingsIfDirty() {
+  // The outputs, speaker groups and default destination are the machine's:
+  // in the global file, for every organ.
+  if (mixerDirty_.exchange(false, std::memory_order_acq_rel)) {
+    mixerInGlobal_ = true;
+    writeGlobalFile();
+  }
   if (!settingsDirty_.exchange(false, std::memory_order_acq_rel)) return false;
   return saveSettings();
 }
@@ -9239,6 +9447,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     applyRankMixes();
     sizeStripMeters();
   }
+  // The stop families of this organ, and their places in the speaker groups.
+  placeRanksInGroups();
   // The layer levels: each control that a pipe layer reads as its level,
   // in id order. An id with no control behind it stays at full, as before.
   {

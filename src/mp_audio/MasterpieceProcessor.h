@@ -125,8 +125,10 @@ public:
   // Any number of discrete outputs up to 48, and no input: a mixer pair with
   // device channels of its own plays on them when the output has them. 48 is
   // a 24-pair interface (#1007).
-  static constexpr int kMaxOutputChannels = 48;
+  static constexpr int kMaxOutputChannels = 64;
   static constexpr int kMaxOutputPairs = kMaxOutputChannels / 2;
+  // The mixer's outputs: one per device channel at most, each in mono.
+  static constexpr int kMaxOutputs = kMaxOutputChannels;
   bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
   // The output channels the mixer asks for: one past the highest device
   // channel a bus names, and two at the least.
@@ -144,6 +146,17 @@ public:
   void setSpeakerGroups(std::vector<BusGroup> groups);
   // Each rank's destination: a pair, or a speaker group by its id.
   void setRankRoutes(const std::vector<std::pair<Id, std::variant<BusId, int>>>& routes);
+  // These ranks lose their own routes and follow the default destination.
+  void followDefault(const std::vector<Id>& ranks);
+  // Where every rank with no route of its own plays, on every organ: an
+  // output, or a speaker group by its id.
+  void setDefaultDestination(std::variant<BusId, int> dest);
+  // An output's name, and the other outputs it also plays into, by id.
+  void setOutputName(int busId, std::string name);
+  void setOutputSends(int busId, std::vector<int> sends);
+  // One send's level in dB, kSendFloorDb (silent) to kSendTopDb.
+  static constexpr float kSendFloorDb = -60.0f, kSendTopDb = 12.0f;
+  void setOutputSendLevel(int busId, int target, float db);
   // Told on the message thread's side when that number changes, so the
   // program that owns the device can open the channels.
   std::function<void()> onOutputChannelsWanted;
@@ -2415,19 +2428,30 @@ private:
   // Which MIXER bus a pipe of this rank speaks through, as a dense index into
   // the per-bus buffers rather than a BusId (ids run to 1024; the buffers are
   // only as many as the player actually configured). Resolved at note-on
-  // because a group allocation depends on the key, and for Least busy on
-  // the pipes sounding.
+  // because a group allocation depends on the key.
   int mixBusForPipe(Id rankId, int midiNote);
-  // The pipes sounding through each dense bus, counted from the voices once
-  // a block when a Least busy group first asks, then kept up as pipes start.
-  // Sized with the buses, so the audio thread never allocates for it.
-  std::vector<int> busyCount_;
-  bool busyFresh_ = false;
   // By rank: each rank's place among the ranks sent to its speaker group, in
   // id order, so the group's pairs take its ranks in turn. Worked out under
   // the audio lock whenever the routes or the groups change.
   std::unordered_map<Id, int> rankPlaceInGroup_;
+  // Each rank's stop family (rankFamilies), the salt of every speaker group
+  // method, so one key of one stop sounds from one member.
+  std::unordered_map<Id, int> rankFamily_;
   void placeRanksInGroups();
+  // A default destination whose output or group is gone goes back to output 1.
+  void keepDefaultDestination();
+  // The machine's mixer: outputs, rooms, bass, speaker groups and the default
+  // destination. Written to the global file on the next flush after a change;
+  // an organ file's copy is read only while the machine has none.
+  static bool isMixerKey(const juce::String& key);
+  juce::String mixerLines() const;
+  void markMixerDirty() {
+    mixerInGlobal_ = true;
+    mixerDirty_.store(true, std::memory_order_release);
+    settingsDirty_.store(true, std::memory_order_release);
+  }
+  std::atomic<bool> mixerDirty_{false};
+  bool mixerInGlobal_ = false;
   std::vector<RankMix> rankMixes_;
   // Each id once and each rank once, then into the live levels.
   void keepRankMixes(std::vector<RankMix> mixes);
@@ -2976,6 +3000,16 @@ private:
     std::vector<std::pair<int, int>> copies;
   };
   std::vector<BusOutput> busOutputs_;
+  // The sends between outputs (#1023), by bus index: the order the buses
+  // render in (each before the buses it plays into), each bus's incoming
+  // sends with their gains, whether a bus plays into another, and the block
+  // a sending bus leaves for its targets. Sized off the audio thread.
+  std::vector<int> renderOrder_;
+  std::vector<std::vector<std::pair<int, float>>> sendsInto_;
+  std::vector<char> busSends_;
+  std::vector<juce::AudioBuffer<float>> sendTap_;
+  void refreshSends();
+  void sizeSendTaps();
   // Adds a rendered bus to its channels and to its copies' channels.
   void addBusToOutput(int index, const juce::AudioBuffer<float>& bus, juce::AudioBuffer<float>& output, int numFrames);
   // Where a bus with device channels of its own is rendered before it goes

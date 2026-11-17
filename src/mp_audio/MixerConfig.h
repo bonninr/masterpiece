@@ -77,6 +77,9 @@ struct MixerConfig {
   // the simple default, so a fresh organ is audible before anyone opens the
   // mixer -- the same principle as an unmapped MIDI message still playing.
   std::unordered_map<Id, RankRouting> rankRoutings;
+  // Where every rank with no route of its own plays: an output, or a speaker
+  // group by its id. Saved with the outputs, so it holds for every organ.
+  std::variant<BusId, int> defaultDest = BusId{1};
 
   const MixerBus* bus(BusId id) const {
     for (const auto& b : buses)
@@ -96,7 +99,9 @@ struct MixerConfig {
   RankRouting routingFor(Id rankId) const {
     const auto it = rankRoutings.find(rankId);
     if (it != rankRoutings.end()) return it->second;
-    return simpleRoutingForRank(rankId);
+    RankRouting r = simpleRoutingForRank(rankId);
+    r.perspectives[0].dest = defaultDest;
+    return r;
   }
 
   // A stereo pair on the first two device channels, which is what almost
