@@ -309,10 +309,11 @@ private:
 
   MasterpieceProcessor& proc_;
   juce::ToggleButton enabled_{TRANS("Metronome")};
-  juce::Label tempoLabel_, beatsLabel_, levelLabel_;
+  juce::Label tempoLabel_, beatsLabel_, levelLabel_, soundLabel_;
   juce::Slider tempo_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
   juce::Slider beats_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
   juce::Slider level_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::ComboBox sound_;
   juce::Label beat_;
 };
 

@@ -1745,6 +1745,19 @@ MetronomePanel::MetronomePanel(MasterpieceProcessor& p) : proc_(p) {
     proc_.metronome().setLevel(static_cast<float>(level_.getValue()));
   };
 
+  // The click's sound (#1181), in the order of Metronome::Sound.
+  addAndMakeVisible(soundLabel_);
+  styleLabel(soundLabel_, TRANS("Sound"));
+  addAndMakeVisible(sound_);
+  sound_.addItem(TRANS("Electronic beep"), 1);
+  sound_.addItem(TRANS("Wood block"), 2);
+  sound_.addItem(TRANS("Pendulum, with a bell on the first beat"), 3);
+  sound_.setSelectedId(static_cast<int>(proc_.metronome().sound()) + 1, juce::dontSendNotification);
+  sound_.onChange = [this] {
+    if (sound_.getSelectedId() > 0)
+      proc_.metronome().setSound(static_cast<Metronome::Sound>(sound_.getSelectedId() - 1));
+  };
+
   addAndMakeVisible(beat_);
   styleLabel(beat_, "");
   startTimerHz(12);
@@ -1758,7 +1771,19 @@ MetronomePanel::~MetronomePanel() {
 void MetronomePanel::timerCallback() {
   // A tab of the settings window that is not the one on show.
   if (!isShowing()) return;
-  const int b = proc_.metronome().currentBeat();
+  // The metronome can be changed elsewhere while this is on show: over MIDI,
+  // or in the Metronome window and the Settings tab, which are two panels.
+  auto& m = proc_.metronome();
+  if (enabled_.getToggleState() != m.enabled()) enabled_.setToggleState(m.enabled(), juce::dontSendNotification);
+  if (!tempo_.isMouseButtonDown() && tempo_.getValue() != m.tempo())
+    tempo_.setValue(m.tempo(), juce::dontSendNotification);
+  if (!beats_.isMouseButtonDown() && static_cast<int>(beats_.getValue()) != m.beatsPerBar())
+    beats_.setValue(m.beatsPerBar(), juce::dontSendNotification);
+  if (!level_.isMouseButtonDown() && std::abs(level_.getValue() - m.level()) > 0.001)
+    level_.setValue(m.level(), juce::dontSendNotification);
+  if (!sound_.isPopupActive() && sound_.getSelectedId() != static_cast<int>(m.sound()) + 1)
+    sound_.setSelectedId(static_cast<int>(m.sound()) + 1, juce::dontSendNotification);
+  const int b = m.currentBeat();
   beat_.setText(b > 0 ? TRANS("Beat %1").replace("%1", juce::String(b)) : juce::String(), juce::dontSendNotification);
 }
 
@@ -1776,6 +1801,9 @@ void MetronomePanel::resized() {
   auto c = row();
   levelLabel_.setBounds(c.removeFromLeft(120));
   level_.setBounds(c.removeFromLeft(320));
+  auto d = row();
+  soundLabel_.setBounds(d.removeFromLeft(120));
+  sound_.setBounds(d.removeFromLeft(320));
   beat_.setBounds(row());
 }
 

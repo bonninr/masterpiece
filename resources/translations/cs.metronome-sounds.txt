@@ -1,0 +1,4 @@
+"Sound" = "Zvuk"
+"Electronic beep" = "Elektronické pípnutí"
+"Wood block" = "Dřevěný blok"
+"Pendulum, with a bell on the first beat" = "Kyvadlo, se zvonkem na první době"
