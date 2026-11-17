@@ -457,8 +457,8 @@ static OutputEqSpectrumTest g_outputEqSpectrum;
 // that meet, add back up flat in two ways and in three; at 12 dB an octave
 // one band inverted, or they cancel at the crossover; the delay is the
 // output to the sample, later; the inversion the output turned over; all
-// off, nothing is touched; with bass management, the subwoofer has the
-// output's band.
+// off, nothing is touched. And a subwoofer made with it, as bass management
+// used to be: the pair and the subwoofer add back up to the pair.
 class CrossoverSpectrumTest final : public mp::test::Test {
 public:
   CrossoverSpectrumTest() : Test("functional.output.crossover-spectrum", Category::Functional) {}
@@ -595,23 +595,39 @@ public:
              "and not inverted, they cancel at the crossover: " + std::to_string(deepest) + " dB at " +
                  std::to_string(at) + " Hz");
 
-    // With bass management to channel 3 at 120 Hz and a high-pass at 40 Hz on
-    // the output: the subwoofer has the output's band, under the crossover.
-    const auto bassOnly = render(organ.odf, 3, [&](mp::MasterpieceProcessor& p) {
-      onePair(p);
-      p.setBusBass(1, 120.0f, 2);
-    });
-    const auto both = render(organ.odf, 3, [&](mp::MasterpieceProcessor& p) {
-      onePair(p);
-      p.setBusBass(1, 120.0f, 2);
-      p.setBusFilters(1, filters(40.0f, F::Butterworth24, 0.0f, 0));
-    });
-    const auto hp40 = [&](double hz) {
-      return mp::OutputFilters::responseDb(filters(40.0f, F::Butterworth24, 0.0f, 0), hz);
-    };
-    checkResponse("the subwoofer, through the output's high-pass", response(bassOnly[2], both[2], hp40), 0.25, -30.0,
-                  8);
-    checkResponse("the output, through its high-pass", response(bassOnly[0], both[0], hp40), 0.25, -30.0, 25);
+    // A subwoofer: output 1 the stereo pair on channels 1-2, high-passed at
+    // 80 Hz; output 2 mono on channel 3, fed by output 1 at +6 dB (a mono
+    // output takes half of each side), low-passed at 80 Hz. In the room the
+    // two speakers and the subwoofer add up to what the pair carried alone.
+    {
+      const auto plain = render(organ.odf, 3, [&](mp::MasterpieceProcessor& p) {
+        p.setPairCount(1);
+        p.setRankRoutes({{201, mp::BusId{1}}});
+      });
+      const auto withSub = render(organ.odf, 3, [&](mp::MasterpieceProcessor& p) {
+        p.setPairCount(2);
+        p.setPairLayout(2, true, {2});
+        p.setRankRoutes({{201, mp::BusId{1}}});
+        p.setOutputSends(1, {2});
+        p.setOutputSendLevel(1, 2, 6.0f);
+        p.setBusFilters(1, filters(80.0f, F::LinkwitzRiley24, 0.0f, 0));
+        p.setBusFilters(2, filters(0.0f, 0, 80.0f, F::LinkwitzRiley24));
+      });
+      std::vector<float> room(plain[0].size()), alone(plain[0].size());
+      for (size_t i = 0; i < room.size(); ++i) {
+        room[i] = withSub[0][i] + withSub[1][i] + withSub[2][i];
+        alone[i] = plain[0][i] + plain[1][i];
+      }
+      const auto points = response(alone, room, [](double) { return 0.0; });
+      keepForPlot("subwoofer-80-lr24", alone, room, points);
+      // The send at +6.0 dB is 1.995, not 2: 0.02 dB under, everywhere.
+      checkResponse("a subwoofer at 80 Hz: the pair and the subwoofer added", points, 0.1);
+      checkResponse("the subwoofer's channel",
+                    response(alone, withSub[2], [&](double hz) {
+                      return mp::OutputFilters::responseDb(filters(0.0f, 0, 80.0f, F::LinkwitzRiley24), hz);
+                    }),
+                    0.25, -40.0, 8);
+    }
 
     // Kept with the outputs, the machine's, and read back; values out of
     // range brought in.

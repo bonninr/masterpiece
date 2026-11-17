@@ -915,16 +915,16 @@ public:
 };
 static MixSettingsTest g_mixSettings;
 
-// Bass management changed while the organ plays (#1159): the crossover and
-// the subwoofer's channel chosen over and over, as the panel's lists do,
+// The crossover changed while the organ plays (#1159, #1188): each output's
+// filters, delay and polarity chosen over and over, as the panel's boxes do,
 // while another thread renders twelve pairs on 24 channels with every key
 // held, under the callback lock as the device's player renders. Every block
 // stays finite, and the last setting is the one in force.
-class BassWhilePlayingTest final : public mp::test::Test {
+class CrossoverWhilePlayingTest final : public mp::test::Test {
 public:
-  BassWhilePlayingTest() : Test("functional.output.bass-while-playing", Category::Functional) {}
+  CrossoverWhilePlayingTest() : Test("functional.output.crossover-while-playing", Category::Functional) {}
   void run() override {
-    const Organ organ("mp-bass-while-playing");
+    const Organ organ("mp-crossover-while-playing");
     mp::MasterpieceProcessor proc;
     Keep global(proc.globalSettingsFile());
     Keep organSettings(proc.settingsFileFor(organ.odf));
@@ -960,25 +960,33 @@ public:
         ++blocks;
       }
     });
-    const int crossovers[] = {0, 40, 60, 80, 100, 120, 150, 200};
+    const int frequencies[] = {0, 40, 80, 200, 1000, 3000, 12000, 20000};
+    mp::BusFilters last;
     for (int turn = 0; turn < 4000; ++turn) {
-      const int pair = 1 + turn % 12;
-      proc.setBusBass(pair, static_cast<float>(crossovers[turn % 8]), 2 + turn % 3);
+      mp::BusFilters f;
+      f.highPassHz = static_cast<float>(frequencies[turn % 8]);
+      f.highPassType = turn % 4;
+      f.lowPassHz = static_cast<float>(frequencies[(turn / 8) % 8]);
+      f.lowPassType = (turn / 4) % 4;
+      f.delayMs = static_cast<float>(turn % 5) * 2.5f;
+      f.invert = turn % 3 == 0;
+      proc.setBusFilters(1 + turn % 12, f);
       if (turn % 64 == 0) std::this_thread::yield();
     }
-    proc.setBusBass(1, 80.0f, 2);
+    last.highPassHz = 80.0f;
+    last.delayMs = 1.0f;
+    proc.setBusFilters(1, last);
     const int before = blocks.load();
     while (blocks.load() < before + 8) std::this_thread::yield();
     stop = true;
     audio.join();
     MP_CHECK(finite.load(), "every block finite while the crossovers change");
-    const auto* bass = proc.mixer().bassFor(mp::BusId{1});
-    MP_CHECK(bass != nullptr && bass->active() && bass->subChannel == 2, "pair 1 ends at 80 Hz to channel 3");
+    MP_CHECK(proc.busFilters(1) == last, "output 1 ends with a high-pass at 80 Hz and 1 ms of delay");
     proc.releaseResources();
     organ.root.deleteRecursively();
   }
 };
-static BassWhilePlayingTest g_bassWhilePlaying;
+static CrossoverWhilePlayingTest g_crossoverWhilePlaying;
 
 // Every output setting changed at random while the organ plays (#1023): the
 // output count, stereo and mono, channels the device has and channels it
@@ -1105,7 +1113,16 @@ public:
             proc.setRankMixes(mixes);
             break;
           }
-          case 9: proc.setBusBass(bus, static_cast<float>(roll(0, 4) * 40), roll(-1, 70)); break;
+          case 9: {
+            mp::BusFilters f;
+            f.highPassHz = static_cast<float>(roll(0, 4) * 40);
+            f.highPassType = roll(-1, 5);
+            f.lowPassHz = static_cast<float>(roll(0, 4) * 5000);
+            f.delayMs = static_cast<float>(roll(-1, 120));
+            f.invert = roll(0, 1) == 1;
+            proc.setBusFilters(bus, f);
+            break;
+          }
           case 10: proc.setLivePairLevel(roll(0, 11), roll(0, 203)); break;
           default: std::this_thread::yield(); break;
         }

@@ -638,7 +638,6 @@ void MasterpieceProcessor::refreshMixerBuses() {  mixBusOrder_.clear();
     }
   refreshSends();
   refreshBusReverbs();
-  refreshBusBass();
   refreshBusEq();
   refreshBusFilters();
   if (const int wanted = outputChannelsWanted(); wanted != lastOutputChannelsWanted_) {
@@ -720,19 +719,6 @@ void MasterpieceProcessor::addBusToOutput(int index, const juce::AudioBuffer<flo
   if (!onOwn) return;
   for (const auto& [l, r] : own->copies)
     if (l < numCh && r < numCh) add(l, r, own->mono);
-}
-
-void MasterpieceProcessor::refreshBusBass() {
-  busBass_.clear();
-  busBass_.resize(mixBusOrder_.size());
-  for (size_t i = 0; i < mixBusOrder_.size(); ++i) {
-    const BusBass* b = mixer_.bassFor(mixBusOrder_[i]);
-    if (b == nullptr || !b->active()) continue;
-    auto m = std::make_unique<BassManager>();
-    m->setCrossoverHz(b->crossoverHz);
-    m->prepare(sampleRate_ > 0.0 ? sampleRate_ : 48000.0, juce::jmax(1, maxBlock_));
-    busBass_[i] = std::move(m);
-  }
 }
 
 void MasterpieceProcessor::refreshBusEq() {
@@ -973,23 +959,6 @@ void MasterpieceProcessor::applyRankMixes() {
   for (size_t i = 0; i < mixOf.size(); ++i) liveLevels_.setRankMix(static_cast<int>(i), mixOf[i]);
 }
 
-void MasterpieceProcessor::setBusBass(int busId, float crossoverHz, int subChannel) {
-  // The bass filters are made again below, and the audio thread runs them:
-  // under the lock, as every pair setting is (#1159).
-  const AudioLock lock(*this);
-  if (crossoverHz <= 0.0f || subChannel < 0) {
-    mixer_.busBass.erase(busId);
-  } else {
-    BusBass b;
-    b.crossoverHz = juce::jlimit(BassManager::kMinHz, BassManager::kMaxHz, crossoverHz);
-    b.subChannel = juce::jlimit(0, kMaxOutputChannels - 1, subChannel);
-    mixer_.busBass[busId] = b;
-  }
-  refreshMixerBuses();
-  // Kept with the outputs, the machine's.
-  markMixerDirty();
-}
-
 void MasterpieceProcessor::setBusEq(int busId, const VoicingEqSettings& eq) {
   // A fader moved on an output whose EQ is already heard: its figures are
   // handed to the audio thread as the organ's EQ's are, without the lock.
@@ -1029,9 +998,6 @@ bool MasterpieceProcessor::needsRoutedOutput(int numCh) const {
   // An output with an EQ or filters of its own is rendered on its own, to be
   // filtered before it reaches its channels (#1188).
   if (anyBusFilter()) return true;
-  for (size_t i = 0; i < busBass_.size() && i < mixBusOrder_.size(); ++i)
-    if (busBass_[i] != nullptr)
-      if (const BusBass* b = mixer_.bassFor(mixBusOrder_[i]); b != nullptr && b->subChannel < numCh) return true;
   return false;
 }
 
@@ -1053,8 +1019,6 @@ int MasterpieceProcessor::outputChannelsWanted() const {
   for (const auto& b : mixer_.buses)
     for (int ch : b.deviceChannels)
       if (ch >= 0 && ch < kMaxOutputChannels) highest = juce::jmax(highest, ch);
-  for (const auto& [id, b] : mixer_.busBass)
-    if (b.active() && b.subChannel < kMaxOutputChannels) highest = juce::jmax(highest, b.subChannel);
   return highest + 1;
 }
 
@@ -1560,8 +1524,8 @@ void MasterpieceProcessor::renderMixBuses(juce::AudioBuffer<float>& output, int 
           busConvolvers_[static_cast<size_t>(i)] != nullptr)
         busConvolvers_[static_cast<size_t>(i)]->process(dest);
 #endif
-      // Kept for the outputs this one plays into, before its bass goes to
-      // the subwoofer: the main mix keeps the speakers' lows.
+      // Kept for the outputs this one plays into, before its own EQ and
+      // crossover: each output it feeds filters its own copy.
       if (ordered && busSends_[static_cast<size_t>(i)] != 0) {
         auto& tap = sendTap_[static_cast<size_t>(i)];
         if (tap.getNumSamples() >= numFrames)
@@ -1574,20 +1538,11 @@ void MasterpieceProcessor::renderMixBuses(juce::AudioBuffer<float>& output, int 
       if (i < static_cast<int>(busEq_.size()) && busEq_[static_cast<size_t>(i)] != nullptr)
         busEq_[static_cast<size_t>(i)]->process(dest.getArrayOfWritePointers(), dest.getNumChannels(), numFrames);
       // Its high-pass, low-pass, polarity and delay (#1188): the band its
-      // driver is given, so the meter shows that band. Before the bass
-      // management, whose subwoofer then has the same band's lows.
+      // driver is given, so the meter shows that band.
       if (i < static_cast<int>(busFilters_.size()) && busFilters_[static_cast<size_t>(i)] != nullptr)
         busFilters_[static_cast<size_t>(i)]->process(dest.getArrayOfWritePointers(), dest.getNumChannels(),
                                                      numFrames);
       meterPair(i, dest, numFrames);
-      // Its lows to the subwoofer's channel, when the output has it; the
-      // highs go on to the pair.
-      if (i < static_cast<int>(busBass_.size()) && busBass_[static_cast<size_t>(i)] != nullptr)
-        if (const BusBass* bass = mixer_.bassFor(mixBusOrder_[static_cast<size_t>(i)]);
-            bass != nullptr && bass->subChannel < outCh)
-          busBass_[static_cast<size_t>(i)]->process(dest.getWritePointer(0),
-                                                    dest.getNumChannels() > 1 ? dest.getWritePointer(1) : nullptr,
-                                                    output.getWritePointer(bass->subChannel), numFrames);
       // An output with no channels of its own that plays into others is
       // heard through them only.
       const bool sendsOnly = ordered && busSends_[static_cast<size_t>(i)] != 0 &&
@@ -2806,13 +2761,12 @@ juce::String MasterpieceProcessor::settingsBody() const {
 }
 
 bool MasterpieceProcessor::isMixerKey(const juce::String& key) {
-  return key == "buses" || key == "busname" || key == "defaultroute" || key == "busir" || key == "busbass" ||
-         key == "buseq" || key == "busfilt" || key == "groups";
+  return key == "buses" || key == "busname" || key == "defaultroute" || key == "busir" || key == "buseq" || key == "busfilt" || key == "groups";
 }
 
 juce::String MasterpieceProcessor::mixerLines() const {
   juce::String text;
-  // The machine's mixer: outputs, their rooms and bass, speaker groups and
+  // The machine's mixer: outputs, their rooms, EQ and crossovers, speaker groups and
   // the default destination, written to the global file whenever they change
   // and read from there alone. An output is the player's audio hardware, the
   // same whichever organ is loaded, so a new set plays through it with no
@@ -2858,17 +2812,6 @@ juce::String MasterpieceProcessor::mixerLines() const {
       const auto& r = mixer_.busReverb.at(busId);
       text << "busir " << busId << " " << (r.enabled ? 1 : 0) << " "
            << juce::String(r.mix, 3) << " " << juce::String(r.irFile) << "\n";
-    }
-  }
-  // A bus's bass management: "busbass <busId> <crossoverHz> <subChannel>".
-  {
-    std::vector<int> withBass;
-    for (const auto& [busId, b] : mixer_.busBass)
-      if (b.active()) withBass.push_back(busId);
-    std::sort(withBass.begin(), withBass.end());
-    for (int busId : withBass) {
-      const auto& b = mixer_.busBass.at(busId);
-      text << "busbass " << busId << " " << juce::String(b.crossoverHz, 0) << " " << b.subChannel << "\n";
     }
   }
   // An output's EQ and filters (#1188): "buseq <busId> <the voicing EQ's
@@ -3023,15 +2966,6 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
       f.invert = parts[6].getIntValue() != 0;
       f = f.clamped();
       if (f.active()) mixer_.busFilters[parts[0].getIntValue()] = f;
-      refreshMixerBuses();
-    }
-  } else if (key == "busbass") {
-    const auto parts = juce::StringArray::fromTokens(val, " ", "");
-    if (parts.size() >= 3 && parts[0].getIntValue() != 0) {
-      BusBass b;
-      b.crossoverHz = juce::jlimit(BassManager::kMinHz, BassManager::kMaxHz, parts[1].getFloatValue());
-      b.subChannel = juce::jlimit(0, kMaxOutputChannels - 1, parts[2].getIntValue());
-      mixer_.busBass[parts[0].getIntValue()] = b;
       refreshMixerBuses();
     }
   } else if (key == "busir") {

@@ -39,16 +39,6 @@ struct BusReverb {
   bool active() const { return enabled && !irFile.empty(); }
 };
 
-// A bus's bass management: the lows of its pair, below the crossover, to a
-// subwoofer channel of the device, and the rest to the pair. Off while the
-// frequency is 0.
-struct BusBass {
-  float crossoverHz = 0.0f;  // 40..200, or 0 for off
-  int subChannel = -1;       // a device channel, counted from 0
-
-  bool active() const { return crossoverHz > 0.0f && subChannel >= 0; }
-};
-
 // An output's own EQ (#1188): the ten bands of the organ's voicing EQ, for
 // the speaker on that output. Heard only while it is on and not flat; kept
 // while it is on or shaped, so a band moved and the EQ turned off comes back
@@ -65,9 +55,6 @@ struct MixerConfig {
   // the shared contract with the UI and validator, and a file path is neither
   // of their business.
   std::unordered_map<int, BusReverb> busReverb;
-  // Indexed by BusId.value as the rooms are: a bus with no entry has none.
-  std::unordered_map<int, BusBass> busBass;
-
   // Indexed by BusId.value as the rooms are: an output with no entry has no
   // EQ, and no filters, delay or inversion (#1188).
   std::unordered_map<int, VoicingEqSettings> busEq;
@@ -80,11 +67,6 @@ struct MixerConfig {
     const auto it = busFilters.find(id.value);
     return it == busFilters.end() ? nullptr : &it->second;
   }
-  const BusBass* bassFor(BusId id) const {
-    const auto it = busBass.find(id.value);
-    return it == busBass.end() ? nullptr : &it->second;
-  }
-
   const BusReverb* reverbFor(BusId id) const {
     const auto it = busReverb.find(id.value);
     return it == busReverb.end() ? nullptr : &it->second;

@@ -4218,85 +4218,6 @@ juce::String outputName(const MixerConfig& mixer, int busId) {
   return TRANS("Output %1").replace("%1", juce::String(busId));
 }
 
-// One row per output: the crossover under which its lows go to the subwoofer,
-// and the subwoofer's device channel. Off leaves the output as it was.
-class BassPanel final : public juce::Component {
-public:
-  std::function<void()> onChanged;
-  explicit BassPanel(MasterpieceProcessor& p, std::function<void()> changed)
-      : onChanged(std::move(changed)), proc_(p) {
-    addAndMakeVisible(heading_);
-    styleLabel(heading_, TRANS("Bass management"));
-    const int channels = juce::jmax(8, proc_.getTotalNumOutputChannels());
-    for (const auto& b : proc_.mixer().buses) {
-      Row row;
-      row.busId = b.id.value;
-      row.label = std::make_unique<juce::Label>();
-      styleLabel(*row.label, outputName(proc_.mixer(), b.id.value));
-      row.crossover = std::make_unique<juce::ComboBox>();
-      row.crossover->addItem(TRANS("Off"), 1);
-      for (int hz : kFrequencies) row.crossover->addItem(juce::String(hz) + " Hz", hz);
-      row.sub = std::make_unique<juce::ComboBox>();
-      for (int ch = 0; ch < channels; ++ch)
-        row.sub->addItem(TRANS("Subwoofer on %1").replace("%1", juce::String(ch + 1)), ch + 1);
-      const BassSetting now = settingOf(b.id.value);
-      row.crossover->setSelectedId(now.hz > 0 ? now.hz : 1, juce::dontSendNotification);
-      row.sub->setSelectedId(now.sub >= 0 ? now.sub + 1 : juce::jmin(channels, 3), juce::dontSendNotification);
-      row.sub->setEnabled(now.hz > 0);
-      const int id = b.id.value;
-      auto* crossover = row.crossover.get();
-      auto* subBox = row.sub.get();
-      auto apply = [this, id, crossover, subBox] {
-        const int hz = crossover->getSelectedId() > 1 ? crossover->getSelectedId() : 0;
-        subBox->setEnabled(hz > 0);
-        proc_.setBusBass(id, static_cast<float>(hz), subBox->getSelectedId() - 1);
-        if (onChanged) onChanged();
-      };
-      row.crossover->onChange = apply;
-      row.sub->onChange = apply;
-      addAndMakeVisible(*row.label);
-      addAndMakeVisible(*row.crossover);
-      addAndMakeVisible(*row.sub);
-      rows_.push_back(std::move(row));
-    }
-    setSize(460, 12 + kRow + kGap + static_cast<int>(rows_.size()) * (kRow + 4) + 64);
-  }
-  void resized() override {
-    auto r = getLocalBounds().reduced(12, 6);
-    heading_.setBounds(r.removeFromTop(kRow));
-    r.removeFromTop(kGap);
-    for (auto& row : rows_) {
-      auto line = r.removeFromTop(kRow);
-      r.removeFromTop(4);
-      row.label->setBounds(line.removeFromLeft(120));
-      row.crossover->setBounds(line.removeFromLeft(110).reduced(0, 1));
-      line.removeFromLeft(kGap);
-      row.sub->setBounds(line.removeFromLeft(200).reduced(0, 1));
-    }
-  }
-
-private:
-  static constexpr int kFrequencies[] = {40, 60, 80, 100, 120, 150, 200};
-  struct BassSetting {
-    int hz = 0;
-    int sub = -1;
-  };
-  BassSetting settingOf(int busId) const {
-    const auto* b = proc_.mixer().bassFor(BusId{busId});
-    if (b == nullptr || !b->active()) return {};
-    return {juce::roundToInt(b->crossoverHz), b->subChannel};
-  }
-  struct Row {
-    int busId = 0;
-    std::unique_ptr<juce::Label> label;
-    std::unique_ptr<juce::ComboBox> crossover;
-    std::unique_ptr<juce::ComboBox> sub;
-  };
-  MasterpieceProcessor& proc_;
-  juce::Label heading_;
-  std::vector<Row> rows_;
-};
-
 // One output's EQ (#1188): the ten bands of the organ's voicing EQ, with
 // their frequencies and widths, and a gain, for the speaker on that output.
 // The curve over the faders is the EQ's, with the output's crossover filters
@@ -5660,15 +5581,6 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
   emptySource_.setJustificationType(juce::Justification::topLeft);
   addAndMakeVisible(save_);
   save_.onClick = [this] { proc_.saveSettings(); };
-  addAndMakeVisible(bass_);
-  bass_.onClick = [this] {
-    juce::Component::SafePointer<MixerPanel> self(this);
-    juce::CallOutBox::launchAsynchronously(std::make_unique<BassPanel>(proc_,
-                                                                       [self] {
-                                                                         if (self != nullptr) self->showOutputs();
-                                                                       }),
-                                           bass_.getScreenBounds(), nullptr);
-  };
   addAndMakeVisible(outputEq_);
   outputEq_.setTooltip(TRANS("Each output's own EQ, for the speaker on it"));
   outputEq_.onClick = [this] {
@@ -6119,16 +6031,6 @@ void MixerPanel::showOutputs() {
                 (b.mono ? " (" + TRANS("mono") + ")" : juce::String()));
       continue;
     }
-    if (const auto* bass = proc_.mixer().bassFor(b.id); bass != nullptr && bass->active()) {
-      endRun();
-      pairs.add(TRANS("Output %1: %2-%3")
-                    .replace("%1", juce::String(b.id.value))
-                    .replace("%2", juce::String(left + 1))
-                    .replace("%3", juce::String(right + 1)) +
-                " (" + TRANS("bass to %1").replace("%1", juce::String(bass->subChannel + 1)) + ")");
-      if (bass->subChannel >= outs) beyond = true;
-      continue;
-    }
     if (runFirst != 0 && b.id.value == runLast + 1 && left == runTo + 1 && right == left + 1 &&
         runTo - runFrom == 2 * (runLast - runFirst) + 1) {
       runLast = b.id.value;
@@ -6313,7 +6215,7 @@ void MixerPanel::resized() {
   row = r.removeFromTop(kRow);
   for (auto [b, w] : std::initializer_list<std::pair<juce::Button*, int>>{
            {&channels_, 110}, {&speakerGroups_, 140}, {&routing_, 130}, {&outputEq_, 110}, {&crossover_, 110},
-           {&bass_, 160}, {&spread_, 170}, {&reset_, 150},
+           {&spread_, 170}, {&reset_, 150},
            {&save_, 160}}) {
     b->setBounds(row.removeFromLeft(w).reduced(0, 1));
     row.removeFromLeft(6);

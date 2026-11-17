@@ -29,7 +29,6 @@
 #include "OutputDynamicsPresets.h"
 #include "OutputLimiter.h"
 #include "SpectrumTap.h"
-#include "BassManager.h"
 #include "AudioRecorder.h"
 #include "MidiArchive.h"
 #include "MidiRecorder.h"
@@ -133,10 +132,6 @@ public:
   // The output channels the mixer asks for: one past the highest device
   // channel a bus names, and two at the least.
   int outputChannelsWanted() const;
-  // A pair's bass management: the crossover frequency (40-200 Hz, 0 for
-  // off) and the device channel of the subwoofer, counted from 0. Kept with
-  // the pairs, in the organ's settings and in the saved defaults.
-  void setBusBass(int busId, float crossoverHz, int subChannel);
   // An output's own EQ (#1188), the ten bands of the voicing EQ for the
   // speaker on it; a fader moved is heard at once. Kept with the outputs, the
   // machine's. Off or flat, the output is not filtered at all.
@@ -3046,9 +3041,6 @@ private:
   juce::AudioBuffer<float> pairScratch_;
   juce::AudioBuffer<float> recordScratch_;
   int lastOutputChannelsWanted_ = 2;
-  // Bass management per dense bus, built for the buses that have it on.
-  std::vector<std::unique_ptr<BassManager>> busBass_;
-  void refreshBusBass();
   // The EQ and the filters per dense bus (#1188), built for the buses that
   // have them; null for the rest, which are then not touched.
   std::vector<std::unique_ptr<VoicingEq>> busEq_;
@@ -3057,8 +3049,8 @@ private:
   void refreshBusEq();
   void refreshBusFilters();
   bool anyBusFilter() const;
-  // Whether any bus has its own channels, or bass managed to a channel the
-  // output has: then the buses are rendered one by one to where they go.
+  // Whether any bus has its own channels, or an EQ or crossover of its own:
+  // then the buses are rendered one by one to where they go.
   bool needsRoutedOutput(int numCh) const;
   // The channels of bus `index` on an output of `numCh` channels: its own
   // when the output has them, otherwise the first pair.
