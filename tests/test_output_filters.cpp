@@ -59,8 +59,9 @@ std::vector<double> toneHz() {
 }
 
 // `ranks` ranks of `keys` pipes from key 36, rank r on stop 901 + r, every
-// pipe the same sample at the pitch of key 36, so that key plays it as
-// recorded. Rank r's pipe at key 36 + k is pipe 3000 + 1000 r + k.
+// pipe the same sample, recorded at key 36: that key plays it at a ratio of
+// 1, so each sine stays on its frequency.
+// Rank r's pipe at key 36 + k is pipe 3000 + 1000 r + k.
 struct BroadbandOrgan {
   juce::File odf, root;
   explicit BroadbandOrgan(const juce::String& name, int ranks = 1, int keys = 2) {
@@ -77,6 +78,9 @@ struct BroadbandOrgan {
       meta.set("NumSampleLoops", "1");
       meta.set("Loop0Start", juce::String(kLoopStart));
       meta.set("Loop0End", juce::String(kLoopEnd));
+      // Recorded at key 36, so that key plays it at a ratio of 1. Left out,
+      // the file says 60, and key 36 would play it two octaves down.
+      meta.set("MidiUnityNote", "36");
       std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os.release(), kRate, 1, 24, meta, 0));
       juce::AudioBuffer<float> wave(1, 48000);
       std::mt19937 rng(1188);
@@ -120,8 +124,7 @@ struct BroadbandOrgan {
         "<ObjectList ObjectType=\"RequiredInstallationPackage\"><RequiredInstallationPackage>"
         "<InstallationPackageID>1</InstallationPackageID><Name>P</Name></RequiredInstallationPackage></ObjectList>"
         "<ObjectList ObjectType=\"Sample\"><Sample><SampleID>101</SampleID><InstallationPackageID>1</InstallationPackageID>"
-        "<SampleFilename>broadband.wav</SampleFilename><Pitch_SpecificationMethodCode>1</Pitch_SpecificationMethodCode>"
-        "<Pitch_ExactSamplePitch>65.406</Pitch_ExactSamplePitch></Sample></ObjectList>"
+        "<SampleFilename>broadband.wav</SampleFilename></Sample></ObjectList>"
         "<ObjectList ObjectType=\"Rank\">" +
         rankRows + "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01\">" + pipes + "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">" + layers +
         "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">" + attacks +
@@ -221,12 +224,16 @@ struct Point {
 };
 
 // At each sine: the level of `test` against `ref`, in dB, from the peak bin
-// of each and its neighbours, against `expected` at that frequency.
+// of each and its neighbours, against `expected` at that frequency. A sine
+// the reference carries more than 40 dB under its loudest is left out: there
+// the window's leakage from a louder neighbour is a fair part of what is
+// measured, and the reading says more about the window than the filter.
 std::vector<Point> response(const std::vector<float>& ref, const std::vector<float>& test,
                             const std::function<double(double)>& expected) {
   const auto r = spectrum(ref, kSteadyFrom), t = spectrum(test, kSteadyFrom);
   const double binHz = kRate / kFft;
-  std::vector<Point> out;
+  std::vector<std::pair<double, std::pair<double, double>>> energy;  // hz -> {ref, test}
+  double loudest = 0.0;
   for (double hz : toneHz()) {
     const auto k = static_cast<size_t>(std::lround(hz / binHz));
     if (k < 2 || k + 2 >= r.size()) continue;
@@ -235,8 +242,13 @@ std::vector<Point> response(const std::vector<float>& ref, const std::vector<flo
       er += r[j] * r[j];
       et += t[j] * t[j];
     }
-    if (er <= 0.0) continue;
-    out.push_back({hz, 10.0 * std::log10(std::max(et, 1e-30) / er), expected(hz)});
+    energy.push_back({hz, {er, et}});
+    loudest = std::max(loudest, er);
+  }
+  std::vector<Point> out;
+  for (const auto& [hz, e] : energy) {
+    if (e.first <= loudest * 1.0e-4) continue;
+    out.push_back({hz, 10.0 * std::log10(std::max(e.second, 1e-30) / e.first), expected(hz)});
   }
   return out;
 }
@@ -270,8 +282,8 @@ void keepForPlot(const std::string& name, const std::vector<float>& ref, const s
 // Every sine within `tolerance` dB of the formula where the formula is above
 // `floorDb`; below it, at least as far down as `floorDb` + 6.
 void checkResponse(const std::string& what, const std::vector<Point>& points, double tolerance,
-                   double floorDb = -40.0) {
-  MP_CHECK(points.size() >= 30, what + ": every sine measured, " + std::to_string(points.size()));
+                   double floorDb = -40.0, size_t atLeast = 30) {
+  MP_CHECK(points.size() >= atLeast, what + ": enough sines measured, " + std::to_string(points.size()));
   double worst = 0.0;
   std::string at;
   for (const auto& p : points) {
@@ -499,7 +511,7 @@ public:
     h40.slope = 24;
     checkResponse("the high-pass after the crossover",
                   response(bassOnly[0], both[0], [&](double f) { return mp::OutputHighPass::responseDb(h40, f); }),
-                  0.25, -30.0);
+                  0.25, -30.0, 25);
 
     mp::MasterpieceProcessor p;
     p.setPairCount(2);
