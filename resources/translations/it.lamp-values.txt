@@ -1,0 +1,5 @@
+"Lit" = "Acceso"
+"Unlit" = "Spento"
+"Note Off" = "Note Off"
+"The velocity sent to a button when its stop comes on. On a pad grid it picks the colour" = "La velocity inviata a un pulsante quando il suo registro si inserisce. Su una griglia di pad sceglie il colore"
+"What a button is sent when its stop goes off: a Note Off, or a velocity for a dimmer colour on a pad grid" = "Ciò che riceve un pulsante quando il suo registro si disinserisce: un Note Off, o una velocity per un colore attenuato su una griglia di pad"

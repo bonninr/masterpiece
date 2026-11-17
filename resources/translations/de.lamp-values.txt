@@ -1,0 +1,5 @@
+"Lit" = "Leuchtend"
+"Unlit" = "Aus"
+"Note Off" = "Note Off"
+"The velocity sent to a button when its stop comes on. On a pad grid it picks the colour" = "Die Anschlagstärke, die eine Taste erhält, wenn ihr Register eingeschaltet wird. Auf einem Pad-Raster wählt sie die Farbe"
+"What a button is sent when its stop goes off: a Note Off, or a velocity for a dimmer colour on a pad grid" = "Was eine Taste erhält, wenn ihr Register ausgeschaltet wird: ein Note Off, oder eine Anschlagstärke für eine gedämpfte Farbe auf einem Pad-Raster"

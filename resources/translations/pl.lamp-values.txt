@@ -1,0 +1,5 @@
+"Lit" = "Świeci"
+"Unlit" = "Nie świeci"
+"Note Off" = "Note Off"
+"The velocity sent to a button when its stop comes on. On a pad grid it picks the colour" = "Velocity wysyłana do przycisku, gdy jego głos się włącza. Na siatce padów wybiera kolor"
+"What a button is sent when its stop goes off: a Note Off, or a velocity for a dimmer colour on a pad grid" = "Co dostaje przycisk, gdy jego głos się wyłącza: Note Off albo velocity dla przygaszonego koloru na siatce padów"

@@ -2153,6 +2153,28 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
   feedback_.onClick = [this] {
     proc_.setMidiFeedbackEnabled(feedback_.getToggleState());
   };
+  // Lit 1..127 as ids 1..127; dark "Note Off" as id 1, then 0..127 as 2..129.
+  addAndMakeVisible(echoLitLabel_);
+  echoLitLabel_.setText(TRANS("Lit"), juce::dontSendNotification);
+  echoLitLabel_.setJustificationType(juce::Justification::centredRight);
+  addAndMakeVisible(echoDarkLabel_);
+  echoDarkLabel_.setText(TRANS("Unlit"), juce::dontSendNotification);
+  echoDarkLabel_.setJustificationType(juce::Justification::centredRight);
+  for (int v = 1; v <= 127; ++v) echoLit_.addItem(juce::String(v), v);
+  echoDark_.addItem(TRANS("Note Off"), 1);
+  for (int v = 0; v <= 127; ++v) echoDark_.addItem(juce::String(v), v + 2);
+  echoLit_.setTitle(TRANS("Lit"));
+  echoDark_.setTitle(TRANS("Unlit"));
+  echoLit_.setSelectedId(proc_.midiFeedbackLit(), juce::dontSendNotification);
+  echoDark_.setSelectedId(proc_.midiFeedbackDark() + 2, juce::dontSendNotification);
+  echoLit_.setTooltip(TRANS("The velocity sent to a button when its stop comes on. On a pad grid it picks "
+                            "the colour"));
+  echoDark_.setTooltip(TRANS("What a button is sent when its stop goes off: a Note Off, or a velocity for a "
+                             "dimmer colour on a pad grid"));
+  for (auto* c : {&echoLit_, &echoDark_}) {
+    addAndMakeVisible(*c);
+    c->onChange = [this] { pushEchoValues(); };
+  }
   addAndMakeVisible(holdEcho_);
   holdEcho_.setToggleState(proc_.midiSendsHoldEcho(), juce::dontSendNotification);
   holdEcho_.setTooltip(TRANS("For a console that lights its own lamps: a stop moved from the console leaves out "
@@ -2387,7 +2409,8 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
 }
 
 void MidiPanel::applyPart() {
-  std::vector<juce::Component*> console{&inputsLabel_, &outputsLabel_, &output_, &feedback_, &holdEcho_, &cancelResets_,
+  std::vector<juce::Component*> console{&inputsLabel_, &outputsLabel_, &output_, &feedback_, &echoLitLabel_,
+                                        &echoLit_, &echoDarkLabel_, &echoDark_, &holdEcho_, &cancelResets_,
                                         &leaveHeld_, &sustain_, &noiseFilter_, &archive_, &archiveSilence_,
                                         &archiveSize_, &archiveAge_, &consoleHeading_, &learnPagePrev_, &learnPageNext_, &learnLayout_,
                                         &learnStopList_, &learnKeyboard_, &learnCombinations_};
@@ -2496,6 +2519,12 @@ void MidiPanel::pushReadyLamp() {
 }
 
 // Messages that do not read are outlined in red; the ones before are kept.
+void MidiPanel::pushEchoValues() {
+  const int lit = echoLit_.getSelectedId();
+  const int dark = echoDark_.getSelectedId();
+  if (lit > 0 && dark > 0) proc_.setMidiFeedbackValues(lit, dark - 2);
+}
+
 void MidiPanel::pushLampMessages() {
   const bool ok = proc_.setReadyLampMessages(lampLit_.getText(), lampDark_.getText());
   for (auto* e : {&lampLit_, &lampDark_}) {
@@ -2953,7 +2982,12 @@ void MidiPanel::resized() {
     outputsLabel_.setBounds(row.removeFromLeft(120));
     output_.setBounds(row.removeFromLeft(300));
     r.removeFromTop(4);
-    feedback_.setBounds(r.removeFromTop(kRow));
+    row = r.removeFromTop(kRow);
+    feedback_.setBounds(row.removeFromLeft(320));
+    echoLitLabel_.setBounds(row.removeFromLeft(44));
+    echoLit_.setBounds(row.removeFromLeft(70).reduced(2, 1));
+    echoDarkLabel_.setBounds(row.removeFromLeft(54));
+    echoDark_.setBounds(row.removeFromLeft(100).reduced(2, 1));
     holdEcho_.setBounds(r.removeFromTop(kRow));
     sustain_.setBounds(r.removeFromTop(kRow));
   }
