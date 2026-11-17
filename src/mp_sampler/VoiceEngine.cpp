@@ -270,6 +270,36 @@ void shelfFigures(double sampleRate, double kHz, double widthPct, double db, flo
   out[3] = static_cast<float>(a1 / a0);
   out[4] = static_cast<float>(a2 / a0);
 }
+// The player's shelves for a pipe (#1188), the same as a rank's (RankEq.h):
+// the cookbook's shelf with a slope of 1, a low one or a high one.
+void playerShelfFigures(double sampleRate, bool high, double hz, double db, float out[5]) {
+  constexpr double kPi = 3.141592653589793;
+  const double A = std::pow(10.0, db / 40.0);
+  const double w0 = 2.0 * kPi * std::min(hz, 0.45 * sampleRate) / sampleRate;
+  const double cw = std::cos(w0);
+  const double k = 2.0 * std::sqrt(A) * (std::sin(w0) / 2.0 * std::sqrt(2.0));
+  double b0, b1, b2, a0, a1, a2;
+  if (high) {
+    b0 = A * ((A + 1) + (A - 1) * cw + k);
+    b1 = -2 * A * ((A - 1) + (A + 1) * cw);
+    b2 = A * ((A + 1) + (A - 1) * cw - k);
+    a0 = (A + 1) - (A - 1) * cw + k;
+    a1 = 2 * ((A - 1) - (A + 1) * cw);
+    a2 = (A + 1) - (A - 1) * cw - k;
+  } else {
+    b0 = A * ((A + 1) - (A - 1) * cw + k);
+    b1 = 2 * A * ((A - 1) - (A + 1) * cw);
+    b2 = A * ((A + 1) - (A - 1) * cw - k);
+    a0 = (A + 1) + (A - 1) * cw + k;
+    a1 = -2 * ((A - 1) + (A + 1) * cw);
+    a2 = (A + 1) + (A - 1) * cw - k;
+  }
+  out[0] = static_cast<float>(b0 / a0);
+  out[1] = static_cast<float>(b1 / a0);
+  out[2] = static_cast<float>(b2 / a0);
+  out[3] = static_cast<float>(a1 / a0);
+  out[4] = static_cast<float>(a2 / a0);
+}
 } // namespace
 
 void VoiceEngine::armShelf(Voice& v, size_t index) {
@@ -289,6 +319,15 @@ void VoiceEngine::armShelf(Voice& v, size_t index) {
   const double pitch = v.harmonicHz;
   if (v.layer->harmonicLevelDb != 0.0 && pitch > 0.0 && 3.0 * pitch < 0.45 * sampleRate_) {
     shelfFigures(sampleRate_, pitch * std::sqrt(6.0) / 1000.0, 100.0, v.layer->harmonicLevelDb, f);
+    fig.section[fig.count++] = ShelfSection{f[0], f[1], f[2], f[3], f[4]};
+  }
+  // The player's own for this pipe, at a rank's frequencies.
+  if (v.pipeBassDb != 0.0f) {
+    playerShelfFigures(sampleRate_, false, kPipeBassHz, v.pipeBassDb, f);
+    fig.section[fig.count++] = ShelfSection{f[0], f[1], f[2], f[3], f[4]};
+  }
+  if (v.pipeBrightDb != 0.0f) {
+    playerShelfFigures(sampleRate_, true, kPipeBrightHz, v.pipeBrightDb, f);
     fig.section[fig.count++] = ShelfSection{f[0], f[1], f[2], f[3], f[4]};
   }
   if (fig.count == 0) return;
@@ -711,6 +750,8 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   v.gain = start.gain;
   v.releaseGain = 1.0f;
   v.layer = start.layer;
+  v.pipeBassDb = start.pipeBassDb;
+  v.pipeBrightDb = start.pipeBrightDb;
   // The pitch the pipe sounds: its recording's, else its key's at its rank's
   // footage.
   v.harmonicHz = 0.0;

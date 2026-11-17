@@ -3873,14 +3873,18 @@ void VoicingPanel::loadCurrentIntoSliders() {
   // a write and a swap into a wipe.
   gain_.setValue(pv.gainDb, juce::dontSendNotification);
   tune_.setValue(pv.tuningCents, juce::dontSendNotification);
-  // The EQ is a rank's: a pipe of its own would need a filter of its own.
+  // The shelves are a rank's or a pipe's own (#1188); the pan and the width
+  // are a rank's.
   const bool rankScope = t.scope == VoicingScope::Rank;
-  bright_.setValue(rankScope ? pv.brightnessDb : 0.0, juce::dontSendNotification);
-  bass_.setValue(rankScope ? pv.bassDb : 0.0, juce::dontSendNotification);
+  bright_.setValue(pv.brightnessDb, juce::dontSendNotification);
+  bass_.setValue(pv.bassDb, juce::dontSendNotification);
+  bright_.setTooltip(rankScope ? TRANS("The rank's treble, above 3 kHz: heard at once, on the pipes sounding too")
+                               : TRANS("The pipe's own treble, above 3 kHz, on top of its rank's: heard from its next note"));
+  bass_.setTooltip(rankScope ? TRANS("The rank's bass, below 200 Hz: heard at once, on the pipes sounding too")
+                             : TRANS("The pipe's own bass, below 200 Hz, on top of its rank's: heard from its next note"));
   pan_.setValue(rankScope ? pv.balance * 100.0 : 0.0, juce::dontSendNotification);
   width_.setValue(rankScope ? pv.width * 100.0 : 100.0, juce::dontSendNotification);
-  for (auto* c : std::initializer_list<juce::Component*>{&bright_, &bass_, &brightLabel_, &bassLabel_, &pan_,
-                                                         &width_, &panLabel_, &widthLabel_})
+  for (auto* c : std::initializer_list<juce::Component*>{&pan_, &width_, &panLabel_, &widthLabel_})
     c->setEnabled(rankScope);
   refreshDesk();
   updateStatus();
@@ -4215,7 +4219,8 @@ juce::String outputName(const MixerConfig& mixer, int busId) {
 }
 
 // One row per output: the crossover under which its lows go to the subwoofer,
-// and the subwoofer's device channel. Off leaves the output as it was.
+// and the subwoofer's device channel; then its high-pass, which keeps the
+// lowest notes from its speaker (#1188). Off leaves the output as it was.
 class BassPanel final : public juce::Component {
 public:
   std::function<void()> onChanged;
@@ -4223,6 +4228,10 @@ public:
       : onChanged(std::move(changed)), proc_(p) {
     addAndMakeVisible(heading_);
     styleLabel(heading_, TRANS("Bass management"));
+    addAndMakeVisible(highPassHeading_);
+    styleLabel(highPassHeading_, TRANS("High-pass"));
+    highPassHeading_.setTooltip(TRANS("Keeps the lowest notes from the output's speakers: flat above the frequency, "
+                                      "3 dB down at it, then 12 or 24 dB less an octave"));
     const int channels = juce::jmax(8, proc_.getTotalNumOutputChannels());
     for (const auto& b : proc_.mixer().buses) {
       Row row;
@@ -4250,16 +4259,49 @@ public:
       };
       row.crossover->onChange = apply;
       row.sub->onChange = apply;
+      row.highPass = std::make_unique<juce::ComboBox>();
+      row.highPass->addItem(TRANS("Off"), 1);
+      for (int hz : kHighPass) row.highPass->addItem(juce::String(hz) + " Hz", hz);
+      row.slope = std::make_unique<juce::ComboBox>();
+      row.slope->addItem(TRANS("12 dB an octave"), 12);
+      row.slope->addItem(TRANS("24 dB an octave"), 24);
+      const BusHighPass* hp = proc_.mixer().highPassFor(b.id);
+      const int hpHz = hp != nullptr && hp->active() ? juce::roundToInt(hp->hz) : 0;
+      row.highPass->setSelectedId(hpHz > 0 ? hpHz : 1, juce::dontSendNotification);
+      if (hpHz > 0 && row.highPass->getSelectedId() != hpHz) {
+        // A frequency typed into the settings file, not one of the list's.
+        row.highPass->addItem(juce::String(hpHz) + " Hz", hpHz);
+        row.highPass->setSelectedId(hpHz, juce::dontSendNotification);
+      }
+      row.slope->setSelectedId(hp != nullptr ? hp->slope : 12, juce::dontSendNotification);
+      row.slope->setEnabled(hpHz > 0);
+      auto* highPass = row.highPass.get();
+      auto* slope = row.slope.get();
+      auto applyHighPass = [this, id, highPass, slope] {
+        const int hz = highPass->getSelectedId() > 1 ? highPass->getSelectedId() : 0;
+        slope->setEnabled(hz > 0);
+        proc_.setBusHighPass(id, static_cast<float>(hz), slope->getSelectedId());
+        if (onChanged) onChanged();
+      };
+      row.highPass->onChange = applyHighPass;
+      row.slope->onChange = applyHighPass;
       addAndMakeVisible(*row.label);
       addAndMakeVisible(*row.crossover);
       addAndMakeVisible(*row.sub);
+      addAndMakeVisible(*row.highPass);
+      addAndMakeVisible(*row.slope);
       rows_.push_back(std::move(row));
     }
-    setSize(460, 12 + kRow + kGap + static_cast<int>(rows_.size()) * (kRow + 4) + 64);
+    setSize(800, 12 + kRow + kGap + static_cast<int>(rows_.size()) * (kRow + 4) + 64);
   }
   void resized() override {
     auto r = getLocalBounds().reduced(12, 6);
-    heading_.setBounds(r.removeFromTop(kRow));
+    {
+      auto head = r.removeFromTop(kRow);
+      heading_.setBounds(head.removeFromLeft(120 + 110 + kGap + 200));
+      head.removeFromLeft(kGap * 3);
+      highPassHeading_.setBounds(head);
+    }
     r.removeFromTop(kGap);
     for (auto& row : rows_) {
       auto line = r.removeFromTop(kRow);
@@ -4268,11 +4310,16 @@ public:
       row.crossover->setBounds(line.removeFromLeft(110).reduced(0, 1));
       line.removeFromLeft(kGap);
       row.sub->setBounds(line.removeFromLeft(200).reduced(0, 1));
+      line.removeFromLeft(kGap * 3);
+      row.highPass->setBounds(line.removeFromLeft(100).reduced(0, 1));
+      line.removeFromLeft(kGap);
+      row.slope->setBounds(line.removeFromLeft(150).reduced(0, 1));
     }
   }
 
 private:
   static constexpr int kFrequencies[] = {40, 60, 80, 100, 120, 150, 200};
+  static constexpr int kHighPass[] = {20, 25, 30, 40, 50, 60, 80, 100, 120, 150, 200, 250, 300};
   struct BassSetting {
     int hz = 0;
     int sub = -1;
@@ -4287,10 +4334,214 @@ private:
     std::unique_ptr<juce::Label> label;
     std::unique_ptr<juce::ComboBox> crossover;
     std::unique_ptr<juce::ComboBox> sub;
+    std::unique_ptr<juce::ComboBox> highPass;
+    std::unique_ptr<juce::ComboBox> slope;
   };
   MasterpieceProcessor& proc_;
-  juce::Label heading_;
+  juce::Label heading_, highPassHeading_;
   std::vector<Row> rows_;
+};
+
+// One output's EQ (#1188): the ten bands of the organ's voicing EQ, with
+// their frequencies and widths, and a gain, for the speaker on that output.
+// The curve over the faders is the EQ's, with the output's high-pass in it.
+// A fader moved is heard at once and turns the EQ on; off or flat, the
+// output is not filtered.
+class OutputEqPanel final : public juce::Component {
+public:
+  OutputEqPanel(MasterpieceProcessor& p, int busId) : proc_(p) {
+    addAndMakeVisible(heading_);
+    styleLabel(heading_, TRANS("Output EQ"));
+    addAndMakeVisible(output_);
+    output_.setTooltip(TRANS("The output whose EQ is shown"));
+    for (const auto& b : proc_.mixer().buses) output_.addItem(outputName(proc_.mixer(), b.id.value), b.id.value);
+    output_.setSelectedId(busId > 0 ? busId : 1, juce::dontSendNotification);
+    output_.onChange = [this] { showValues(); };
+    addAndMakeVisible(on_);
+    on_.setTooltip(TRANS("A correction for the speaker on this output, after what it sends to the other outputs"));
+    on_.onClick = [this] { apply(); };
+    addAndMakeVisible(flat_);
+    flat_.setTooltip(TRANS("Every band back to 0 dB, at the frequency and width it came with"));
+    flat_.onClick = [this] {
+      const bool on = on_.getToggleState();
+      VoicingEqSettings eq;
+      eq.on = on;
+      show(eq);
+      apply();
+    };
+    auto style = [this](juce::Slider& sl, juce::Colour colour) {
+      sl.setSliderStyle(juce::Slider::LinearVertical);
+      sl.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 52, 18);
+      sl.setRange(-VoicingEqSettings::kMaxDb, VoicingEqSettings::kMaxDb, 0.5);
+      sl.setDoubleClickReturnValue(true, 0.0);
+      sl.setTextValueSuffix(" dB");
+      const double m = VoicingEqSettings::kMaxDb;
+      styleFader(sl, {-m, -m * 0.5, 0.0, m * 0.5, m}, 0.0, colour);
+      sl.onValueChange = [this] {
+        on_.setToggleState(true, juce::dontSendNotification);
+        apply();
+      };
+      addAndMakeVisible(sl);
+    };
+    auto knob = [this](juce::Slider& k, double lo, double hi, double mid, double home, const juce::String& tip) {
+      k.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+      k.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 52, 16);
+      k.setLookAndFeel(&FaderLook::shared());
+      k.setColour(juce::Slider::thumbColourId, fader::kGroup);
+      k.setRange(lo, hi, 0.0);
+      k.setSkewFactorFromMidPoint(mid);
+      k.setDoubleClickReturnValue(true, home);
+      k.setTooltip(tip);
+      k.onValueChange = [this] {
+        on_.setToggleState(true, juce::dontSendNotification);
+        apply();
+      };
+      addAndMakeVisible(k);
+    };
+    for (size_t i = 0; i < static_cast<size_t>(VoicingEqSettings::kBands); ++i) {
+      style(bands_[i], fader::kChannel);
+      auto& f = hz_[i];
+      knob(f, VoicingEqSettings::kMinHz, VoicingEqSettings::kMaxHz, 632.0, VoicingEqSettings::kFrequencies[i],
+           TRANS("The band's frequency. Double-click for the frequency it came with."));
+      f.textFromValueFunction = [](double v) {
+        if (v >= 1000.0)
+          return juce::String(v / 1000.0, v >= 10000.0 ? 1 : 2).trimCharactersAtEnd("0").trimCharactersAtEnd(".") + "k";
+        return juce::String(v, v < 100.0 ? 1 : 0).upToFirstOccurrenceOf(".0", false, false);
+      };
+      f.valueFromTextFunction = [](const juce::String& t) {
+        const auto v = t.trim().toLowerCase().removeCharacters(" hz");
+        return v.endsWithChar('k') ? v.dropLastCharacters(1).getDoubleValue() * 1000.0 : v.getDoubleValue();
+      };
+      auto& w = q_[i];
+      knob(w, VoicingEqSettings::kMinQ, VoicingEqSettings::kMaxQ, VoicingEqSettings::kDefaultQ,
+           VoicingEqSettings::kDefaultQ,
+           i == 0 || i + 1 == static_cast<size_t>(VoicingEqSettings::kBands)
+               ? TRANS("The shelf's slope as a Q: 1.4 the steepest, less a gentler slope. Double-click for 1.4.")
+               : TRANS("The band's width as a Q: more is narrower. Double-click for 1.4."));
+      w.textFromValueFunction = [](double v) { return "Q " + juce::String(v, 1); };
+      w.valueFromTextFunction = [](const juce::String& t) {
+        return t.trim().toLowerCase().removeCharacters("q ").getDoubleValue();
+      };
+    }
+    style(gain_, fader::kMaster);
+    addAndMakeVisible(gainName_);
+    styleLabel(gainName_, TRANS("Gain"));
+    gainName_.setJustificationType(juce::Justification::centred);
+    showValues();
+    setSize(720, 470);
+  }
+  ~OutputEqPanel() override {
+    for (auto& k : hz_) k.setLookAndFeel(nullptr);
+    for (auto& k : q_) k.setLookAndFeel(nullptr);
+  }
+
+  void resized() override {
+    auto r = getLocalBounds().reduced(12);
+    auto top = r.removeFromTop(kRow);
+    heading_.setBounds(top.removeFromLeft(100));
+    output_.setBounds(top.removeFromLeft(200).reduced(0, 1));
+    top.removeFromLeft(kGap);
+    on_.setBounds(top.removeFromLeft(70));
+    flat_.setBounds(top.removeFromRight(80).reduced(0, 1));
+    r.removeFromTop(kGap);
+    curveArea_ = r.removeFromTop(120);
+    r.removeFromTop(kGap);
+    const int columns = VoicingEqSettings::kBands + 1;
+    const int w = r.getWidth() / columns;
+    constexpr int kKnob = 40;
+    auto knobs = r.removeFromTop(2 * kKnob + 4);
+    for (int i = 0; i < columns; ++i) {
+      auto col = r.withX(r.getX() + i * w).withWidth(w);
+      auto head = knobs.withX(knobs.getX() + i * w).withWidth(w);
+      if (i < VoicingEqSettings::kBands) {
+        hz_[static_cast<size_t>(i)].setBounds(head.removeFromTop(kKnob).reduced(2, 0));
+        head.removeFromTop(4);
+        q_[static_cast<size_t>(i)].setBounds(head.removeFromTop(kKnob).reduced(2, 0));
+        bands_[static_cast<size_t>(i)].setBounds(col.reduced(2, 0));
+      } else {
+        gainName_.setBounds(head.removeFromBottom(20));
+        gain_.setBounds(col.reduced(2, 0));
+      }
+    }
+  }
+
+  // The EQ's curve on +-18 dB, 20 Hz to 20 kHz on a log scale, with the
+  // output's high-pass; grey while the EQ is off, the high-pass still drawn.
+  void paint(juce::Graphics& g) override {
+    g.fillAll(juce::Colour(0xff15171c));
+    const auto a = curveArea_.toFloat();
+    g.setColour(juce::Colour(0xff1f232b));
+    g.fillRoundedRectangle(a, 4.0f);
+    const auto xOfHz = [&](double hz) { return a.getX() + a.getWidth() * static_cast<float>(std::log10(hz / 20.0) / 3.0); };
+    const auto yOf = [&](double db) {
+      return a.getBottom() - static_cast<float>(juce::jlimit(0.0, 1.0, (db + 18.0) / 36.0)) * a.getHeight();
+    };
+    g.setColour(juce::Colour(0xff2c313b));
+    for (double hz : {100.0, 1000.0, 10000.0}) g.drawVerticalLine(juce::roundToInt(xOfHz(hz)), a.getY(), a.getBottom());
+    for (double db : {-12.0, 12.0}) g.drawHorizontalLine(juce::roundToInt(yOf(db)), a.getX(), a.getRight());
+    g.setColour(juce::Colour(0xff3a4150));
+    g.drawHorizontalLine(juce::roundToInt(yOf(0.0)), a.getX(), a.getRight());
+    g.setColour(juce::Colour(0xff6a7180));
+    g.setFont(juce::FontOptions(11.0f));
+    static const std::pair<double, const char*> kMarks[] = {{100.0, "100"}, {1000.0, "1k"}, {10000.0, "10k"}};
+    for (const auto& [hz, text] : kMarks)
+      g.drawText(text, juce::Rectangle<float>(xOfHz(hz) + 2.0f, a.getBottom() - 14.0f, 30.0f, 12.0f),
+                 juce::Justification::left);
+    VoicingEqSettings eq = shown();
+    const bool on = eq.on;
+    eq.on = true;
+    const BusHighPass* hp = proc_.mixer().highPassFor(BusId{busId()});
+    const int columns = juce::jmax(2, juce::roundToInt(a.getWidth()));
+    juce::Path curve;
+    for (int c = 0; c < columns; ++c) {
+      const double hz = 20.0 * std::pow(1000.0, static_cast<double>(c) / (columns - 1));
+      double db = on ? VoicingEq::responseDb(eq, hz) : 0.0;
+      if (hp != nullptr) db += OutputHighPass::responseDb(*hp, hz);
+      const float x = a.getX() + a.getWidth() * static_cast<float>(c) / (columns - 1);
+      if (c == 0) curve.startNewSubPath(x, yOf(db));
+      else curve.lineTo(x, yOf(db));
+    }
+    g.setColour(on ? juce::Colour(0xffe8eaee) : juce::Colour(0xff8a91a0));
+    g.strokePath(curve, juce::PathStrokeType(1.5f));
+  }
+
+private:
+  int busId() const { return output_.getSelectedId() > 0 ? output_.getSelectedId() : 1; }
+  VoicingEqSettings shown() const {
+    VoicingEqSettings eq;
+    eq.on = on_.getToggleState();
+    for (size_t i = 0; i < bands_.size(); ++i) {
+      eq.bandsDb[i] = bands_[i].getValue();
+      eq.hz[i] = hz_[i].getValue();
+      eq.q[i] = q_[i].getValue();
+    }
+    eq.gainDb = gain_.getValue();
+    return eq;
+  }
+  void show(const VoicingEqSettings& eq) {
+    on_.setToggleState(eq.on, juce::dontSendNotification);
+    for (size_t i = 0; i < bands_.size(); ++i) {
+      bands_[i].setValue(eq.bandsDb[i], juce::dontSendNotification);
+      hz_[i].setValue(eq.hz[i], juce::dontSendNotification);
+      q_[i].setValue(eq.q[i], juce::dontSendNotification);
+    }
+    gain_.setValue(eq.gainDb, juce::dontSendNotification);
+    repaint();
+  }
+  void showValues() { show(proc_.busEq(busId())); }
+  void apply() {
+    proc_.setBusEq(busId(), shown());
+    repaint(curveArea_);
+  }
+
+  MasterpieceProcessor& proc_;
+  juce::Label heading_, gainName_;
+  juce::ComboBox output_;
+  juce::ToggleButton on_{TRANS("On")};
+  juce::TextButton flat_{TRANS("Flat")};
+  std::array<juce::Slider, VoicingEqSettings::kBands> bands_, hz_, q_;
+  juce::Slider gain_;
+  juce::Rectangle<int> curveArea_;
 };
 
 // The rows of a box that grows with the pairs, in a viewport that scrolls
@@ -5293,6 +5544,13 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
                                                                        }),
                                            bass_.getScreenBounds(), nullptr);
   };
+  addAndMakeVisible(outputEq_);
+  outputEq_.setTooltip(TRANS("Each output's own EQ, for the speaker on it"));
+  outputEq_.onClick = [this] {
+    juce::CallOutBox::launchAsynchronously(std::make_unique<OutputEqPanel>(proc_, 1), outputEq_.getScreenBounds(),
+                                           nullptr);
+  };
+  bass_.setTooltip(TRANS("Each output's lows to a subwoofer, and its high-pass"));
   addAndMakeVisible(speakerGroups_);
   speakerGroups_.setTooltip(TRANS("Outputs that share the pipes sent to them, note by note"));
   speakerGroups_.onClick = [this] {
@@ -5919,7 +6177,8 @@ void MixerPanel::resized() {
 
   row = r.removeFromTop(kRow);
   for (auto [b, w] : std::initializer_list<std::pair<juce::Button*, int>>{
-           {&channels_, 110}, {&speakerGroups_, 140}, {&routing_, 130}, {&bass_, 160}, {&spread_, 170}, {&reset_, 150},
+           {&channels_, 110}, {&speakerGroups_, 140}, {&routing_, 130}, {&outputEq_, 110}, {&bass_, 180},
+           {&spread_, 170}, {&reset_, 150},
            {&save_, 160}}) {
     b->setBounds(row.removeFromLeft(w).reduced(0, 1));
     row.removeFromLeft(6);

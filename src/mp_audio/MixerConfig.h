@@ -17,6 +17,8 @@
 // per sample, and the fast loop must be able to test it without audio.
 #pragma once
 #include "AudioGraph.h"
+#include "OutputHighPass.h"
+#include "VoicingEq.h"
 
 #include <algorithm>
 #include <string>
@@ -47,6 +49,13 @@ struct BusBass {
   bool active() const { return crossoverHz > 0.0f && subChannel >= 0; }
 };
 
+// An output's own EQ (#1188): the ten bands of the organ's voicing EQ, for
+// the speaker on that output. Heard only while it is on and not flat; kept
+// while it is on or shaped, so a band moved and the EQ turned off comes back
+// as it was.
+inline bool busEqHeard(const VoicingEqSettings& s) { return s.on && !s.flat(); }
+inline bool busEqKept(const VoicingEqSettings& s) { return s.on || !s.flat() || !s.shapeAsDefault(); }
+
 // One rank's routing, plus the buses and groups it can reach.
 struct MixerConfig {
   std::vector<MixerBus> buses;
@@ -59,6 +68,18 @@ struct MixerConfig {
   // Indexed by BusId.value as the rooms are: a bus with no entry has none.
   std::unordered_map<int, BusBass> busBass;
 
+  // Indexed by BusId.value as the rooms are: an output with no entry has no
+  // EQ and no high-pass (#1188).
+  std::unordered_map<int, VoicingEqSettings> busEq;
+  std::unordered_map<int, BusHighPass> busHighPass;
+  const VoicingEqSettings* eqFor(BusId id) const {
+    const auto it = busEq.find(id.value);
+    return it == busEq.end() ? nullptr : &it->second;
+  }
+  const BusHighPass* highPassFor(BusId id) const {
+    const auto it = busHighPass.find(id.value);
+    return it == busHighPass.end() ? nullptr : &it->second;
+  }
   const BusBass* bassFor(BusId id) const {
     const auto it = busBass.find(id.value);
     return it == busBass.end() ? nullptr : &it->second;

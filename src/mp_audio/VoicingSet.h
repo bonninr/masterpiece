@@ -26,10 +26,9 @@ namespace mp {
 struct PipeVoicing {
   float gainDb = 0.0f;
   float tuningCents = 0.0f;
-  // The EQ: a high shelf and a low shelf (RankEq.h). Heard for a rank and a
-  // division, filtered once per group of ranks. A single pipe's are stored
-  // and shown, and not heard: a pipe of its own would need a filter of its
-  // own.
+  // The EQ: a high shelf and a low shelf (RankEq.h). A rank's and a
+  // division's are filtered once per group of ranks; a single pipe's by its
+  // own voice, from its next note, and only on a pipe that has them (#1188).
   float brightnessDb = 0.0f;
   float bassDb = 0.0f;
   // Where it stands, heard for a rank and a division as the EQ is: the pan,

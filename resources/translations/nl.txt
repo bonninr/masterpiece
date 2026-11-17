@@ -553,7 +553,6 @@ countries: nl be sr
 "Slot %1  -  %2 rank(s), %3 pipe(s) adjusted" = "Geheugen %1  -  %2 pijpenrij(en), %3 pijp(en) aangepast"
 "takes effect on the next note" = "werkt vanaf de volgende noot"
 "bass to %1" = "bas naar %1"
-"Bass management..." = "Basbeheer..."
 "Bass management" = "Basbeheer"
 "Subwoofer on %1" = "Subwoofer op %1"
 "The folders Masterpiece writes to, the audio, the organ and its files" = "De mappen waarin Masterpiece schrijft, de audio, het orgel en zijn bestanden"

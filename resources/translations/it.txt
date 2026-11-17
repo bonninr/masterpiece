@@ -554,7 +554,6 @@ countries: it ch sm va
 "Slot %1  -  %2 rank(s), %3 pipe(s) adjusted" = "Posizione %1  -  %2 fila/e, %3 canna/e regolata/e"
 "takes effect on the next note" = "ha effetto dalla nota successiva"
 "bass to %1" = "bassi su %1"
-"Bass management..." = "Gestione dei bassi..."
 "Bass management" = "Gestione dei bassi"
 "Subwoofer on %1" = "Subwoofer su %1"
 "The folders Masterpiece writes to, the audio, the organ and its files" = "Le cartelle in cui scrive Masterpiece, l'audio, l'organo e i suoi file"

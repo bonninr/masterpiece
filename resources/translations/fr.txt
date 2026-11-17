@@ -554,7 +554,6 @@ countries: fr be ca ch lu mc
 "Slot %1  -  %2 rank(s), %3 pipe(s) adjusted" = "Mémoire %1  -  %2 rang(s), %3 tuyau(x) modifié(s)"
 "takes effect on the next note" = "prend effet à la note suivante"
 "bass to %1" = "basses sur %1"
-"Bass management..." = "Gestion des basses..."
 "Bass management" = "Gestion des basses"
 "Subwoofer on %1" = "Caisson de basses sur %1"
 "The folders Masterpiece writes to, the audio, the organ and its files" = "Les dossiers où Masterpiece écrit, l'audio, l'orgue et ses fichiers"

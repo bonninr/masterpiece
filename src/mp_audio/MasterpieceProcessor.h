@@ -137,6 +137,17 @@ public:
   // off) and the device channel of the subwoofer, counted from 0. Kept with
   // the pairs, in the organ's settings and in the saved defaults.
   void setBusBass(int busId, float crossoverHz, int subChannel);
+  // An output's own EQ (#1188), the ten bands of the voicing EQ for the
+  // speaker on it; a fader moved is heard at once. Kept with the outputs, the
+  // machine's. Off or flat, the output is not filtered at all.
+  void setBusEq(int busId, const VoicingEqSettings& eq);
+  VoicingEqSettings busEq(int busId) const {
+    const auto* e = mixer_.eqFor(BusId{busId});
+    return e != nullptr ? *e : VoicingEqSettings{};
+  }
+  // An output's high-pass (#1188): 20-300 Hz, 0 for off, 12 or 24 dB an
+  // octave. Kept with the outputs, the machine's.
+  void setBusHighPass(int busId, float hz, int slope);
   // The output pairs, each change under the audio lock. The count keeps each
   // remaining pair's channels; a new pair takes the two after the highest in
   // use. A rank sent to a pair or a speaker group that is gone goes to pair 1.
@@ -3033,6 +3044,14 @@ private:
   // Bass management per dense bus, built for the buses that have it on.
   std::vector<std::unique_ptr<BassManager>> busBass_;
   void refreshBusBass();
+  // The EQ and the high-pass per dense bus (#1188), built for the buses
+  // that have them; null for the rest, which are then not filtered.
+  std::vector<std::unique_ptr<VoicingEq>> busEq_;
+  std::vector<int> busEqIds_;  // the bus id each of busEq_ was made for
+  std::vector<std::unique_ptr<OutputHighPass>> busHighPass_;
+  void refreshBusEq();
+  void refreshBusHighPass();
+  bool anyBusFilter() const;
   // Whether any bus has its own channels, or bass managed to a channel the
   // output has: then the buses are rendered one by one to where they go.
   bool needsRoutedOutput(int numCh) const;
