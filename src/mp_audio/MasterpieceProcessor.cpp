@@ -11062,6 +11062,12 @@ int MasterpieceProcessor::pistonLamp(MidiTargetKind kind, Id id) const {
     case MidiTargetKind::PlayerGeneralCancel: return cancelLampSamples_.load(std::memory_order_relaxed) > 0 ? 1 : 0;
     case MidiTargetKind::PedalCombinationsCoupled: return pedalCoupled_.load() ? 1 : 0;
     case MidiTargetKind::MetronomeOn: return metronome_.enabled() ? 1 : 0;
+    // The digit that ends the number of the frame shown (#1172); none before
+    // the sequencer has been at a frame.
+    case MidiTargetKind::StepperDigit: {
+      const int frame = player_.frame();
+      return frame >= 1 && PlayerCombinations::shownNumber(frame) % 10 == static_cast<int>(id) ? 1 : 0;
+    }
     default: return -1;
   }
 }

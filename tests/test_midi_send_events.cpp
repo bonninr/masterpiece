@@ -221,6 +221,78 @@ public:
 
 MidiSendCancelLampTest midiSendCancelLampTest;
 
+// The sequencer's digits send as GrandOrgue's do (#1172): the digit that ends
+// the number of the frame shown is lit, and only that one.
+class MidiSendStepperDigitTest final : public mp::test::Test {
+public:
+  MidiSendStepperDigitTest() : Test("functional.midi.send-stepper-digit", Category::Functional) {}
+
+  void run() override {
+    MP_CHECK(mp::MidiMap::sendsOnOff(K::StepperDigit) && mp::MidiMap::hasSendState(K::StepperDigit),
+             "a digit has a Send tab");
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-send-stepper-digit");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const auto previous = mp::dataFolder();
+    mp::setDataFolder(dir);
+    {
+      const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+      mp::MasterpieceProcessor proc;
+      proc.prepareToPlay(48000.0, 256);
+      MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads");
+      std::vector<juce::MidiMessage> sent;
+      proc.outgoingProbe = [&sent](const juce::MidiBuffer& b) {
+        for (const auto meta : b) sent.push_back(meta.getMessage());
+      };
+      juce::AudioBuffer<float> buf(2, 256);
+      auto blocks = [&](int n) {
+        for (int i = 0; i < n; ++i) {
+          juce::MidiBuffer m;
+          buf.clear();
+          proc.processBlock(buf, m);
+        }
+      };
+      // A console's LED by each digit: notes 70 to 79 on channel 2.
+      for (int d = 0; d < 10; ++d) {
+        auto s = lamp(K::StepperDigit, mp::MidiSourceKind::Note, 70 + d);
+        s.noteOff = true;
+        proc.setObjectSends(K::StepperDigit, static_cast<mp::Id>(d), {s});
+      }
+      blocks(2);
+      auto lit = [&sent](int number) {
+        int state = -1;
+        for (const auto& m : sent)
+          if (m.getRawDataSize() == 3 && (m.getRawData()[0] & 0xEF) == 0x81 && m.getRawData()[1] == number)
+            state = m.isNoteOn() ? 1 : 0;
+        return state;
+      };
+      MP_CHECK(lit(70) == 0 && lit(73) == 0, "before any frame, every digit is dark");
+
+      // Frames 001 to 012 stored with Set on, then recalled with it off.
+      proc.setCaptureMode(true);
+      for (int f = 2; f <= 13; ++f) proc.stepperGoto(f);
+      proc.setCaptureMode(false);
+      sent.clear();
+      MP_CHECK(proc.stepperGoto(4), "frame 003 recalls");
+      blocks(2);
+      MP_CHECK(lit(73) == 1, "its digit 3 lights");
+      sent.clear();
+      MP_CHECK(proc.stepperDigit(7), "digit 7 recalls frame 007");
+      blocks(2);
+      MP_CHECK(lit(77) == 1 && lit(73) == 0, "7 lights and 3 goes dark");
+      sent.clear();
+      MP_CHECK(proc.stepperGoto(12), "frame 011 recalls");
+      blocks(2);
+      MP_CHECK(lit(71) == 1 && lit(77) == 0, "frame 011 lights digit 1, as 001 does");
+      MP_CHECK(lit(70) == -1 && lit(72) == -1, "the digits that stay dark send nothing again");
+    }
+    mp::setDataFolder(previous);
+    dir.deleteRecursively();
+  }
+};
+
+MidiSendStepperDigitTest midiSendStepperDigitTest;
+
 }  // namespace
 
 #endif

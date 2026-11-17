@@ -972,6 +972,9 @@ bool MidiMap::sendsOnOff(MidiTargetKind k) {
     case MidiTargetKind::Setter:
     case MidiTargetKind::PedalCombinationsCoupled:
     case MidiTargetKind::MetronomeOn:
+    // The sequencer's digit whose frame is shown, as GrandOrgue lights it:
+    // 4 while frame 004, 014 or 024 is the current one (#1172).
+    case MidiTargetKind::StepperDigit:
       return true;
     default:
       return false;
