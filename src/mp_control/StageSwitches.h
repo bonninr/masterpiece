@@ -43,6 +43,7 @@ public:
   // Also disengages the previous step of the same control before engaging a
   // new one: a crescendo's steps are alternatives, not an accumulation, and
   // leaving the old one latched would stop the shoe from ever firing it again.
+  // Rows at the same threshold are one step and engage together.
   void moveControl(Id controlId, int fromValue, int toValue,
                    std::vector<Change>& out);
 
@@ -79,8 +80,15 @@ private:
   const OrganModel* model_ = nullptr;
   // Rows per control, sorted by threshold so a sweep can walk them in order.
   std::unordered_map<Id, std::vector<ContinuousControlStageSwitch>> rows_;
-  // The switch each control most recently engaged through a stage row.
-  std::unordered_map<Id, Id> engagedStep_;
+  // The step each control most recently engaged through its stage rows: the
+  // threshold, and every switch engaged there. Rows sharing a threshold are
+  // one step: Alessandria's load sequence engages four init switches at 127
+  // on two controls, and all four stay engaged (#1183).
+  struct Step {
+    int value = 0;
+    std::vector<Id> switches;
+  };
+  std::unordered_map<Id, Step> engagedStep_;
   size_t total_ = 0;
 };
 

@@ -65,7 +65,8 @@ size_t StageSwitchBank::currentStep(Id controlId) const {
   for (const auto& row : it->second) {
     if (!row.engageWhenIncreasing) continue;
     ++n;
-    if (row.controlledSwitchId == engaged->second) return n;
+    if (!engaged->second.switches.empty() && row.controlledSwitchId == engaged->second.switches.front())
+      return n;
   }
   return 0;
 }
@@ -108,16 +109,24 @@ void StageSwitchBank::moveControl(Id controlId, int fromValue, int toValue,
     // Engage wins when a row claims both, which the crescendo rows do: they
     // mean "this step is the one now", and the step being left is dealt with
     // below rather than by the row that is arriving.
+    // Rows sharing a threshold are one step: each engages beside the others.
     if (engage) {
-      const auto prev = engagedStep_.find(controlId);
-      if (prev != engagedStep_.end() && prev->second != row.controlledSwitchId)
-        out.push_back({prev->second, false});
-      engagedStep_[controlId] = row.controlledSwitchId;
+      Step& step = engagedStep_[controlId];
+      if (!step.switches.empty() && step.value != row.value) {
+        for (Id was : step.switches)
+          if (was != row.controlledSwitchId) out.push_back({was, false});
+        step.switches.clear();
+      }
+      step.value = row.value;
+      if (std::find(step.switches.begin(), step.switches.end(), row.controlledSwitchId) == step.switches.end())
+        step.switches.push_back(row.controlledSwitchId);
       out.push_back({row.controlledSwitchId, true});
     } else if (disengage) {
-      const auto prev = engagedStep_.find(controlId);
-      if (prev != engagedStep_.end() && prev->second == row.controlledSwitchId)
-        engagedStep_.erase(prev);
+      if (const auto prev = engagedStep_.find(controlId); prev != engagedStep_.end()) {
+        auto& sw = prev->second.switches;
+        sw.erase(std::remove(sw.begin(), sw.end(), row.controlledSwitchId), sw.end());
+        if (sw.empty()) engagedStep_.erase(prev);
+      }
       out.push_back({row.controlledSwitchId, false});
     }
   };
