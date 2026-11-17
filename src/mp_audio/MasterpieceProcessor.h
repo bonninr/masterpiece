@@ -145,9 +145,14 @@ public:
     const auto* e = mixer_.eqFor(BusId{busId});
     return e != nullptr ? *e : VoicingEqSettings{};
   }
-  // An output's high-pass (#1188): 20-300 Hz, 0 for off, 12 or 24 dB an
-  // octave. Kept with the outputs, the machine's.
-  void setBusHighPass(int busId, float hz, int slope);
+  // An output's high-pass, low-pass, delay and polarity (#1188): a crossover
+  // in software, the bands the designer's. Kept with the outputs, the
+  // machine's; all off, the output is not touched.
+  void setBusFilters(int busId, const BusFilters& filters);
+  BusFilters busFilters(int busId) const {
+    const auto* f = mixer_.filtersFor(BusId{busId});
+    return f != nullptr ? *f : BusFilters{};
+  }
   // The output pairs, each change under the audio lock. The count keeps each
   // remaining pair's channels; a new pair takes the two after the highest in
   // use. A rank sent to a pair or a speaker group that is gone goes to pair 1.
@@ -3044,13 +3049,13 @@ private:
   // Bass management per dense bus, built for the buses that have it on.
   std::vector<std::unique_ptr<BassManager>> busBass_;
   void refreshBusBass();
-  // The EQ and the high-pass per dense bus (#1188), built for the buses
-  // that have them; null for the rest, which are then not filtered.
+  // The EQ and the filters per dense bus (#1188), built for the buses that
+  // have them; null for the rest, which are then not touched.
   std::vector<std::unique_ptr<VoicingEq>> busEq_;
   std::vector<int> busEqIds_;  // the bus id each of busEq_ was made for
-  std::vector<std::unique_ptr<OutputHighPass>> busHighPass_;
+  std::vector<std::unique_ptr<OutputFilters>> busFilters_;
   void refreshBusEq();
-  void refreshBusHighPass();
+  void refreshBusFilters();
   bool anyBusFilter() const;
   // Whether any bus has its own channels, or bass managed to a channel the
   // output has: then the buses are rendered one by one to where they go.

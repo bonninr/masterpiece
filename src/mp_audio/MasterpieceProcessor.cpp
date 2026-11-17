@@ -640,7 +640,7 @@ void MasterpieceProcessor::refreshMixerBuses() {  mixBusOrder_.clear();
   refreshBusReverbs();
   refreshBusBass();
   refreshBusEq();
-  refreshBusHighPass();
+  refreshBusFilters();
   if (const int wanted = outputChannelsWanted(); wanted != lastOutputChannelsWanted_) {
     lastOutputChannelsWanted_ = wanted;
     if (onOutputChannelsWanted) onOutputChannelsWanted();
@@ -759,25 +759,24 @@ void MasterpieceProcessor::refreshBusEq() {
   }
 }
 
-void MasterpieceProcessor::refreshBusHighPass() {
-  busHighPass_.clear();
-  busHighPass_.resize(mixBusOrder_.size());
+void MasterpieceProcessor::refreshBusFilters() {
+  busFilters_.clear();
+  busFilters_.resize(mixBusOrder_.size());
   const double rate = sampleRate_ > 0.0 ? sampleRate_ : 48000.0;
   for (size_t i = 0; i < mixBusOrder_.size(); ++i) {
-    const BusHighPass* h = mixer_.highPassFor(mixBusOrder_[i]);
-    if (h == nullptr || !h->active()) continue;
-    auto f = std::make_unique<OutputHighPass>();
-    f->set(*h);
-    f->prepare(rate);
-    busHighPass_[i] = std::move(f);
+    const BusFilters* f = mixer_.filtersFor(mixBusOrder_[i]);
+    if (f == nullptr || !f->active()) continue;
+    auto made = std::make_unique<OutputFilters>();
+    made->prepare(*f, rate);
+    busFilters_[i] = std::move(made);
   }
 }
 
 bool MasterpieceProcessor::anyBusFilter() const {
   for (const auto& e : busEq_)
     if (e != nullptr) return true;
-  for (const auto& h : busHighPass_)
-    if (h != nullptr) return true;
+  for (const auto& f : busFilters_)
+    if (f != nullptr) return true;
   return false;
 }
 
@@ -1014,23 +1013,21 @@ void MasterpieceProcessor::setBusEq(int busId, const VoicingEqSettings& eq) {
   markMixerDirty();
 }
 
-void MasterpieceProcessor::setBusHighPass(int busId, float hz, int slope) {
+void MasterpieceProcessor::setBusFilters(int busId, const BusFilters& filters) {
+  const BusFilters f = filters.clamped();
   const AudioLock lock(*this);
-  BusHighPass h;
-  h.hz = BusHighPass::clampHz(hz);
-  h.slope = BusHighPass::clampSlope(slope);
-  if (h.active())
-    mixer_.busHighPass[busId] = h;
+  if (f.active())
+    mixer_.busFilters[busId] = f;
   else
-    mixer_.busHighPass.erase(busId);
-  refreshBusHighPass();
+    mixer_.busFilters.erase(busId);
+  refreshBusFilters();
   markMixerDirty();
 }
 
 bool MasterpieceProcessor::needsRoutedOutput(int numCh) const {
   if (anyBusOnItsOwnChannels(numCh)) return true;
-  // An output with an EQ or a high-pass of its own is rendered on its own,
-  // to be filtered before it reaches its channels (#1188).
+  // An output with an EQ or filters of its own is rendered on its own, to be
+  // filtered before it reaches its channels (#1188).
   if (anyBusFilter()) return true;
   for (size_t i = 0; i < busBass_.size() && i < mixBusOrder_.size(); ++i)
     if (busBass_[i] != nullptr)
@@ -1576,6 +1573,12 @@ void MasterpieceProcessor::renderMixBuses(juce::AudioBuffer<float>& output, int 
       // shows what the speaker is given. Null while it is off or flat.
       if (i < static_cast<int>(busEq_.size()) && busEq_[static_cast<size_t>(i)] != nullptr)
         busEq_[static_cast<size_t>(i)]->process(dest.getArrayOfWritePointers(), dest.getNumChannels(), numFrames);
+      // Its high-pass, low-pass, polarity and delay (#1188): the band its
+      // driver is given, so the meter shows that band. Before the bass
+      // management, whose subwoofer then has the same band's lows.
+      if (i < static_cast<int>(busFilters_.size()) && busFilters_[static_cast<size_t>(i)] != nullptr)
+        busFilters_[static_cast<size_t>(i)]->process(dest.getArrayOfWritePointers(), dest.getNumChannels(),
+                                                     numFrames);
       meterPair(i, dest, numFrames);
       // Its lows to the subwoofer's channel, when the output has it; the
       // highs go on to the pair.
@@ -1585,11 +1588,6 @@ void MasterpieceProcessor::renderMixBuses(juce::AudioBuffer<float>& output, int 
           busBass_[static_cast<size_t>(i)]->process(dest.getWritePointer(0),
                                                     dest.getNumChannels() > 1 ? dest.getWritePointer(1) : nullptr,
                                                     output.getWritePointer(bass->subChannel), numFrames);
-      // Its high-pass (#1188), last before its channels, after the
-      // subwoofer has taken its lows. Null while it is off.
-      if (i < static_cast<int>(busHighPass_.size()) && busHighPass_[static_cast<size_t>(i)] != nullptr)
-        busHighPass_[static_cast<size_t>(i)]->process(dest.getArrayOfWritePointers(), dest.getNumChannels(),
-                                                      numFrames);
       // An output with no channels of its own that plays into others is
       // heard through them only.
       const bool sendsOnly = ordered && busSends_[static_cast<size_t>(i)] != 0 &&
@@ -2809,7 +2807,7 @@ juce::String MasterpieceProcessor::settingsBody() const {
 
 bool MasterpieceProcessor::isMixerKey(const juce::String& key) {
   return key == "buses" || key == "busname" || key == "defaultroute" || key == "busir" || key == "busbass" ||
-         key == "buseq" || key == "bushp" || key == "groups";
+         key == "buseq" || key == "busfilt" || key == "groups";
 }
 
 juce::String MasterpieceProcessor::mixerLines() const {
@@ -2873,8 +2871,10 @@ juce::String MasterpieceProcessor::mixerLines() const {
       text << "busbass " << busId << " " << juce::String(b.crossoverHz, 0) << " " << b.subChannel << "\n";
     }
   }
-  // An output's EQ and high-pass (#1188): "buseq <busId> <the voicing EQ's
-  // line>", "bushp <busId> <hz> <slope>".
+  // An output's EQ and filters (#1188): "buseq <busId> <the voicing EQ's
+  // line>"; "busfilt <busId> <high-pass Hz> <type> <low-pass Hz> <type>
+  // <delay ms> <invert>", a frequency of 0 off, the types 0-3 as
+  // BusFilters::Type.
   {
     std::vector<int> ids;
     for (const auto& [busId, e] : mixer_.busEq)
@@ -2882,12 +2882,14 @@ juce::String MasterpieceProcessor::mixerLines() const {
     std::sort(ids.begin(), ids.end());
     for (int busId : ids) text << "buseq " << busId << " " << mixer_.busEq.at(busId).toLine() << "\n";
     ids.clear();
-    for (const auto& [busId, h] : mixer_.busHighPass)
-      if (h.active()) ids.push_back(busId);
+    for (const auto& [busId, f] : mixer_.busFilters)
+      if (f.active()) ids.push_back(busId);
     std::sort(ids.begin(), ids.end());
     for (int busId : ids) {
-      const auto& h = mixer_.busHighPass.at(busId);
-      text << "bushp " << busId << " " << juce::String(h.hz, 0) << " " << h.slope << "\n";
+      const auto& f = mixer_.busFilters.at(busId);
+      text << "busfilt " << busId << " " << juce::String(f.highPassHz, 1) << " " << f.highPassType << " "
+           << juce::String(f.lowPassHz, 1) << " " << f.lowPassType << " " << juce::String(f.delayMs, 2) << " "
+           << (f.invert ? 1 : 0) << "\n";
     }
   }
   if (!mixer_.groups.empty()) {
@@ -3009,13 +3011,18 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
       mixer_.busEq[busId] = e;
       refreshMixerBuses();
     }
-  } else if (key == "bushp") {
+  } else if (key == "busfilt") {
     const auto parts = juce::StringArray::fromTokens(val, " ", "");
-    if (parts.size() >= 3 && parts[0].getIntValue() > 0) {
-      BusHighPass h;
-      h.hz = BusHighPass::clampHz(parts[1].getFloatValue());
-      h.slope = BusHighPass::clampSlope(parts[2].getIntValue());
-      if (h.active()) mixer_.busHighPass[parts[0].getIntValue()] = h;
+    if (parts.size() >= 7 && parts[0].getIntValue() > 0) {
+      BusFilters f;
+      f.highPassHz = parts[1].getFloatValue();
+      f.highPassType = parts[2].getIntValue();
+      f.lowPassHz = parts[3].getFloatValue();
+      f.lowPassType = parts[4].getIntValue();
+      f.delayMs = parts[5].getFloatValue();
+      f.invert = parts[6].getIntValue() != 0;
+      f = f.clamped();
+      if (f.active()) mixer_.busFilters[parts[0].getIntValue()] = f;
       refreshMixerBuses();
     }
   } else if (key == "busbass") {

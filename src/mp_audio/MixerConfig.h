@@ -17,7 +17,7 @@
 // per sample, and the fast loop must be able to test it without audio.
 #pragma once
 #include "AudioGraph.h"
-#include "OutputHighPass.h"
+#include "OutputFilters.h"
 #include "VoicingEq.h"
 
 #include <algorithm>
@@ -69,16 +69,16 @@ struct MixerConfig {
   std::unordered_map<int, BusBass> busBass;
 
   // Indexed by BusId.value as the rooms are: an output with no entry has no
-  // EQ and no high-pass (#1188).
+  // EQ, and no filters, delay or inversion (#1188).
   std::unordered_map<int, VoicingEqSettings> busEq;
-  std::unordered_map<int, BusHighPass> busHighPass;
+  std::unordered_map<int, BusFilters> busFilters;
   const VoicingEqSettings* eqFor(BusId id) const {
     const auto it = busEq.find(id.value);
     return it == busEq.end() ? nullptr : &it->second;
   }
-  const BusHighPass* highPassFor(BusId id) const {
-    const auto it = busHighPass.find(id.value);
-    return it == busHighPass.end() ? nullptr : &it->second;
+  const BusFilters* filtersFor(BusId id) const {
+    const auto it = busFilters.find(id.value);
+    return it == busFilters.end() ? nullptr : &it->second;
   }
   const BusBass* bassFor(BusId id) const {
     const auto it = busBass.find(id.value);

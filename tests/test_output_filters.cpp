@@ -1,4 +1,4 @@
-// An output's EQ and high-pass, and a pipe's own shelves (#1188), measured
+// An output's EQ and crossover, and a pipe's own shelves (#1188), measured
 // from their spectra. The organ is synthetic: one rank whose sample is 36
 // sines spread on a log scale from 25 Hz to 16 kHz, each a whole number of
 // cycles over the loop. The same note is rendered with and without the
@@ -15,8 +15,8 @@
 
 #include "../src/mp_audio/MasterpieceProcessor.h"
 #include "../src/mp_audio/VoicingEq.h"
-#if __has_include("../src/mp_audio/OutputHighPass.h")
-#include "../src/mp_audio/OutputHighPass.h"
+#if __has_include("../src/mp_audio/OutputFilters.h")
+#include "../src/mp_audio/OutputFilters.h"
 #define MP_OUTPUT_FILTERS 1
 #endif
 
@@ -452,50 +452,151 @@ public:
 };
 static OutputEqSpectrumTest g_outputEqSpectrum;
 
-// The high-pass on an output: a Butterworth curve, 12 or 24 dB an octave,
-// -3 dB at its frequency; nothing filtered while it is off; with bass
-// management, after the subwoofer has taken its lows.
-class OutputHighPassSpectrumTest final : public mp::test::Test {
+// The crossover on an output: each filter's spectrum follows its own
+// figures; outputs fed by one through its sends, with Linkwitz-Riley edges
+// that meet, add back up flat in two ways and in three; at 12 dB an octave
+// one band inverted, or they cancel at the crossover; the delay is the
+// output to the sample, later; the inversion the output turned over; all
+// off, nothing is touched; with bass management, the subwoofer has the
+// output's band.
+class CrossoverSpectrumTest final : public mp::test::Test {
 public:
-  OutputHighPassSpectrumTest() : Test("functional.output.high-pass-spectrum", Category::Functional) {}
+  CrossoverSpectrumTest() : Test("functional.output.crossover-spectrum", Category::Functional) {}
   void run() override {
-    const BroadbandOrgan organ("mp-output-high-pass");
+    using F = mp::BusFilters;
+    const BroadbandOrgan organ("mp-output-crossover");
     mp::MasterpieceProcessor probe;
     Keep global(probe.globalSettingsFile());
     Keep organSettings(probe.settingsFileFor(organ.odf));
     global.file.getParentDirectory().createDirectory();
+    const auto filters = [](float hp, int hpType, float lp, int lpType) {
+      F f;
+      f.highPassHz = hp;
+      f.highPassType = hpType;
+      f.lowPassHz = lp;
+      f.lowPassType = lpType;
+      return f;
+    };
 
     const auto ref = render(organ.odf, 2, onePair);
-    for (const auto& [hz, slope] : std::vector<std::pair<float, int>>{{80.0f, 12}, {120.0f, 24}, {300.0f, 24}}) {
-      const auto filtered = render(organ.odf, 2, [&](mp::MasterpieceProcessor& p) {
+    struct Case {
+      std::string name;
+      F f;
+    };
+    const std::vector<Case> cases = {
+        {"high-pass-80-bw12", filters(80.0f, F::Butterworth12, 0.0f, 0)},
+        {"high-pass-120-lr24", filters(120.0f, F::LinkwitzRiley24, 0.0f, 0)},
+        {"low-pass-2500-lr24", filters(0.0f, 0, 2500.0f, F::LinkwitzRiley24)},
+        {"low-pass-300-bw24", filters(0.0f, 0, 300.0f, F::Butterworth24)},
+        {"band-200-3000-lr24", filters(200.0f, F::LinkwitzRiley24, 3000.0f, F::LinkwitzRiley24)},
+        {"band-500-8000-lr12", filters(500.0f, F::LinkwitzRiley12, 8000.0f, F::LinkwitzRiley12)},
+    };
+    for (const auto& c : cases) {
+      const auto out = render(organ.odf, 2, [&](mp::MasterpieceProcessor& p) {
         onePair(p);
-        p.setBusHighPass(1, hz, slope);
+        p.setBusFilters(1, c.f);
       });
-      mp::BusHighPass h;
-      h.hz = hz;
-      h.slope = slope;
-      const auto points =
-          response(ref[0], filtered[0], [&](double f) { return mp::OutputHighPass::responseDb(h, f); });
-      const std::string name = "high-pass-" + std::to_string(static_cast<int>(hz)) + "-" + std::to_string(slope);
-      keepForPlot(name, ref[0], filtered[0], points);
-      checkResponse("the high-pass at " + std::to_string(static_cast<int>(hz)) + " Hz, " + std::to_string(slope) +
-                        " dB an octave",
-                    points, 0.25, -40.0);
-      // -3 dB at its frequency, by the formula the curve is checked against.
-      MP_CHECK(std::fabs(mp::OutputHighPass::responseDb(h, hz) + 3.0103) < 0.01, "-3 dB at the corner");
+      const auto points = response(ref[0], out[0], [&](double hz) { return mp::OutputFilters::responseDb(c.f, hz); });
+      keepForPlot(c.name, ref[0], out[0], points);
+      checkResponse(c.name, points, 0.25, -40.0);
     }
+    MP_CHECK(std::fabs(mp::OutputFilters::responseDb(filters(1000.0f, F::Butterworth12, 0.0f, 0), 1000.0) + 3.0103) < 0.01,
+             "Butterworth: -3 dB at its frequency");
+    MP_CHECK(std::fabs(mp::OutputFilters::responseDb(filters(1000.0f, F::LinkwitzRiley24, 0.0f, 0), 1000.0) + 6.0206) < 0.01,
+             "Linkwitz-Riley: -6 dB at its frequency");
 
+    // All set and then all off: the organ to the last bit.
     const auto off = render(organ.odf, 2, [&](mp::MasterpieceProcessor& p) {
       onePair(p);
-      p.setBusHighPass(1, 80.0f, 24);
-      p.setBusHighPass(1, 0.0f, 24);
+      auto f = filters(80.0f, F::LinkwitzRiley24, 3000.0f, F::Butterworth12);
+      f.delayMs = 5.0f;
+      f.invert = true;
+      p.setBusFilters(1, f);
+      p.setBusFilters(1, F{});
     });
-    MP_CHECK(off == ref, "a high-pass turned off filters nothing");
+    MP_CHECK(off == ref, "a crossover set and taken off touches nothing");
 
-    // With bass management to channel 3 at 120 Hz and a high-pass at 40 Hz:
-    // the pair is the crossover's highs and then the high-pass; the
-    // subwoofer keeps everything under the crossover, the high-pass's lows
-    // included.
+    // Delay and polarity: the output to the sample.
+    {
+      F d;
+      d.delayMs = 10.0f;
+      const auto delayed = render(organ.odf, 2, [&](mp::MasterpieceProcessor& p) {
+        onePair(p);
+        p.setBusFilters(1, d);
+      });
+      const size_t shift = 480;
+      bool same = true;
+      for (size_t i = 0; i < ref[0].size(); ++i)
+        same = same && delayed[0][i] == (i < shift ? 0.0f : ref[0][i - shift]);
+      MP_CHECK(same, "10 ms of delay is the output 480 samples later, sample for sample");
+      F inv;
+      inv.invert = true;
+      const auto inverted = render(organ.odf, 2, [&](mp::MasterpieceProcessor& p) {
+        onePair(p);
+        p.setBusFilters(1, inv);
+      });
+      bool turned = true;
+      for (size_t i = 0; i < ref[0].size(); ++i) turned = turned && inverted[0][i] == -ref[0][i];
+      MP_CHECK(turned, "inverted, the output is turned over, sample for sample");
+    }
+
+    // A speaker of several ways: output 1 carries the rank and sends it to
+    // outputs 2 and 3; each output its band; the bands added together.
+    const auto ways = [&](const std::vector<F>& bands) {
+      const int n = static_cast<int>(bands.size());
+      return render(organ.odf, 2 * n, [&, n](mp::MasterpieceProcessor& p) {
+        p.setPairCount(n);
+        p.setRankRoutes({{201, mp::BusId{1}}});
+        std::vector<int> to;
+        for (int k = 2; k <= n; ++k) to.push_back(k);
+        if (!to.empty()) p.setOutputSends(1, to);
+        for (int k = 0; k < n; ++k) p.setBusFilters(k + 1, bands[static_cast<size_t>(k)]);
+      });
+    };
+    const auto summed = [](const Channels& out) {
+      std::vector<float> sum(out[0].size(), 0.0f);
+      for (size_t ch = 0; ch < out.size(); ch += 2)
+        for (size_t i = 0; i < sum.size(); ++i) sum[i] += out[ch][i];
+      return sum;
+    };
+    const auto refOne = ways({F{}});
+    const auto two = ways({filters(0.0f, 0, 1000.0f, F::LinkwitzRiley24), filters(1000.0f, F::LinkwitzRiley24, 0.0f, 0)});
+    const auto twoPoints = response(refOne[0], summed(two), [](double) { return 0.0; });
+    keepForPlot("sum-two-way-lr24", refOne[0], summed(two), twoPoints);
+    checkResponse("two ways, Linkwitz-Riley 24 at 1 kHz, added", twoPoints, 0.1);
+    checkResponse("the low way alone",
+                  response(refOne[0], two[0], [&](double hz) {
+                    return mp::OutputFilters::responseDb(filters(0.0f, 0, 1000.0f, F::LinkwitzRiley24), hz);
+                  }),
+                  0.25, -40.0);
+
+    const auto three = ways({filters(0.0f, 0, 200.0f, F::LinkwitzRiley24),
+                             filters(200.0f, F::LinkwitzRiley24, 3000.0f, F::LinkwitzRiley24),
+                             filters(3000.0f, F::LinkwitzRiley24, 0.0f, 0)});
+    const auto threePoints = response(refOne[0], summed(three), [](double) { return 0.0; });
+    keepForPlot("sum-three-way-lr24", refOne[0], summed(three), threePoints);
+    checkResponse("three ways, Linkwitz-Riley 24 at 200 Hz and 3 kHz, added", threePoints, 0.15);
+
+    auto upper12 = filters(1000.0f, F::LinkwitzRiley12, 0.0f, 0);
+    upper12.invert = true;
+    const auto twelve = ways({filters(0.0f, 0, 1000.0f, F::LinkwitzRiley12), upper12});
+    const auto twelvePoints = response(refOne[0], summed(twelve), [](double) { return 0.0; });
+    keepForPlot("sum-two-way-lr12-inverted", refOne[0], summed(twelve), twelvePoints);
+    checkResponse("two ways, Linkwitz-Riley 12 at 1 kHz, the upper inverted, added", twelvePoints, 0.1);
+    upper12.invert = false;
+    const auto notch = ways({filters(0.0f, 0, 1000.0f, F::LinkwitzRiley12), upper12});
+    double deepest = 0.0, at = 0.0;
+    for (const auto& pt : response(refOne[0], summed(notch), [](double) { return 0.0; }))
+      if (pt.measuredDb < deepest) {
+        deepest = pt.measuredDb;
+        at = pt.hz;
+      }
+    MP_CHECK(deepest < -20.0 && at > 800.0 && at < 1250.0,
+             "and not inverted, they cancel at the crossover: " + std::to_string(deepest) + " dB at " +
+                 std::to_string(at) + " Hz");
+
+    // With bass management to channel 3 at 120 Hz and a high-pass at 40 Hz on
+    // the output: the subwoofer has the output's band, under the crossover.
     const auto bassOnly = render(organ.odf, 3, [&](mp::MasterpieceProcessor& p) {
       onePair(p);
       p.setBusBass(1, 120.0f, 2);
@@ -503,35 +604,38 @@ public:
     const auto both = render(organ.odf, 3, [&](mp::MasterpieceProcessor& p) {
       onePair(p);
       p.setBusBass(1, 120.0f, 2);
-      p.setBusHighPass(1, 40.0f, 24);
+      p.setBusFilters(1, filters(40.0f, F::Butterworth24, 0.0f, 0));
     });
-    MP_CHECK(both[2] == bassOnly[2], "the subwoofer is as the crossover makes it");
-    mp::BusHighPass h40;
-    h40.hz = 40.0f;
-    h40.slope = 24;
-    checkResponse("the high-pass after the crossover",
-                  response(bassOnly[0], both[0], [&](double f) { return mp::OutputHighPass::responseDb(h40, f); }),
-                  0.25, -30.0, 25);
+    const auto hp40 = [&](double hz) {
+      return mp::OutputFilters::responseDb(filters(40.0f, F::Butterworth24, 0.0f, 0), hz);
+    };
+    checkResponse("the subwoofer, through the output's high-pass", response(bassOnly[2], both[2], hp40), 0.25, -30.0,
+                  8);
+    checkResponse("the output, through its high-pass", response(bassOnly[0], both[0], hp40), 0.25, -30.0, 25);
 
+    // Kept with the outputs, the machine's, and read back; values out of
+    // range brought in.
     mp::MasterpieceProcessor p;
     p.setPairCount(2);
-    p.setBusHighPass(2, 80.0f, 24);
-    p.setBusHighPass(1, 5.0f, 7);
-    MP_CHECK(p.mixer().highPassFor(mp::BusId{1}) != nullptr && p.mixer().highPassFor(mp::BusId{1})->hz == 20.0f &&
-                 p.mixer().highPassFor(mp::BusId{1})->slope == 12,
-             "a frequency under 20 Hz is 20 Hz, a slope other than 24 is 12");
+    auto kept = filters(200.0f, F::LinkwitzRiley24, 3000.0f, F::Butterworth12);
+    kept.delayMs = 1.25f;
+    kept.invert = true;
+    p.setBusFilters(2, kept);
+    p.setBusFilters(1, filters(5.0f, 9, 50000.0f, F::Butterworth24));
+    MP_CHECK(p.busFilters(1).highPassHz == 0.0f && p.busFilters(1).lowPassHz == 20000.0f &&
+                 p.busFilters(1).highPassType == F::LinkwitzRiley24,
+             "under 20 Hz is off, over 20 kHz is 20 kHz, an unknown type is Linkwitz-Riley 24");
     MP_CHECK(p.saveGlobalDefaults(), "the global file is written");
     const auto text = global.file.loadFileAsString();
-    MP_CHECK(text.contains("bushp 2 80 24") && text.contains("bushp 1 20 12"),
-             "the high-passes are saved with the outputs: " + text.toStdString());
+    MP_CHECK(text.contains("busfilt 2 200.0 3 3000.0 0 1.25 1") && text.contains("busfilt 1 0.0 3 20000.0 1 0.00 0"),
+             "the crossovers are saved with the outputs: " + text.toStdString());
     mp::MasterpieceProcessor next;
     next.loadGlobalDefaults();
-    const auto* back = next.mixer().highPassFor(mp::BusId{2});
-    MP_CHECK(back != nullptr && back->hz == 80.0f && back->slope == 24, "and come back");
+    MP_CHECK(next.busFilters(2) == kept, "and come back as they were");
     organ.root.deleteRecursively();
   }
 };
-static OutputHighPassSpectrumTest g_outputHighPassSpectrum;
+static CrossoverSpectrumTest g_crossoverSpectrum;
 
 // A pipe's own bass and treble shelves (#1188): heard on that pipe, by the
 // cookbook's shelves at 200 Hz and 3 kHz, the same as a rank's; a pipe
@@ -620,8 +724,11 @@ public:
       auto o = eq;
       o.on = false;
       p.setBusEq(1, o);
-      p.setBusHighPass(1, 80.0f, 24);
-      p.setBusHighPass(1, 0.0f, 24);
+      mp::BusFilters crossover;
+      crossover.highPassHz = 80.0f;
+      crossover.delayMs = 2.0f;
+      p.setBusFilters(1, crossover);
+      p.setBusFilters(1, mp::BusFilters{});
       mp::PipeVoicing level;  // a voicing, but no shelves
       level.gainDb = -1.0f;
       for (int r = 0; r < 8; ++r)
@@ -633,11 +740,15 @@ public:
       p.setBusEq(1, eq);
     });
     report("output EQ on", eqOn, plain);
-    const double hpOn = best(organ, [&](mp::MasterpieceProcessor& p) {
+    const double crossoverOn = best(organ, [&](mp::MasterpieceProcessor& p) {
       p.setPairCount(1);
-      p.setBusHighPass(1, 80.0f, 24);
+      mp::BusFilters band;
+      band.highPassHz = 200.0f;
+      band.lowPassHz = 3000.0f;
+      band.delayMs = 2.0f;
+      p.setBusFilters(1, band);
     });
-    report("high-pass on", hpOn, plain);
+    report("crossover band on", crossoverOn, plain);
     const double shelvesOn = best(organ, [&](mp::MasterpieceProcessor& p) {
       p.setPairCount(1);
       mp::PipeVoicing pv;
