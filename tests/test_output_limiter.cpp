@@ -514,11 +514,11 @@ public:
       p.mixer().buses.push_back(b);
     }
     MP_CHECK(p.outputChannelsWanted() == 8, "pairs up to channels 7 and 8 want eight");
-    juce::AudioProcessor::BusesLayout l48, l49;
-    l48.outputBuses.add(juce::AudioChannelSet::discreteChannels(48));
-    l49.outputBuses.add(juce::AudioChannelSet::discreteChannels(49));
-    MP_CHECK(p.checkBusesLayoutSupported(l48), "the engine takes 48 outputs, 24 pairs");
-    MP_CHECK(!p.checkBusesLayoutSupported(l49), "49 outputs are more than the engine takes");
+    juce::AudioProcessor::BusesLayout l64, l65;
+    l64.outputBuses.add(juce::AudioChannelSet::discreteChannels(64));
+    l65.outputBuses.add(juce::AudioChannelSet::discreteChannels(65));
+    MP_CHECK(p.checkBusesLayoutSupported(l64), "the engine takes 64 outputs");
+    MP_CHECK(!p.checkBusesLayoutSupported(l65), "65 outputs are more than the engine takes");
 
     organ.root.deleteRecursively();
   }
@@ -623,8 +623,11 @@ public:
                  std::to_string(pair));
     proc.releaseResources();
     MP_CHECK(proc.saveSettings(), "the organ's settings are saved");
-    MP_CHECK(proc.settingsFileFor(organ.odf).loadFileAsString().contains("busbass 1 200 2"),
-             "the organ's settings keep it");
+    proc.saveSettingsIfDirty();  // the machine's mixer, as the flush writes it
+    MP_CHECK(proc.globalSettingsFile().loadFileAsString().contains("busbass 1 200 2"),
+             "the machine's settings keep it, with the outputs");
+    MP_CHECK(!proc.settingsFileFor(organ.odf).loadFileAsString().contains("busbass"),
+             "the organ's settings leave it to the machine");
     mp::MasterpieceProcessor next;
     next.prepareToPlay(kRate, 256);
     MP_CHECK(next.loadOrgan(organ.odf, 0, false).ok, "the organ loads again");

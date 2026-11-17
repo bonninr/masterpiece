@@ -1005,13 +1005,6 @@ public:
       if (voices_[i].active() && voices_[i].busIndex == bus) ++n;
     return n;
   }
-  // How many voices sound through each mixer bus, releases included, into
-  // counts[0..n): one pass over the voices in use.
-  void countByMixBus(int* counts, int n) const {
-    for (int b = 0; b < n; ++b) counts[b] = 0;
-    for (size_t i = 0; i < scanEnd_ && i < voices_.size(); ++i)
-      if (voices_[i].active() && voices_[i].mixBus >= 0 && voices_[i].mixBus < n) ++counts[voices_[i].mixBus];
-  }
   int activeVoiceCount() const;
   const Voice& voice(int index) const { return voices_[static_cast<size_t>(index)]; }
   int poolSize() const { return static_cast<int>(voices_.size()); }
