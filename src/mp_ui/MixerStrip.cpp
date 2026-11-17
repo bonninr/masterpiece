@@ -438,9 +438,35 @@ ChannelStrip::ChannelStrip(Kind kind, const juce::String& name, const juce::Stri
                                 "and the room."));
   addAndMakeVisible(meter_);
   showValue();
+  // A right-click on any part of the strip reaches its menu.
+  addMouseListener(&menuClick_, true);
 }
 
-ChannelStrip::~ChannelStrip() { fader.setLookAndFeel(nullptr); }
+ChannelStrip::~ChannelStrip() {
+  removeMouseListener(&menuClick_);
+  fader.setLookAndFeel(nullptr);
+}
+
+void ChannelStrip::setRenamable(std::function<void(const juce::String&)> renamed) {
+  label_.setEditable(false, true, false);
+  label_.onTextChange = [this, renamed = std::move(renamed)] {
+    const auto text = label_.getText().trim();
+    if (text.isEmpty()) {
+      label_.setText(name_, juce::dontSendNotification);
+      return;
+    }
+    name_ = text;
+    if (renamed) renamed(text);
+  };
+}
+
+void ChannelStrip::setMaster() {
+  mute.setVisible(false);
+  solo.setVisible(false);
+  midi.setTooltip(TRANS("Learn a knob or a pedal for the master volume"));
+  meter_.setShowsClipping(true);
+  meter_.setTooltip(TRANS("The loudest output, after the master volume. Red: near full scale."));
+}
 
 void ChannelStrip::setLevel(int value) {
   if (juce::roundToInt(fader.getValue()) == value) return;

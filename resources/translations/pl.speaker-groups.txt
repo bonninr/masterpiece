@@ -11,5 +11,3 @@
 "Stereo" = "Stereo"
 "Mixes" = "Miksy"
 "Mix %1" = "Miks %1"
-"The mix's name, on its strip" = "Nazwa miksu, na jego torze"
-"Mixes..." = "Miksy..."

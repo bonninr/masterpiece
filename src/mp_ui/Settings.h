@@ -636,6 +636,9 @@ private:
   std::vector<Source> sourceOfTab_;
   Source shownSource_ = Source::Divisions;
   std::vector<Fader>& sourceFaders(Source s);
+  const std::vector<Fader>& sourceFaders(Source s) const {
+    return const_cast<MixerPanel*>(this)->sourceFaders(s);
+  }
   static Source sourceOfKind(MidiTargetKind kind);
   juce::String sourceName(Source s) const;
   void fillSourceTabs();
@@ -650,6 +653,18 @@ private:
   void layOutStrips(Source s, juce::Viewport& view, juce::Component& holder);
   juce::TextButton detach_{TRANS("Own window")};
   juce::Label emptySource_;  // a tab with no strips says how to make them
+  // Every kind side by side, each under its title, while they all fit the
+  // width; the tabs while they do not (#1188).
+  bool allInView_ = false;
+  std::array<juce::Label, 4> sectionTitles_;
+  std::vector<Source> sectionsWithStrips() const;
+  int stripsWidth(const std::vector<Source>& sections) const;
+  void layOutAll();
+  // A mix strip's menu: rename, remove.
+  void mixMenu(int mixId);
+  // The master volume's strip, the top bar's fader again, after the outputs.
+  void addMasterFader();
+  static bool isMaster(const Fader& f) { return f.kind == MidiTargetKind::MasterVolume; }
   // A mix's destination, as a division's: every rank of the mix at once.
   std::vector<std::unique_ptr<juce::ComboBox>> mixDests_;
   std::vector<int> mixIdOf_;  // per mix strip, the mix's id
@@ -701,8 +716,6 @@ private:
   juce::TextButton channels_{TRANS("Outputs...")};
   // The ranks in a list, each to an output or a speaker group.
   juce::TextButton routing_{TRANS("Rank routing...")};
-  // Named sets of ranks, each with a strip of its own.
-  juce::TextButton mixes_{TRANS("Mixes...")};
   // The open tab's strips, scrolling when they outgrow the window.
   juce::Viewport busViewport_;
   juce::Component busHolder_;
