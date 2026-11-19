@@ -27,6 +27,13 @@ public:
                         float endAngle, juce::Slider& s) override;
   int getSliderThumbRadius(juce::Slider& s) override;
   juce::Label* createSliderTextBox(juce::Slider& s) override;
+  // A box on a strip: a small font and a narrow arrow, so a name such as
+  // "Default" fits the strip's width.
+  juce::Font getComboBoxFont(juce::ComboBox& box) override;
+  void drawComboBox(juce::Graphics& g, int w, int h, bool down, int buttonX, int buttonY, int buttonW, int buttonH,
+                    juce::ComboBox& box) override;
+  void positionComboBoxText(juce::ComboBox& box, juce::Label& label) override;
+  static constexpr int kComboArrow = 12;
 
   // The cap's size along the travel and across it. A vertical fader shorter
   // than kShortTravel takes the short cap.
@@ -97,9 +104,17 @@ public:
   // Narrow: the scale's ticks without numbers, the readout without its unit.
   void setNarrow(bool on);
   const juce::String& name() const { return name_; }
+  // A name the player gives: a double-click on it types a new one (#1188).
+  void setRenamable(std::function<void(const juce::String&)> renamed);
+  void editName() { label_.showEditor(); }
+  // The master volume's strip: the level and its meter, without mute and
+  // solo.
+  void setMaster();
 
   std::function<void(int)> onLevel;
   std::function<void(bool)> onMute, onSolo;
+  // A right-click anywhere on the strip, for the strip's own menu.
+  std::function<void()> onMenu;
 
   juce::Slider fader{juce::Slider::LinearVertical, juce::Slider::NoTextBox};
   juce::TextButton mute{"M"}, solo{"S"};
@@ -125,6 +140,13 @@ private:
   juce::Component* top_ = nullptr;
   juce::Rectangle<int> scale_;
   bool narrow_ = false;
+  struct MenuClick final : juce::MouseListener {
+    explicit MenuClick(ChannelStrip& s) : strip(s) {}
+    void mouseDown(const juce::MouseEvent& e) override {
+      if (e.mods.isPopupMenu() && strip.onMenu) strip.onMenu();
+    }
+    ChannelStrip& strip;
+  } menuClick_{*this};
 };
 
 }  // namespace mp

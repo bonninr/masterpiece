@@ -116,7 +116,7 @@ private:
 
 class VoicingEq {
 public:
-  static constexpr int kMaxChannels = 48;  // output channels, each its own filter memory
+  static constexpr int kMaxChannels = 64;  // output channels, each its own filter memory
   struct Biquad {
     double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0;
   };

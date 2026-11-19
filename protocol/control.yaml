@@ -143,15 +143,15 @@ types:
   - code: 16
     name: route
     plural: routes
-    doc: Which output pair each rank plays through, one per rank in the order of ranks - the Mixer tab of General settings. Value - the pair, from 1; heard from the next note.
-    value: {min: 1, max: 8}
+    doc: Where each rank plays, one per rank in the order of ranks - Rank routing in Organ settings. Value - an output as the mixer lists them, from 1, or after the last output a speaker group in the order of the groups; heard from the next note. A rank with no route of its own reads where the default destination sends it. Property to - the output's or group's name.
+    value: {min: 1, max: 255}
     access: set
     dump: values
-    properties: [name, rank]
+    properties: [name, rank, to]
   - code: 17
     name: pair
     plural: pairs
-    doc: The mixer's output pairs, as the Mixer tab of General settings counts them. Value - the pair's live level, 0 to 203 with 127 as voiced, 0 silent and 203 at +24 dB, in steps of about 0.32 dB; heard at once, and back at 127 with each organ.
+    doc: The mixer's outputs, in the order of the Outputs tab, each by its name. Value - the output's live level, 0 to 203 with 127 as voiced, 0 silent and 203 at +24 dB, in steps of about 0.32 dB; heard at once, and back at 127 with each organ.
     value: {min: 0, max: 203}
     access: set
     dump: values
@@ -199,7 +199,7 @@ types:
   - code: 23
     name: mute
     plural: mutes
-    doc: The Mixer tab's mute buttons - one per rank in the order of ranks, then one per division, then one per perspective or windchest group, then one per output pair. Value - 1 muted; the strip's fader stays where it is. Heard at once, and back to 0 with each organ.
+    doc: The Mixer tab's mute buttons - one per rank in the order of ranks, then one per division, then one per perspective or windchest group, then one per output. Value - 1 muted; the strip's fader stays where it is. Heard at once, and back to 0 with each organ.
     value: {min: 0, max: 1, toggle: 2}
     access: set
     dump: bits
@@ -241,6 +241,7 @@ properties:
   - {code: 16, name: rate, kind: int, doc: A tremulant's rate while it runs, in hundredths of a hertz}
   - {code: 17, name: depth, kind: int, doc: A tremulant's depth, in tenths of a percent}
   - {code: 18, name: bus, kind: int, doc: The mixer bus a rank's main perspective plays through; routing is changed in the Mixer tab}
+  - {code: 19, name: to, kind: text, doc: The name of the output or speaker group a route plays through}
 
 # The program object's properties (type 0). `index` never changes.
 program:

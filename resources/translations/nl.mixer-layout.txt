@@ -1,0 +1,6 @@
+"Master" = "Master"
+"The master volume, the same as the top bar's" = "Het hoofdvolume, hetzelfde als in de bovenbalk"
+"Learn a knob or a pedal for the master volume" = "Een knop of pedaal leren voor het hoofdvolume"
+"The loudest output, after the master volume. Red: near full scale." = "De luidste uitgang, na het hoofdvolume. Rood: dicht bij volle schaal."
+"To rename the mix, double-click its name; to remove it, right-click its strip." = "Dubbelklik op de naam om de mix te hernoemen; klik met rechts op de strip om hem te verwijderen."
+"Remove the mix" = "Mix verwijderen"

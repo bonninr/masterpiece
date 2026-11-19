@@ -1,0 +1,6 @@
+"Master" = "Hlavní"
+"The master volume, the same as the top bar's" = "Hlavní hlasitost, stejná jako na horní liště"
+"Learn a knob or a pedal for the master volume" = "Naučit knoflík nebo pedál pro hlavní hlasitost"
+"The loudest output, after the master volume. Red: near full scale." = "Nejhlasitější výstup po hlavní hlasitosti. Červená: blízko plného rozsahu."
+"To rename the mix, double-click its name; to remove it, right-click its strip." = "Mix přejmenujete dvojklikem na jeho název; odstraníte jej pravým kliknutím na jeho pás."
+"Remove the mix" = "Odstranit mix"

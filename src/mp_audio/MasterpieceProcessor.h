@@ -29,7 +29,6 @@
 #include "OutputDynamicsPresets.h"
 #include "OutputLimiter.h"
 #include "SpectrumTap.h"
-#include "BassManager.h"
 #include "AudioRecorder.h"
 #include "MidiArchive.h"
 #include "MidiRecorder.h"
@@ -125,16 +124,50 @@ public:
   // Any number of discrete outputs up to 48, and no input: a mixer pair with
   // device channels of its own plays on them when the output has them. 48 is
   // a 24-pair interface (#1007).
-  static constexpr int kMaxOutputChannels = 48;
+  static constexpr int kMaxOutputChannels = 64;
   static constexpr int kMaxOutputPairs = kMaxOutputChannels / 2;
+  // The mixer's outputs: one per device channel at most, each in mono.
+  static constexpr int kMaxOutputs = kMaxOutputChannels;
   bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
   // The output channels the mixer asks for: one past the highest device
   // channel a bus names, and two at the least.
   int outputChannelsWanted() const;
-  // A pair's bass management: the crossover frequency (40-200 Hz, 0 for
-  // off) and the device channel of the subwoofer, counted from 0. Kept with
-  // the pairs, in the organ's settings and in the saved defaults.
-  void setBusBass(int busId, float crossoverHz, int subChannel);
+  // An output's own EQ (#1188), the ten bands of the voicing EQ for the
+  // speaker on it; a fader moved is heard at once. Kept with the outputs, the
+  // machine's. Off or flat, the output is not filtered at all.
+  void setBusEq(int busId, const VoicingEqSettings& eq);
+  VoicingEqSettings busEq(int busId) const {
+    const auto* e = mixer_.eqFor(BusId{busId});
+    return e != nullptr ? *e : VoicingEqSettings{};
+  }
+  // An output's high-pass, low-pass, delay and polarity (#1188): a crossover
+  // in software, the bands the designer's. Kept with the outputs, the
+  // machine's; all off, the output is not touched.
+  void setBusFilters(int busId, const BusFilters& filters);
+  BusFilters busFilters(int busId) const {
+    const auto* f = mixer_.filtersFor(BusId{busId});
+    return f != nullptr ? *f : BusFilters{};
+  }
+  // The output pairs, each change under the audio lock. The count keeps each
+  // remaining pair's channels; a new pair takes the two after the highest in
+  // use. A rank sent to a pair or a speaker group that is gone goes to pair 1.
+  void setPairCount(int pairs);
+  // One pair's device channels, counted from 0, and whether it is mono.
+  void setPairLayout(int busId, bool mono, std::vector<int> channels);
+  void setSpeakerGroups(std::vector<BusGroup> groups);
+  // Each rank's destination: a pair, or a speaker group by its id.
+  void setRankRoutes(const std::vector<std::pair<Id, std::variant<BusId, int>>>& routes);
+  // These ranks lose their own routes and follow the default destination.
+  void followDefault(const std::vector<Id>& ranks);
+  // Where every rank with no route of its own plays, on every organ: an
+  // output, or a speaker group by its id.
+  void setDefaultDestination(std::variant<BusId, int> dest);
+  // An output's name, and the other outputs it also plays into, by id.
+  void setOutputName(int busId, std::string name);
+  void setOutputSends(int busId, std::vector<int> sends);
+  // One send's level in dB, kSendFloorDb (silent) to kSendTopDb.
+  static constexpr float kSendFloorDb = -60.0f, kSendTopDb = 12.0f;
+  void setOutputSendLevel(int busId, int target, float db);
   // A pair's own room: an impulse response heard on that pair, with its wet
   // level, kept in the organ's settings (#1140). An empty file takes the room
   // away. Message thread; the file is read before the audio thread is held.
@@ -1947,6 +1980,22 @@ public:
     if (!organLoading()) liveLevels_.setGroup(index, value);
   }
   int liveGroupCount() const { return liveLevels_.groupCount(); }
+  // Mixes: sets of ranks the player names, each with a fader on the mixer,
+  // kept with the organ. A mix's id is its slot from 1 to
+  // LiveLevels::kMaxMixes, so a knob learned for it stays on it when another
+  // is removed. A rank is in one mix at most: the first that names it.
+  struct RankMix {
+    int id = 0;
+    std::string name;
+    std::vector<Id> ranks;
+  };
+  const std::vector<RankMix>& rankMixes() const { return rankMixes_; }
+  void setRankMixes(std::vector<RankMix> mixes);
+  int liveMixLevel(int index) const { return liveLevels_.mix(index); }
+  void setLiveMixLevel(int index, int value) {
+    if (!organLoading()) liveLevels_.setMix(index, value);
+  }
+  int liveMixOfRank(int rankIndex) const { return liveLevels_.rankMix(rankIndex); }
   const std::vector<std::string>& liveGroupNames() const { return liveGroupNames_; }
   int liveGroupOfRank(int rankIndex) const { return liveLevels_.rankGroup(rankIndex); }
   // The division a rank's fader sits under, by those lists' indices; -1 for none.
@@ -2040,6 +2089,12 @@ public:
   }
   // The key the test note sounds at, or -1.
   int testNoteKey() const { return testNoteKey_.load(std::memory_order_acquire); }
+  // The last key pressed, on any keyboard, from MIDI or the screen, and a
+  // count that moves with every press, so the same key twice is seen twice.
+  // The Voicing tab's "Keys choose the note" follows it (#1188). -1 before
+  // any key.
+  int lastKeyPressed() const { return lastKey_.load(std::memory_order_acquire); }
+  uint32_t keysPressed() const { return keysPressed_.load(std::memory_order_acquire); }
   // Plays the test note again, so a change to the voicing is heard.
   void restartTestNote() { testNoteRestart_.store(true, std::memory_order_release); }
   // After a pipe's or a rank's level in the voicing has changed: the pipes
@@ -2416,7 +2471,34 @@ private:
   // the per-bus buffers rather than a BusId (ids run to 1024; the buffers are
   // only as many as the player actually configured). Resolved at note-on
   // because a group allocation depends on the key.
-  int mixBusForPipe(Id rankId, int midiNote) const;
+  int mixBusForPipe(Id rankId, int midiNote);
+  // By rank: each rank's place among the ranks sent to its speaker group, in
+  // id order, so the group's pairs take its ranks in turn. Worked out under
+  // the audio lock whenever the routes or the groups change.
+  std::unordered_map<Id, int> rankPlaceInGroup_;
+  // Each rank's stop family (rankFamilies), the salt of every speaker group
+  // method, so one key of one stop sounds from one member.
+  std::unordered_map<Id, int> rankFamily_;
+  void placeRanksInGroups();
+  // A default destination whose output or group is gone goes back to output 1.
+  void keepDefaultDestination();
+  // The machine's mixer: outputs, rooms, bass, speaker groups and the default
+  // destination. Written to the global file on the next flush after a change;
+  // an organ file's copy is read only while the machine has none.
+  static bool isMixerKey(const juce::String& key);
+  juce::String mixerLines() const;
+  void markMixerDirty() {
+    mixerInGlobal_ = true;
+    mixerDirty_.store(true, std::memory_order_release);
+    settingsDirty_.store(true, std::memory_order_release);
+  }
+  std::atomic<bool> mixerDirty_{false};
+  bool mixerInGlobal_ = false;
+  std::vector<RankMix> rankMixes_;
+  // Each id once and each rank once, then into the live levels.
+  void keepRankMixes(std::vector<RankMix> mixes);
+  // The mixes into the live levels, by the ranks' places there.
+  void applyRankMixes();
   // Turn incoming MIDI into voice starts and stops. Runs on the audio thread,
   // so it must not allocate: the pipe list it walks is preallocated scratch.
   void buildVoicePool(int blockFrames);
@@ -2957,18 +3039,49 @@ private:
   // buses sum straight into the output and cost nothing.
   juce::AudioBuffer<float> mixScratch_;
   // The device channels of each dense bus, left and right; -1 for a bus that
-  // names none, which plays on the first two as every bus did before.
-  std::vector<std::pair<int, int>> busOutputs_;
+  // names none, which plays on the first two as every bus did before. A mono
+  // bus has one channel, both sides, and plays left and right summed at half
+  // level on it. Copies are further channels the same signal goes to.
+  struct BusOutput {
+    int left = -1, right = -1;
+    bool mono = false;
+    std::vector<std::pair<int, int>> copies;
+  };
+  std::vector<BusOutput> busOutputs_;
+  // The sends between outputs (#1023), by bus index: the order the buses
+  // render in (each before the buses it plays into), each bus's incoming
+  // sends with their gains, whether a bus plays into another, and the block
+  // a sending bus leaves for its targets. Sized off the audio thread.
+  std::vector<int> renderOrder_;
+  std::vector<std::vector<std::pair<int, float>>> sendsInto_;
+  std::vector<char> busSends_;
+  std::vector<juce::AudioBuffer<float>> sendTap_;
+  // The target's own fader on what the other outputs send into it, as it
+  // stood last block, ramped from there to where it stands now (#1188).
+  std::array<float, LiveLevels::kMaxPairs> sendIntoWas_ = [] {
+    std::array<float, LiveLevels::kMaxPairs> a{};
+    a.fill(1.0f);
+    return a;
+  }();
+  void refreshSends();
+  void sizeSendTaps();
+  // Adds a rendered bus to its channels and to its copies' channels.
+  void addBusToOutput(int index, const juce::AudioBuffer<float>& bus, juce::AudioBuffer<float>& output, int numFrames);
   // Where a bus with device channels of its own is rendered before it goes
   // there, and the stereo fold-down of a wider output for the recorder.
   juce::AudioBuffer<float> pairScratch_;
   juce::AudioBuffer<float> recordScratch_;
   int lastOutputChannelsWanted_ = 2;
-  // Bass management per dense bus, built for the buses that have it on.
-  std::vector<std::unique_ptr<BassManager>> busBass_;
-  void refreshBusBass();
-  // Whether any bus has its own channels, or bass managed to a channel the
-  // output has: then the buses are rendered one by one to where they go.
+  // The EQ and the filters per dense bus (#1188), built for the buses that
+  // have them; null for the rest, which are then not touched.
+  std::vector<std::unique_ptr<VoicingEq>> busEq_;
+  std::vector<int> busEqIds_;  // the bus id each of busEq_ was made for
+  std::vector<std::unique_ptr<OutputFilters>> busFilters_;
+  void refreshBusEq();
+  void refreshBusFilters();
+  bool anyBusFilter() const;
+  // Whether any bus has its own channels, or an EQ or crossover of its own:
+  // then the buses are rendered one by one to where they go.
   bool needsRoutedOutput(int numCh) const;
   // The channels of bus `index` on an output of `numCh` channels: its own
   // when the output has them, otherwise the first pair.
@@ -2992,6 +3105,12 @@ private:
   std::atomic<uint32_t> voicingSteps_{0};
   std::atomic<bool> testNoteOn_{false}, testNoteRestart_{false};
   std::atomic<int> testNoteKey_{-1};
+  std::atomic<int> lastKey_{-1};
+  std::atomic<uint32_t> keysPressed_{0};
+  void keyPressed(int midiNote) {
+    lastKey_.store(midiNote, std::memory_order_release);
+    keysPressed_.fetch_add(1, std::memory_order_acq_rel);
+  }
   // Audio thread: the test note's voices, one a rank, and the velocity it
   // was struck at. Room for every rank is kept when the target is set.
   std::vector<uint64_t> testNoteIds_;
@@ -3055,6 +3174,7 @@ private:
       case LiveLevels::Strip::Division: return ranks;
       case LiveLevels::Strip::Group: return ranks + divisions;
       case LiveLevels::Strip::Pair: return ranks + divisions + groups;
+      case LiveLevels::Strip::Mix: return ranks + divisions + groups + LiveLevels::kMaxPairs;
     }
     return 0;
   }

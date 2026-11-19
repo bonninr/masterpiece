@@ -41,6 +41,10 @@ public:
   // Output pairs: a fixed table, so the mixer can gain or lose pairs while
   // the audio runs without the table moving under it.
   static constexpr int kMaxPairs = 64;
+  // Mixes: sets of ranks the player names, each with its fader. A rank is
+  // in one mix at most. Fixed like the pairs, since the player makes and
+  // changes them while the audio runs.
+  static constexpr int kMaxMixes = 16;
 
   static float gainOf(int value) {
     if (value <= 0) return 0.0f;
@@ -86,15 +90,19 @@ public:
     divisionSet_ = makeFaders(n);
     groupSet_ = makeFaders(ng);
     pairSet_ = makeFaders(kMaxPairs);
+    mixSet_ = makeFaders(kMaxMixes);
     rankSw_ = makeSwitches(ranks);
     divisionSw_ = makeSwitches(n);
     groupSw_ = makeSwitches(ng);
     pairSw_ = makeSwitches(kMaxPairs);
+    mixSw_ = makeSwitches(kMaxMixes);
+    rankMix_ = makeFilled(ranks, -1);
     rankOpen_.assign(ranks, 1.0f);
     rankNow_.assign(ranks, 1.0f);
     divisionNow_.assign(n, 1.0f);
     groupNow_.assign(ng, 1.0f);
     pairNow_.assign(kMaxPairs, 1.0f);
+    mixNow_.assign(kMaxMixes, 1.0f);
     rankGain_.assign(ranks, 1.0f);
     active_ = false;
     moving_ = false;
@@ -119,23 +127,36 @@ public:
   // A rank's group index, or -1 for a rank in none or out of range.
   int rankGroup(int i) const { return i >= 0 && i < rankCount() ? rankGroup_[static_cast<size_t>(i)] : -1; }
   int groupCount() const { return static_cast<int>(groupNow_.size()); }
+  // A rank's mix, or -1 for none. Any thread: the mixes change while the
+  // audio runs, and the next block follows.
+  void setRankMix(int i, int mix) {
+    if (i < 0 || i >= rankCount()) return;
+    rankMix_[static_cast<size_t>(i)].store(mix >= 0 && mix < kMaxMixes ? mix : -1, std::memory_order_relaxed);
+    dirty_.store(true, std::memory_order_release);
+  }
+  int rankMix(int i) const {
+    return i >= 0 && i < rankCount() ? rankMix_[static_cast<size_t>(i)].load(std::memory_order_relaxed) : -1;
+  }
 
   // Any thread. An index out of range is ignored; a value is held to 0..kTop.
   void setRank(int i, int value) { set(rankSet_.get(), rankCount(), i, value); }
   void setDivision(int i, int value) { set(divisionSet_.get(), divisionCount(), i, value); }
   void setGroup(int i, int value) { set(groupSet_.get(), groupCount(), i, value); }
   void setPair(int i, int value) { set(pairSet_.get(), kMaxPairs, i, value); }
+  void setMix(int i, int value) { set(mixSet_.get(), kMaxMixes, i, value); }
   int rank(int i) const { return get(rankSet_.get(), rankCount(), i); }
   int division(int i) const { return get(divisionSet_.get(), divisionCount(), i); }
   int group(int i) const { return get(groupSet_.get(), groupCount(), i); }
   int pair(int i) const { return get(pairSet_.get(), kMaxPairs, i); }
+  int mix(int i) const { return get(mixSet_.get(), kMaxMixes, i); }
 
   // Mute and solo, a mixing desk's two buttons on every strip. They leave the
   // fader where it is. A muted strip is silent. A solo on a rank, a division
-  // or a group leaves only the ranks under a soloed strip sounding; a solo on
-  // a pair leaves only the soloed pairs. Mute wins over solo. Noises are on
-  // no strip and stay as they are. Any thread.
-  enum class Strip { Rank, Division, Group, Pair };
+  // a group or a mix leaves only the ranks under a soloed strip sounding; a
+  // solo on a pair leaves only the soloed pairs. Mute wins over solo. Noises
+  // are on no strip and stay as they are. Any thread. Mix comes last: a
+  // strip's number is part of a learned MIDI button's target.
+  enum class Strip { Rank, Division, Group, Pair, Mix };
   void setMuted(Strip s, int i, bool on) { setSwitch(s, i, kMute, on); }
   void setSoloed(Strip s, int i, bool on) { setSwitch(s, i, kSolo, on); }
   bool muted(Strip s, int i) const { return (switches(s, i) & kMute) != 0; }
@@ -146,6 +167,7 @@ public:
       case Strip::Division: return divisionCount();
       case Strip::Group: return groupCount();
       case Strip::Pair: return kMaxPairs;
+      case Strip::Mix: return kMaxMixes;
     }
     return 0;
   }
@@ -174,6 +196,7 @@ public:
     follow(rankSet_.get(), rankNow_);
     follow(divisionSet_.get(), divisionNow_);
     follow(groupSet_.get(), groupNow_);
+    follow(mixSet_.get(), mixNow_);
     // A pair's own buttons act on its own gain.
     const bool pairSolo = anySolo(pairSw_.get(), kMaxPairs);
     for (size_t i = 0; i < pairNow_.size(); ++i) {
@@ -181,18 +204,21 @@ public:
       const bool open = (sw & kMute) == 0 && (!pairSolo || (sw & kSolo) != 0);
       glide(open ? gainOf(pairSet_[i].load(std::memory_order_relaxed)) : 0.0f, pairNow_[i]);
     }
-    // A rank's are its own, its division's and its group's, together.
+    // A rank's are its own, its division's, its group's and its mix's, together.
     const bool rankSolo = anySolo(rankSw_.get(), rankCount()) || anySolo(divisionSw_.get(), divisionCount()) ||
-                          anySolo(groupSw_.get(), groupCount());
+                          anySolo(groupSw_.get(), groupCount()) || anySolo(mixSw_.get(), kMaxMixes);
     for (size_t i = 0; i < rankGain_.size(); ++i) {
       const int d = rankDivision_[i];
       const int g = rankGroup_[i];
+      const int m = rankMix_[i].load(std::memory_order_relaxed);
       const int sw = rankSw_[i].load(std::memory_order_relaxed) |
                      (d >= 0 ? divisionSw_[static_cast<size_t>(d)].load(std::memory_order_relaxed) : 0) |
-                     (g >= 0 ? groupSw_[static_cast<size_t>(g)].load(std::memory_order_relaxed) : 0);
+                     (g >= 0 ? groupSw_[static_cast<size_t>(g)].load(std::memory_order_relaxed) : 0) |
+                     (m >= 0 ? mixSw_[static_cast<size_t>(m)].load(std::memory_order_relaxed) : 0);
       glide((sw & kMute) == 0 && (!rankSolo || (sw & kSolo) != 0) ? 1.0f : 0.0f, rankOpen_[i]);
       rankGain_[i] = rankNow_[i] * rankOpen_[i] * (d >= 0 ? divisionNow_[static_cast<size_t>(d)] : 1.0f) *
-                     (g >= 0 ? groupNow_[static_cast<size_t>(g)] : 1.0f);
+                     (g >= 0 ? groupNow_[static_cast<size_t>(g)] : 1.0f) *
+                     (m >= 0 ? mixNow_[static_cast<size_t>(m)] : 1.0f);
     }
     moving_ = moving;
     active_ = away;
@@ -236,12 +262,18 @@ private:
     for (size_t i = 0; i < std::max<size_t>(n, 1); ++i) f[i].store(0, std::memory_order_relaxed);
     return f;
   }
+  static std::unique_ptr<std::atomic<int>[]> makeFilled(size_t n, int value) {
+    std::unique_ptr<std::atomic<int>[]> f(new std::atomic<int>[std::max<size_t>(n, 1)]);
+    for (size_t i = 0; i < std::max<size_t>(n, 1); ++i) f[i].store(value, std::memory_order_relaxed);
+    return f;
+  }
   std::atomic<int>* switchTable(Strip s) const {
     switch (s) {
       case Strip::Rank: return rankSw_.get();
       case Strip::Division: return divisionSw_.get();
       case Strip::Group: return groupSw_.get();
       case Strip::Pair: return pairSw_.get();
+      case Strip::Mix: return mixSw_.get();
     }
     return nullptr;
   }
@@ -261,10 +293,11 @@ private:
   }
 
   std::vector<int> rankDivision_, rankGroup_;
-  std::unique_ptr<std::atomic<int>[]> rankSet_, divisionSet_, groupSet_, pairSet_;
-  std::unique_ptr<std::atomic<int>[]> rankSw_, divisionSw_, groupSw_, pairSw_;
+  std::unique_ptr<std::atomic<int>[]> rankSet_, divisionSet_, groupSet_, pairSet_, mixSet_;
+  std::unique_ptr<std::atomic<int>[]> rankSw_, divisionSw_, groupSw_, pairSw_, mixSw_;
+  std::unique_ptr<std::atomic<int>[]> rankMix_;
   // Audio thread only. rankOpen_ is each rank's mute and solo, 0 to 1.
-  std::vector<float> rankNow_, divisionNow_, groupNow_, pairNow_, rankGain_, rankOpen_;
+  std::vector<float> rankNow_, divisionNow_, groupNow_, pairNow_, mixNow_, rankGain_, rankOpen_;
   bool active_ = false;
   bool moving_ = false;
   std::atomic<bool> dirty_{false};

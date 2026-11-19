@@ -1,0 +1,6 @@
+"Master" = "Główna"
+"The master volume, the same as the top bar's" = "Głośność główna, ta sama co na górnym pasku"
+"Learn a knob or a pedal for the master volume" = "Nauczenie pokrętła lub pedału dla głośności głównej"
+"The loudest output, after the master volume. Red: near full scale." = "Najgłośniejsze wyjście, po głośności głównej. Czerwony: blisko pełnej skali."
+"To rename the mix, double-click its name; to remove it, right-click its strip." = "Aby zmienić nazwę miksu, kliknij dwukrotnie jego nazwę; aby go usunąć, kliknij prawym przyciskiem jego tor."
+"Remove the mix" = "Usuń miks"

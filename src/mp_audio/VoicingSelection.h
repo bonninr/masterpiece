@@ -84,15 +84,16 @@ enum VoicingValues : unsigned {
 };
 
 // The values named in `which`, taken from `v`, for every rank or pipe
-// reached. A pipe of its own takes only a level and a tuning.
+// reached. A pipe of its own takes a level, a tuning and its two shelves
+// (#1188); the pan and the width are a rank's.
 inline void setVoicing(VoicingSet& set, const OrganModel& model, const VoicingTarget& t, const PipeVoicing& v,
                        unsigned which) {
   const auto give = [&](PipeVoicing& pv, bool rank) {
     if (which & kVoicingLevel) pv.gainDb = v.gainDb;
     if (which & kVoicingTuning) pv.tuningCents = v.tuningCents;
-    if (!rank) return;
     if (which & kVoicingBrightness) pv.brightnessDb = v.brightnessDb;
     if (which & kVoicingBass) pv.bassDb = v.bassDb;
+    if (!rank) return;
     if (which & kVoicingPan) pv.balance = v.balance;
     if (which & kVoicingWidth) pv.width = v.width;
   };

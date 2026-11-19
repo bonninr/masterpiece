@@ -100,6 +100,34 @@ void FaderLook::drawRotarySlider(juce::Graphics& g, int x, int y, int w, int h, 
   g.fillPath(pointer, juce::AffineTransform::rotation(angle).translated(centre.x, centre.y));
 }
 
+juce::Font FaderLook::getComboBoxFont(juce::ComboBox&) { return juce::Font(juce::FontOptions(12.0f)); }
+
+void FaderLook::drawComboBox(juce::Graphics& g, int w, int h, bool, int, int, int, int, juce::ComboBox& box) {
+  const auto bounds = juce::Rectangle<int>(0, 0, w, h).toFloat().reduced(0.5f);
+  g.setColour(box.findColour(juce::ComboBox::backgroundColourId));
+  g.fillRoundedRectangle(bounds, 3.0f);
+  g.setColour(box.findColour(juce::ComboBox::outlineColourId));
+  g.drawRoundedRectangle(bounds, 3.0f, 1.0f);
+  const auto arrow = juce::Rectangle<float>(static_cast<float>(w - kComboArrow), 0.0f, kComboArrow - 3.0f,
+                                            static_cast<float>(h));
+  juce::Path p;
+  const float cx = arrow.getCentreX(), cy = arrow.getCentreY();
+  p.startNewSubPath(cx - 3.0f, cy - 1.5f);
+  p.lineTo(cx, cy + 1.5f);
+  p.lineTo(cx + 3.0f, cy - 1.5f);
+  g.setColour(box.findColour(juce::ComboBox::arrowColourId).withAlpha(box.isEnabled() ? 0.9f : 0.2f));
+  g.strokePath(p, juce::PathStrokeType(1.5f));
+}
+
+// The text takes the width up to the arrow, and squeezes a little before it
+// is cut short.
+void FaderLook::positionComboBoxText(juce::ComboBox& box, juce::Label& label) {
+  label.setBounds(1, 1, box.getWidth() - kComboArrow - 1, box.getHeight() - 2);
+  label.setBorderSize(juce::BorderSize<int>(0, 3, 0, 0));
+  label.setMinimumHorizontalScale(0.75f);
+  label.setFont(getComboBoxFont(box));
+}
+
 juce::Label* FaderLook::createSliderTextBox(juce::Slider& s) {
   auto* l = LookAndFeel_V4::createSliderTextBox(s);
   l->setColour(juce::Label::textColourId, juce::Colour(0xff9fe0ff));
@@ -379,7 +407,7 @@ ChannelStrip::ChannelStrip(Kind kind, const juce::String& name, const juce::Stri
   };
   styleSwitch(mute, juce::Colour(0xffe2503a), TRANS("Mute: silences this strip, the fader stays where it is"));
   styleSwitch(solo, juce::Colour(0xffe8c53a),
-              kind == Kind::Pair ? TRANS("Solo: only the soloed output pairs sound")
+              kind == Kind::Pair ? TRANS("Solo: only the soloed outputs sound")
                                  : TRANS("Solo: only the ranks under a soloed strip sound"));
   mute.onClick = [this] { if (onMute) onMute(mute.getToggleState()); };
   solo.onClick = [this] { if (onSolo) onSolo(solo.getToggleState()); };
@@ -404,15 +432,41 @@ ChannelStrip::ChannelStrip(Kind kind, const juce::String& name, const juce::Stri
   // full scale; the others read a balance.
   meter_.setShowsClipping(kind == Kind::Pair);
   meter_.setTooltip(kind == Kind::Pair
-                        ? TRANS("The output pair's level after its swell boxes and its room, before the master "
+                        ? TRANS("The output's level after its swell boxes and its room, before the master "
                                 "volume. Red: near full scale.")
                         : TRANS("The balance of the pipes on this strip, after the faders, before the swell boxes "
                                 "and the room."));
   addAndMakeVisible(meter_);
   showValue();
+  // A right-click on any part of the strip reaches its menu.
+  addMouseListener(&menuClick_, true);
 }
 
-ChannelStrip::~ChannelStrip() { fader.setLookAndFeel(nullptr); }
+ChannelStrip::~ChannelStrip() {
+  removeMouseListener(&menuClick_);
+  fader.setLookAndFeel(nullptr);
+}
+
+void ChannelStrip::setRenamable(std::function<void(const juce::String&)> renamed) {
+  label_.setEditable(false, true, false);
+  label_.onTextChange = [this, renamed = std::move(renamed)] {
+    const auto text = label_.getText().trim();
+    if (text.isEmpty()) {
+      label_.setText(name_, juce::dontSendNotification);
+      return;
+    }
+    name_ = text;
+    if (renamed) renamed(text);
+  };
+}
+
+void ChannelStrip::setMaster() {
+  mute.setVisible(false);
+  solo.setVisible(false);
+  midi.setTooltip(TRANS("Learn a knob or a pedal for the master volume"));
+  meter_.setShowsClipping(true);
+  meter_.setTooltip(TRANS("The loudest output, after the master volume. Red: near full scale."));
+}
 
 void ChannelStrip::setLevel(int value) {
   if (juce::roundToInt(fader.getValue()) == value) return;
@@ -424,6 +478,13 @@ int ChannelStrip::level() const { return juce::roundToInt(fader.getValue()); }
 
 void ChannelStrip::setTopControl(juce::Component* c) {
   top_ = c;
+  if (auto* box = dynamic_cast<juce::ComboBox*>(c)) {
+    // The strip's own look, keeping the colours the dialog gives a box.
+    for (int id : {juce::ComboBox::backgroundColourId, juce::ComboBox::outlineColourId,
+                   juce::ComboBox::arrowColourId, juce::ComboBox::textColourId})
+      box->setColour(id, box->findColour(id));
+    box->setLookAndFeel(&FaderLook::shared());
+  }
   if (c != nullptr) addAndMakeVisible(c);
   resized();
 }

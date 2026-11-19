@@ -7,8 +7,11 @@
 #pragma once
 #include "../mp_core/OrganModel.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
+#include <string>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -28,24 +31,67 @@ inline constexpr int kNumPerspectives = 4;
 struct MixerBus {
   BusId id{};
   float levelDb = 0.0f;
-  std::vector<int> deviceChannels; // empty = no direct output (mix-send only)
-  // M4: sends to mix buses {busId, levelDb}, per-bus IR {file, wet%, perOrgan}.
+  // Device channels, counted from 0. A stereo pair takes them two at a time,
+  // left then right: the first two are the pair, each further two a copy of
+  // it. A mono pair plays left and right summed on each channel it names:
+  // the first is its own, the rest copies. Empty = no direct output.
+  std::vector<int> deviceChannels;
+  bool mono = false;
+  // The player's name for the output ("Main", "Gallery"); empty shows its
+  // number.
+  std::string name;
+  // Other outputs this one also plays into, by id: four speaker outputs
+  // feeding the main mix as well. The signal is taken after this output's
+  // fader and its room, and joins the target before the target's room, and
+  // through the target's fader (#1188). sendDb holds each send's level, in step with sends; a missing
+  // entry is 0 dB.
+  std::vector<int> sends;
+  std::vector<float> sendDb;
+  float sendLevelDb(int target) const {
+    for (size_t i = 0; i < sends.size(); ++i)
+      if (sends[i] == target) return i < sendDb.size() ? sendDb[i] : 0.0f;
+    return 0.0f;
+  }
 };
 
-// A group never processes audio itself: at note-on, one member bus is picked
-// for the pipe (and its perspectives) and the voice plays through it.
+// The salt is the rank's stop family (rankFamilies below): the ranks one stop
+// plays -- its perspectives, its tremmed copies, a mixture's ranks -- share
+// it, so one key of one stop sounds from one member. Another stop starts one
+// member further on.
+enum class AllocationAlgorithm {
+  StaticChromatic,    // (key + rankSalt + offset) % n
+  StaticOctaveCycled, // ((key%12) + octave + rankSalt + offset) % n: within
+                      // an octave the notes go round the members, each
+                      // octave and each stop starting one further on
+  StaticByRank,       // (rankSalt + offset) % n, every note of a stop on one
+                      // member; the salt is the stop family's place among
+                      // the group's families, so they take the members in turn
+};
+
+// The method's word in the settings file. An unknown or missing word is
+// Across the octave, the default; so is "busy", the Least busy of the first
+// previews, gone because a note has to sound from the same speaker every
+// time it is played (#1023).
+inline const char* allocationToken(AllocationAlgorithm a) {
+  switch (a) {
+    case AllocationAlgorithm::StaticChromatic: return "chromatic";
+    case AllocationAlgorithm::StaticByRank: return "rank";
+    case AllocationAlgorithm::StaticOctaveCycled: break;
+  }
+  return "octave";
+}
+inline AllocationAlgorithm allocationFromToken(const std::string& word) {
+  if (word == "chromatic") return AllocationAlgorithm::StaticChromatic;
+  if (word == "rank") return AllocationAlgorithm::StaticByRank;
+  return AllocationAlgorithm::StaticOctaveCycled;
+}
+
+// A speaker group never processes audio itself: at note-on, one member bus
+// is picked for the pipe and the voice plays through it.
 struct BusGroup {
   int groupId = 0;
   std::vector<BusId> members; // primary bus ids, in user order
-};
-
-enum class AllocationAlgorithm {
-  StaticChromatic,    // (key + rankSalt + offset) % n — v1 default
-  StaticOctaveCycled, // ((key%12) + octave + rankSalt + offset) % n;
-                      // v1 approximation of the HW default
-                      // ('Static: cyclic within octave, octaves cycled,
-                      // ranks cycled'); refined against a licensed install at M4
-  DynamicRoundRobin,  // M4: least-recently-used member bus in group
+  AllocationAlgorithm algorithm = AllocationAlgorithm::StaticOctaveCycled;
 };
 
 struct PerspectiveRoute {
@@ -78,11 +124,60 @@ inline BusId allocateBus(const BusGroup& group, int midiKey, int rankSalt,
       const int octave = midiKey / 12;
       return mod(static_cast<long long>(pc) + octave + rankSalt + noteOffset);
     }
-    case AllocationAlgorithm::DynamicRoundRobin:
-      // M4: needs mutable LRU state; v1 falls back to static (documented).
-      return mod(static_cast<long long>(midiKey) + rankSalt + noteOffset);
+    case AllocationAlgorithm::StaticByRank:
+      return mod(static_cast<long long>(rankSalt) + noteOffset);
   }
   return group.members.front();
+}
+
+// Each rank's stop family, numbered 0.. in the order of each family's lowest
+// rank id. Ranks drawn by one stop are one family, and a rank two stops share
+// joins their families, so a pipe's perspectives, its tremmed copy and a
+// mixture's ranks speak from one member of a speaker group. A rank no stop
+// names is a family of its own.
+inline std::unordered_map<Id, int> rankFamilies(const OrganModel& model) {
+  std::unordered_map<Id, Id> parent;
+  for (const auto& [rankId, rank] : model.ranks) parent[rankId] = rankId;
+  const auto find = [&parent](Id r) {
+    Id root = r;
+    while (parent[root] != root) root = parent[root];
+    while (parent[r] != root) {
+      const Id next = parent[r];
+      parent[r] = root;
+      r = next;
+    }
+    return root;
+  };
+  const auto join = [&](Id a, Id b) {
+    if (parent.count(a) == 0 || parent.count(b) == 0) return;
+    const Id ra = find(a), rb = find(b);
+    if (ra != rb) parent[std::max(ra, rb)] = std::min(ra, rb);
+  };
+  for (const auto& [stopId, stop] : model.stops) {
+    (void)stopId;
+    Id first = 0;
+    const auto add = [&](Id r) {
+      if (r == 0 || parent.count(r) == 0) return;
+      if (first == 0) first = r;
+      else join(first, r);
+    };
+    for (const auto& e : stop.ranks) {
+      add(e.rankId);
+      add(e.alternateRankId);
+    }
+    for (Id r : stop.palletRanks) add(r);
+  }
+  std::vector<Id> ids;
+  ids.reserve(parent.size());
+  for (const auto& [id, p] : parent) ids.push_back(id);
+  std::sort(ids.begin(), ids.end());
+  std::unordered_map<Id, int> numberOfRoot, family;
+  for (Id id : ids) {
+    const Id root = find(id);
+    const auto it = numberOfRoot.emplace(root, static_cast<int>(numberOfRoot.size())).first;
+    family[id] = it->second;
+  }
+  return family;
 }
 
 // Simple-routing defaults (09/10 screens, HW9 simple model): perspectives

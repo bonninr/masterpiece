@@ -526,6 +526,8 @@ private:
   juce::Label mapStatus_;
 };
 
+class VoicingPipeDesk;  // Settings.cpp
+
 // Voicing: the player's own adjustments to a rank or a single pipe, the way a
 // voicer goes round an organ with a knife and a tuning cone. Rank level here;
 // the per-pipe rows are reached by picking a rank and a note.
@@ -566,7 +568,7 @@ private:
   juce::ToggleButton testNote_{TRANS("Test note")};
   juce::TextButton midi_{TRANS("MIDI")};
   uint32_t shownSteps_ = 0;
-  int shownTestKey_ = -1;
+  uint32_t shownKeys_ = 0;  // the processor's key count, as last followed
   juce::Label scopeLabel_;
   juce::ComboBox scope_;   // the whole rank, one note of it, or one side of the chest
   juce::Label noteLabel_;
@@ -575,27 +577,41 @@ private:
   juce::TextButton everyPipe_{TRANS("Every pipe...")};
   juce::Component::SafePointer<juce::DialogWindow> everyPipeWindow_;
   void showEveryPipe();
+  // Every fader stands upright at a fixed size, so a wide window keeps them
+  // together as on a desk (#1188).
   juce::Label gainLabel_, tuneLabel_;
-  juce::Slider gain_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
-  juce::Slider tune_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Slider gain_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
+  juce::Slider tune_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
   // The rank's EQ (RankEq.h): a high shelf and a low shelf, heard at once.
   juce::Label brightLabel_, bassLabel_;
-  juce::Slider bright_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
-  juce::Slider bass_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Slider bright_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
+  juce::Slider bass_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
   // A division's EQ, which its ranks hear added to their own.
   juce::Label divisionLabel_, divBrightLabel_, divBassLabel_;
   juce::ComboBox division_;
-  juce::Slider divBright_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
-  juce::Slider divBass_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Slider divBright_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
+  juce::Slider divBass_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
   // Where the rank and the division stand: pan and stereo width, heard at once.
   juce::Label panLabel_, widthLabel_, divPanLabel_, divWidthLabel_;
-  juce::Slider pan_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
-  juce::Slider width_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
-  juce::Slider divPan_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
-  juce::Slider divWidth_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Slider pan_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
+  juce::Slider width_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
+  juce::Slider divPan_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
+  juce::Slider divWidth_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
   std::vector<Id> divisionIds_;
   void loadDivision();
   void pushDivision();
+  // Every pipe of the rank on the page (#1188): the rank's own level or
+  // tuning at the left, then a fader per pipe, lowest note first, a gap
+  // between octaves. A click on a pipe's fader chooses that pipe above.
+  juce::Label pipesLabel_, deskFieldLabel_;
+  juce::ComboBox deskField_;  // level or tuning
+  juce::Label rankFaderLabel_;
+  juce::Slider rankFader_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
+  std::unique_ptr<VoicingPipeDesk> desk_;
+  juce::Viewport deskView_;
+  VoicingField deskField() const;
+  void refreshDesk();
+  void setDeskRange();
   juce::TextButton abSwap_{"A / B"};
   juce::TextButton abCopy_{TRANS("Copy to other")};
   juce::TextButton resetOne_{TRANS("Reset this")};
@@ -606,29 +622,32 @@ private:
   std::vector<Id> rankIds_;
 };
 
-// The mixer: how many output pairs the player has, and which one each rank
-// speaks through. Its own tab because the rank list is long — a real organ has
-// dozens — and it is the one settings page that needs to scroll.
+// The mixer: the player's outputs, where the ranks play, and a strip for each
+// output and each source (division, perspective, mix). The ranks are routed
+// in the Rank routing window and levelled on the Voicing tab (#1023).
 class MixerPanel : public juce::Component, private juce::Timer {
 public:
   explicit MixerPanel(MasterpieceProcessor& p);
   ~MixerPanel() override;
   void resized() override;
-  // Rebuild the rank rows. The rank list only exists once an organ is loaded,
-  // so this cannot happen in the constructor.
+  // Rebuild the strips. The organ's lists only exist once it is loaded, so
+  // this cannot happen in the constructor.
   void refresh();
 
 private:
   void pushRouting();
   void setBusCount(int buses);
-  // The live levels (LiveLevels.h): a channel strip for each pair, division,
-  // group and rank, with its fader, meter, mute and solo, and a MIDI button
+  // The live levels (LiveLevels.h): a channel strip for each output, division,
+  // group and mix, with its fader, meter, mute and solo, and a MIDI button
   // to learn a knob or pedal for its level. They follow MIDI and the control
   // API on a timer.
   struct Fader {
     MidiTargetKind kind = MidiTargetKind::None;
     Id id = 0;     // the MIDI target's id
     int index = 0; // the place in the processor's list
+    // Further places the strip moves with its own: the Noises strip holds
+    // every division of noises alone.
+    std::vector<int> more;
     std::unique_ptr<ChannelStrip> strip;
   };
   static LiveLevels::Strip stripOf(MidiTargetKind kind);
@@ -638,50 +657,114 @@ private:
   int faderLevel(const Fader& f) const;
   void setFaderLevel(const Fader& f, int value);
   void faderMidiMenu(Fader& f);
-  std::vector<Fader> pairFaders_, divisionFaders_, groupFaders_, rankFaders_;
-  juce::Label pairsHeading_, divisionsHeading_, groupsHeading_, ranksHeading_;
-  // A perspective's or a windchest group's pair: chosen here, it moves every
-  // rank of the group; it shows the pair while they all share one.
+  std::vector<Fader> pairFaders_, divisionFaders_, groupFaders_, mixFaders_;
+  // The strips in tabs, one kind at a time: divisions, perspectives or
+  // windchest groups, mixes, outputs. Each tab has the full width.
+  enum class Source { Divisions, Groups, Mixes, Outputs };
+  struct SourceTabs : juce::TabbedButtonBar {
+    SourceTabs() : juce::TabbedButtonBar(juce::TabbedButtonBar::TabsAtTop) {}
+    std::function<void(int)> onChange;
+    std::function<void(int)> onPopup;
+    void currentTabChanged(int index, const juce::String&) override {
+      if (onChange) onChange(index);
+    }
+    void popupMenuClickOnTab(int index, const juce::String&) override {
+      if (onPopup) onPopup(index);
+    }
+  };
+  SourceTabs sources_;
+  std::vector<Source> sourceOfTab_;
+  Source shownSource_ = Source::Divisions;
+  std::vector<Fader>& sourceFaders(Source s);
+  const std::vector<Fader>& sourceFaders(Source s) const {
+    return const_cast<MixerPanel*>(this)->sourceFaders(s);
+  }
+  static Source sourceOfKind(MidiTargetKind kind);
+  juce::String sourceName(Source s) const;
+  void fillSourceTabs();
+  // A tab in a window of its own (#1023), as a console panel detaches: its
+  // strips move into the window and come back to the tabs when it closes.
+  // The windows last while this page does.
+  class StripWindow;
+  std::array<std::unique_ptr<StripWindow>, 4> stripWindows_;
+  bool isDetached(Source s) const;
+  void setDetached(Source s, bool on);
+  juce::Component& holderFor(Source s);
+  void layOutStrips(Source s, juce::Viewport& view, juce::Component& holder);
+  juce::TextButton detach_{TRANS("Own window")};
+  juce::Label emptySource_;  // a tab with no strips says how to make them
+  // Every kind side by side, each under its title, while they all fit the
+  // width; the tabs while they do not (#1188).
+  bool allInView_ = false;
+  std::array<juce::Label, 4> sectionTitles_;
+  std::vector<Source> sectionsWithStrips() const;
+  int stripsWidth(const std::vector<Source>& sections) const;
+  void layOutAll();
+  // A mix strip's menu: rename, remove.
+  void mixMenu(int mixId);
+  // The master volume's strip, the top bar's fader again, after the outputs.
+  void addMasterFader();
+  static bool isMaster(const Fader& f) { return f.kind == MidiTargetKind::MasterVolume; }
+  // A mix's destination, as a division's: every rank of the mix at once.
+  std::vector<std::unique_ptr<juce::ComboBox>> mixDests_;
+  std::vector<int> mixIdOf_;  // per mix strip, the mix's id
+  bool rankInMix(size_t row, int mixId) const;
+  // The mixes were made, changed or removed: their strips are made again.
+  void mixesChanged();
+  // A perspective's, a windchest group's or a division's destination: chosen
+  // here, it moves every rank of it; it shows the destination while they all
+  // share one. A destination is a pair or a speaker group.
   std::vector<std::unique_ptr<juce::ComboBox>> groupPairs_;
+  std::vector<std::unique_ptr<juce::ComboBox>> divisionDests_;
+  // per division strip, the live division indices it moves
+  std::vector<std::vector<int>> divisionIndexOf_;
   void fillGroupPairs();
   void showGroupPairs();
+  // A destination box's items: the default, the outputs, then the speaker
+  // groups, whose item ids start at kGroupItem.
+  static constexpr int kDefaultItem = 900;
+  static constexpr int kGroupItem = 1000;
+  void fillDestinations(juce::ComboBox& box) const;
+  int destinationItem(Id rankId) const;
+  void sendRanks(const std::function<bool(size_t)>& which, int item);
+  // The output count, the speaker groups, an output's channels or name, or
+  // the default changed: every box and fader follows.
+  void outputsChanged();
+  // The routes changed in the Rank routing window.
+  void routesChanged();
 
   MasterpieceProcessor& proc_;
   juce::Label heading_;
   juce::Label busesLabel_;
   juce::ComboBox busCount_;
+  // Where every rank without a route of its own plays, on every organ.
+  juce::Label defaultLabel_;
+  juce::ComboBox defaultDest_;
   juce::Label status_;
-  // Where each pair plays: its device channels, and whether the device has them.
+  // Where each output plays: its device channels, and whether the device has them.
   juce::Label outputs_;
   void showOutputs();
-  // The filter: rank rows whose name holds the text stay, the rest are hidden.
-  // Spread and All to pair 1 act on the rows on show.
-  juce::TextEditor filter_;
   juce::ToggleButton narrow_{TRANS("Narrow strips")};
-  // On, a rank's fader moves every rank on show by the same amount, each
-  // from where it stands (#1090): the filter chooses them.
-  juce::ToggleButton together_{TRANS("Move together")};
-  void moveShownRanks(size_t moved, int delta);
-  bool rankShown(size_t row) const;
   juce::TextButton save_{TRANS("Save for this organ")};
-  juce::TextButton spread_{TRANS("Spread ranks evenly")};
-  juce::TextButton reset_{TRANS("All to pair 1")};
-  // Each pair's lows to a subwoofer channel, in a box of its own.
-  juce::TextButton bass_{TRANS("Bass management...")};
-  // A strip per rank, side by side in a viewport that scrolls: 51 ranks do
-  // not fit a window. The divisions, groups and pairs stand at the right in
-  // one of their own, as a desk's group and master faders do.
-  juce::Viewport viewport_;
-  juce::Component rankHolder_;
+  juce::TextButton spread_{TRANS("Spread over the outputs")};
+  juce::TextButton reset_{TRANS("All to the default")};
+  // Each output's EQ, and its crossover filters, delay and polarity (#1188).
+  juce::TextButton outputEq_{TRANS("Output EQ...")};
+  juce::TextButton crossover_{TRANS("Crossover...")};
+  // Speaker groups: outputs that share the pipes sent to them, note by note.
+  juce::TextButton speakerGroups_{TRANS("Speaker groups...")};
+  // Each output's name, stereo or mono, its channels and its sends.
+  juce::TextButton channels_{TRANS("Outputs...")};
+  // The ranks in a list, each to an output or a speaker group.
+  juce::TextButton routing_{TRANS("Rank routing...")};
+  // The open tab's strips, scrolling when they outgrow the window.
   juce::Viewport busViewport_;
   juce::Component busHolder_;
-  // The ranks by division, then by id, each division's name above its first
-  // rank; the ranks in no division last.
+  // Every rank, and per rank its destination as a box item: kDefaultItem,
+  // an output, or kGroupItem + a speaker group. The rank levels themselves
+  // are on the Voicing tab.
   std::vector<Id> rankIds_;
-  std::vector<std::unique_ptr<juce::ComboBox>> rankBuses_;
-  std::vector<std::unique_ptr<juce::Label>> rankGroups_;
-  std::vector<int> rankGroupAbove_;  // per rank, the heading above its row in rankGroups_, or -1
-  std::vector<juce::String> rankDivisions_;  // per rank, its division's name, for the filter
+  std::vector<int> rankDest_;
 };
 
 // The console's own text display: the little 32-character panel on the jamb

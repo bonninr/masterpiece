@@ -24,7 +24,7 @@ namespace mp {
 class OutputCompressor {
 public:
   // The most pairs it handles, as for the limiter.
-  static constexpr int kMaxPairs = 24;
+  static constexpr int kMaxPairs = 32;
 
   // The width of the soft knee, in dB, centred on the threshold.
   static constexpr float kKneeDb = 6.0f;

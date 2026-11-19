@@ -1,0 +1,3 @@
+"Pipe %1" = "Pfeife %1"
+"The rank's own level or tuning, which each pipe adds to its own" = "Die eigene Lautstärke oder Stimmung der Reihe, die jede Pfeife zu ihrer eigenen addiert"
+"Each pipe's own level or tuning, lowest note on the left. A click on a pipe's fader chooses that pipe for the faders above; a drag sets it; a double-click puts it back." = "Die eigene Lautstärke oder Stimmung jeder Pfeife, der tiefste Ton links. Ein Klick auf den Regler einer Pfeife wählt sie für die Regler oben; Ziehen stellt sie ein; ein Doppelklick setzt sie zurück."
