@@ -4934,6 +4934,11 @@ bool MasterpieceProcessor::loadMidiMap() {
   }
   const auto text = f.loadFileAsString();
   const bool ok = midiMap_.fromText(text.toStdString());
+  // A line the reader could not make sense of -- a file edited by hand -- is
+  // named in the log with its number, rather than dropped unseen (#1012).
+  for (const auto& u : midiMap_.unreadLines())
+    juce::Logger::writeToLog("midi: line " + juce::String(u.number) + " of " + f.getFileName() +
+                             " not read, skipped: " + juce::String::fromUTF8(u.text.c_str()));
   applyConsoleMidi();
   // Events learned on a stop's copy on another page, before the two shared
   // one set, join the stop's own; the next save writes them there.
@@ -8769,6 +8774,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
         (midiOut_ != nullptr || outgoingProbe))
       addMessages(outgoing_, loadMessage_);
     sentValues_.clear();
+    displayLines_.clear();  // the displays start over blank with each organ
     emitSends(true);
   }
 
@@ -9412,7 +9418,27 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     result.error = result.diagnostics.errors.empty()
                        ? "the organ definition could not be parsed"
                        : result.diagnostics.errors.front();
+    for (const auto& e : result.diagnostics.errors)
+      juce::Logger::writeToLog("load: " + juce::String::fromUTF8(e.c_str()));
     return result;
+  }
+
+  // What the reader could not use in the definition -- a GrandOrgue .organ
+  // edited by hand, a table it does not know -- goes to the log, at most 50
+  // lines, so a player can see why something is missing (#1012). A package
+  // not installed is the load's own business further down.
+  {
+    int logged = 0, more = 0;
+    for (const auto& w : result.diagnostics.warnings) {
+      if (w.find("from package ") != std::string::npos) continue;
+      if (logged < 50) {
+        juce::Logger::writeToLog("load: " + juce::String::fromUTF8(w.c_str()));
+        ++logged;
+      } else {
+        ++more;
+      }
+    }
+    if (more > 0) juce::Logger::writeToLog("load: and " + juce::String(more) + " more warning(s) of the same kind");
   }
 
   phases.mark("odf parse");
@@ -11590,11 +11616,17 @@ void MasterpieceProcessor::emitSends(bool sysExOnly) {
     // To the output it names, or to every one (#1001).
     juce::MidiBuffer* into = sendBuffer(s.device);
     if (into == nullptr) continue;
-    if (s.targetKind == MidiTargetKind::ConsoleDisplay)
+    if (s.targetKind == MidiTargetKind::ConsoleDisplay || s.display != MidiDisplay::None) {
+      if (s.targetKind != MidiTargetKind::ConsoleDisplay)
+        text = MidiMap::displayText(s, displayNameOf(s.targetKind, s.targetId), now);
+      // A send that writes part of a display shares its line with the
+      // others that write there: its part changes, and the whole line goes.
+      if (s.placed()) {
+        auto& line = displayLines_[{static_cast<int>(s.display), s.number, s.device}];
+        text = MidiMap::placeOnLine(s, text, line);
+      }
       addMessages(*into, MidiMap::displayBytes(s, text));
-    else if (s.display != MidiDisplay::None)
-      addMessages(*into, MidiMap::displayBytes(s, MidiMap::displayText(s, displayNameOf(s.targetKind, s.targetId), now)));
-    else
+    } else
       addMessages(*into, MidiMap::sendBytes(s, now));
   }
 }
@@ -11704,14 +11736,25 @@ void MasterpieceProcessor::emitPistonLamps() {
   }
 }
 
-void MasterpieceProcessor::setObjectBindings(MidiTargetKind kind, Id id,
-                                             const std::vector<MidiBinding>& rows) {
+std::vector<MidiBinding> MasterpieceProcessor::setObjectBindings(MidiTargetKind kind, Id id,
+                                                                 const std::vector<MidiBinding>& rows) {
+  std::vector<MidiBinding> displaced;
   {
     const AudioLock lock(*this);
+    const std::vector<MidiBinding> before = midiMap_.bindings();
     midiMap_.setBindingsFor(kind, id, rows);
     pistonLamps_.clear();
+    const auto& after = midiMap_.bindings();
+    for (const auto& b : before) {
+      if (b.targetKind == kind && b.targetId == id) continue;
+      const bool kept = std::any_of(after.begin(), after.end(), [&](const MidiBinding& a) {
+        return a.source == b.source && a.targetKind == b.targetKind && a.targetId == b.targetId;
+      });
+      if (!kept) displaced.push_back(b);
+    }
   }
   saveMidiMap();
+  return displaced;
 }
 
 void MasterpieceProcessor::addBindingsFrom(const MidiMap& other, const std::vector<MidiBinding>& rows) {

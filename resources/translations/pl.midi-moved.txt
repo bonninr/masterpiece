@@ -1,0 +1,2 @@
+"Moved here from %1, which no longer answers it." = "Przeniesiono tutaj z %1, które już na nie nie reaguje."
+"another control" = "innego elementu"

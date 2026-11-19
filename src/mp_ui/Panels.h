@@ -56,6 +56,8 @@ struct PanelSection {
 // pistons; its swells and crescendo. A coupler or tremulant that cannot be
 // placed in a division goes to a last section, "Other".
 std::vector<PanelSection> panelSections(const MasterpieceProcessor& p);
+// Drops a division's prefix shared by most of its elements' names.
+void dropSharedPrefix(PanelSection& section);
 
 // "Trompete harm. 8'" -> "Trompete harm.", "8'". Recognises footages written
 // with a prime or an apostrophe, whole or fractional ("2 2/3'", "1 1/3"),

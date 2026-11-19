@@ -23969,6 +23969,15 @@ public:
     MP_CHECK(name == "Nazard" && foot == "2 2/3'", "a fractional footage: " + name + " / " + foot);
     splitFootage("Mixtur IV", name, foot);
     MP_CHECK(name == "Mixtur" && foot == "IV", "a mixture's ranks: " + name + " / " + foot);
+    // A half stop's mark stays with its footage, on the footage's line (#1012).
+    splitFootage("Gedackt 8' D", name, foot);
+    MP_CHECK(name == "Gedackt" && foot == "8' D", "a half stop's mark: " + name + " / " + foot);
+    splitFootage("Cornet V (Discant)", name, foot);
+    MP_CHECK(name == "Cornet" && foot == "V (Discant)", "a mark in brackets: " + name + " / " + foot);
+    splitFootage("Bourdon 16 Bass", name, foot);
+    MP_CHECK(name == "Bourdon" && foot == "16 Bass", "a bass half: " + name + " / " + foot);
+    splitFootage("Flute 4' Octave", name, foot);
+    MP_CHECK(name == "Flute 4' Octave" && foot.empty(), "a word that is no half stop's mark keeps the name whole: " + name);
     splitFootage("Tremolo", name, foot);
     MP_CHECK(name == "Tremolo" && foot.empty(), "a name with no footage stays whole");
 

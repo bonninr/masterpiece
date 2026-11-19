@@ -824,11 +824,15 @@ bool ConsoleView::lookForChanges() {
   // second late reads as played, and drawing keys was the window's largest
   // cost in a fast passage. With the keys not shown (View menu) they are not
   // looked at, and any still lit go dark once.
+  //
+  // The key held with the mouse or a finger shows down whatever the View
+  // menu says: a click on a manual answers the hand that made it (#1012).
   const bool showKeys = proc_.showPlayedKeys();
   if (!showKeys || (++keyTick_ & 1) == 0) {
     for (auto& k : keys_) {
-      const bool down = showKeys && (proc_.keyDownOnKeyboard(k.keyboardId, k.midiNote) ||
-                                      proc_.keyCoupledOnKeyboard(k.keyboardId, k.midiNote));
+      const bool held = heldKey_ >= 0 && k.midiNote == heldKey_ && k.channel == heldChannel_;
+      const bool down = held || (showKeys && (proc_.keyDownOnKeyboard(k.keyboardId, k.midiNote) ||
+                                              proc_.keyCoupledOnKeyboard(k.keyboardId, k.midiNote)));
       if (down == k.shownDown) continue;
       k.shownDown = down;
       mark(k.bounds);

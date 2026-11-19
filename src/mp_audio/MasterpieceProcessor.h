@@ -52,6 +52,7 @@
 #include <bitset>
 #include <deque>
 #include <map>
+#include <tuple>
 #include <optional>
 #include <mutex>
 #include <set>
@@ -812,7 +813,10 @@ public:
   // Everything one object listens for, sends and answers to on the computer
   // keyboard, replaced at once and saved. Taken under the audio lock: the
   // audio thread reads all three every block.
-  void setObjectBindings(MidiTargetKind kind, Id id, const std::vector<MidiBinding>& rows);
+  // Returns the bindings of other objects the rows took their message from:
+  // one message works one control, so a message used elsewhere moves here,
+  // and the dialog says so (#1012).
+  std::vector<MidiBinding> setObjectBindings(MidiTargetKind kind, Id id, const std::vector<MidiBinding>& rows);
   // Bindings taken from another map, a console profile's (#866): each one's
   // device named again in this map, all added at once and saved.
   void addBindingsFrom(const MidiMap& other, const std::vector<MidiBinding>& rows);
@@ -3530,6 +3534,9 @@ private:
   // without sending. Kept for the rows a change leaves alone.
   static constexpr int kTakeStateQuietly = -2;
   std::vector<int> sentValues_;
+  // Each console display's line as last sent, by its kind, number and output,
+  // for the sends that write part of it (MidiSend::start, #1012).
+  std::map<std::tuple<int, int, std::string>, std::string> displayLines_;
   // Keys played on a manual that sends them on, by key id, so the note-off
   // goes out on the note the note-on did.
   std::unordered_map<int, std::pair<Id, int>> keySends_;

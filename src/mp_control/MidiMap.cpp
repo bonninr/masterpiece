@@ -80,6 +80,16 @@ std::string sysExFields(const MidiSend& s) {
   return " " + sysExField(s.sysExOn) + " " + sysExField(s.sysExOff);
 }
 
+// The options after a send's bar: its output, and a display's place on its
+// line when it has one (#1012).
+std::string sendOptions(const MidiSend& s) {
+  std::string o;
+  if (!s.device.empty()) o += " device=" + encodeName(s.device);
+  if (s.display != MidiDisplay::None && s.placed())
+    o += " start=" + std::to_string(s.start) + " length=" + std::to_string(s.length);
+  return o.empty() ? o : " |" + o;
+}
+
 bool readSysExField(const std::string& field, std::vector<uint8_t>& out) {
   if (field == "-") {
     out.clear();
@@ -1047,6 +1057,18 @@ std::vector<uint8_t> MidiMap::displayBytes(const MidiSend& s, const std::string&
   return out;
 }
 
+std::string MidiMap::placeOnLine(const MidiSend& s, const std::string& utf8, std::string& line) {
+  const size_t width = s.display == MidiDisplay::Lcd ? 32 : 16;
+  line.resize(width, ' ');
+  const size_t start = static_cast<size_t>(std::clamp(s.start, 0, static_cast<int>(width) - 1));
+  const size_t room = width - start;
+  const size_t length = s.length > 0 ? std::min(static_cast<size_t>(s.length), room) : room;
+  std::string text = LcdPanels::toDisplayAscii(utf8);
+  text.resize(length, ' ');
+  line.replace(start, length, text);
+  return line;
+}
+
 std::string MidiMap::displayText(const MidiSend& s, const std::string& name, int value) {
   if (!s.showsValue()) return name;
   return std::to_string(clamp7(value) * 100 / 127) + " %";
@@ -1169,7 +1191,8 @@ std::string MidiMap::toText() const {
   // What the console is sent, and the computer keys. Last for the same reason.
   if (!sends_.empty())
     out << "# send <target> <id> <message> <channel> <number> <low> <high> "
-           "[<SysEx on> <SysEx off>] [<program when off>] [| device=<MIDI output>]\n";
+           "[<SysEx on> <SysEx off>] [<program when off>] [| device=<MIDI output>] "
+           "[start=<character> length=<characters>]\n";
   for (const auto& s : sends_)
     out << "send " << targetName(s.targetKind) << ' ' << s.targetId << ' '
         << sendKindName(s) << ' ' << s.channel << ' ' << s.number << ' ' << s.low
@@ -1177,8 +1200,7 @@ std::string MidiMap::toText() const {
         << (s.kind == MidiSourceKind::ProgramChange && s.offProgram >= 0
                 ? " " + std::to_string(s.offProgram)
                 : std::string())
-        << (s.device.empty() ? std::string() : " | device=" + encodeName(s.device))
-        << '\n';
+        << sendOptions(s) << '\n';
   if (!shortcuts_.empty()) out << "# shortcut <target> <id> <step> <key>\n";
   for (const auto& k : shortcuts_)
     out << "shortcut " << targetName(k.targetKind) << ' ' << k.targetId << ' ' << k.step
@@ -1344,7 +1366,10 @@ bool MidiMap::fromText(const std::string& text) {
   std::istringstream in(text);
   std::string line;
   bool anyBad = false;
+  unread_.clear();
+  int lineNumber = 0;
   while (std::getline(in, line)) {
+    ++lineNumber;
     if (line.empty() || line[0] == '#') continue;
     std::istringstream ls(line);
     // A manual assignment, which has its own shape.
@@ -1364,6 +1389,7 @@ bool MidiMap::fromText(const std::string& text) {
         addKeyboardBinding(b);
       } else {
         anyBad = true;
+        unread_.push_back({lineNumber, line});
       }
       continue;
     }
@@ -1378,8 +1404,11 @@ bool MidiMap::fromText(const std::string& text) {
       MidiSend snd;
       if (bar != std::string::npos) {
         std::istringstream options(line.substr(bar + 3));
-        for (std::string o; options >> o;)
+        for (std::string o; options >> o;) {
           if (o.rfind("device=", 0) == 0) snd.device = decodeName(o.substr(7));
+          else if (o.rfind("start=", 0) == 0) snd.start = std::clamp(std::atoi(o.c_str() + 6), 0, 31);
+          else if (o.rfind("length=", 0) == 0) snd.length = std::clamp(std::atoi(o.c_str() + 7), 0, 32);
+        }
       }
       if (sl >> tag >> tgt >> id >> kind >> snd.channel >> snd.number >> snd.low >> snd.high) {
         snd.targetKind = targetKindFrom(tgt);
@@ -1404,6 +1433,7 @@ bool MidiMap::fromText(const std::string& text) {
         }
       }
       anyBad = true;
+      unread_.push_back({lineNumber, line});
       continue;
     }
     if (line.rfind("shortcut ", 0) == 0) {
@@ -1421,6 +1451,7 @@ bool MidiMap::fromText(const std::string& text) {
         }
       }
       anyBad = true;
+      unread_.push_back({lineNumber, line});
       continue;
     }
 
@@ -1439,6 +1470,7 @@ bool MidiMap::fromText(const std::string& text) {
         addKeyboardBinding(b);
       } else {
         anyBad = true;
+        unread_.push_back({lineNumber, line});
       }
       continue;
     }
@@ -1459,6 +1491,7 @@ bool MidiMap::fromText(const std::string& text) {
       // A malformed line is skipped rather than aborting the load: losing one
       // binding beats losing the whole map.
       anyBad = true;
+      unread_.push_back({lineNumber, line});
       continue;
     }
     MidiBinding b;
@@ -1491,6 +1524,7 @@ bool MidiMap::fromText(const std::string& text) {
     if (b.source.kind == MidiSourceKind::None ||
         b.targetKind == MidiTargetKind::None) {
       anyBad = true;
+      unread_.push_back({lineNumber, line});
       continue;
     }
     bind(b);

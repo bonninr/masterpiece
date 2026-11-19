@@ -464,6 +464,9 @@ public:
     addAndMakeVisible(empty_);
     styleNote(empty_, TRANS("Nothing works this yet. Press New event, then press the button, pull the "
                             "drawstop or move the pedal on your console."));
+    addChildComponent(moved_);
+    moved_.setColour(juce::Label::textColourId, juce::Colours::orange);
+    moved_.setFont(juce::FontOptions(12.0f, juce::Font::bold));
     addAndMakeVisible(note_);
     styleNote(note_,
               kind == MidiTargetKind::Switch
@@ -495,6 +498,7 @@ public:
     auto r = getLocalBounds().reduced(12);
     header_.setBounds(r.removeFromTop(20));
     note_.setBounds(r.removeFromBottom(64));
+    if (moved_.isVisible()) moved_.setBounds(r.removeFromBottom(20));
     r.removeFromBottom(6);
     auto buttons = r.removeFromBottom(kRow + 2);
     add_.setBounds(buttons.removeFromLeft(140));
@@ -641,7 +645,22 @@ private:
     }
   }
 
-  void commit() { proc_.setObjectBindings(kind_, id_, rows_); }
+  // One message works one control: a message another control used moves
+  // here, and the line under the buttons names what lost it (#1012).
+  void commit() {
+    const auto displaced = proc_.setObjectBindings(kind_, id_, rows_);
+    if (displaced.empty()) return;
+    juce::StringArray names;
+    for (const auto& b : displaced) {
+      const auto name = MidiEventDialog::targetName(proc_, b.targetKind, b.targetId);
+      names.addIfNotAlreadyThere(name.isNotEmpty() ? name : TRANS("another control"));
+    }
+    moved_.setText(TRANS("Moved here from %1, which no longer answers it.")
+                       .replace("%1", names.joinIntoString(", ")),
+                   juce::dontSendNotification);
+    moved_.setVisible(true);
+    resized();
+  }
 
   MasterpieceProcessor& proc_;
   MidiTargetKind kind_;
@@ -656,7 +675,7 @@ private:
   juce::Component list_;
   juce::TextButton add_{TRANS("New event")};
   juce::TextButton pair_{TRANS("Learn on and off")};
-  juce::Label empty_, note_;
+  juce::Label empty_, note_, moved_;
 };
 
 // --------------------------------------------------------------------- Send

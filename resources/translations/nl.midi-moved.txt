@@ -1,0 +1,2 @@
+"Moved here from %1, which no longer answers it." = "Hierheen verplaatst van %1, dat er niet meer op reageert."
+"another control" = "een ander bedieningselement"

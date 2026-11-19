@@ -237,8 +237,11 @@ public:
     from_.setVisible(t.kind == ConsoleTabKind::Coupler);
     midi_.setText(owner_.midiText(row), juce::dontSendNotification);
     learn_.setButtonText(owner_.learningTab() == row ? TRANS("Waiting...") : TRANS("Learn"));
+    // Orange while it waits for the console, as every learn button is that
+    // listens; the blue marks the row chosen, not a learn (#1012).
     learn_.setColour(juce::TextButton::buttonColourId,
-                     owner_.learningTab() == row ? kArmed : getLookAndFeel().findColour(juce::TextButton::buttonColourId));
+                     owner_.learningTab() == row ? juce::Colours::darkorange
+                                                 : getLookAndFeel().findColour(juce::TextButton::buttonColourId));
   }
 
   void resized() override {

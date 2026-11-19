@@ -501,7 +501,24 @@ SendEvent readSend(const Section& s, int i) {
   // The output it goes to, by the port's name with GrandOrgue's decorations
   // taken off (outputForSend); none for every output.
   e.device = plainDeviceName(s.str("MIDISendDevice" + k));
+  // A display's place on its line (#1012), as GOMidiSender::Load reads it:
+  // the first character, and how many, the whole width when not given.
+  const bool lcd = e.type == "HWLCD" || e.type == "HWNameLCD";
+  if (lcd || e.type == "HWString" || e.type == "HWNameString") {
+    const int width = lcd ? 32 : 16;
+    e.start = std::clamp(s.num("MIDISendStart" + k, 0), 0, width - 1);
+    e.length = std::clamp(s.num("MIDISendLength" + k, width), 0, width);
+  }
   return e;
+}
+
+// A display's place on its line, from the event: none when it fills the line
+// from its first character, as most do.
+void placeFrom(const SendEvent& e, bool lcd, MidiSend& m) {
+  const int width = lcd ? 32 : 16;
+  if (e.start == 0 && (e.length == 0 || e.length >= width)) return;
+  m.start = e.start;
+  m.length = e.length;
 }
 
 std::vector<uint8_t> parameterBytes(bool registered, int channel, int parameter, int value) {
@@ -576,14 +593,20 @@ std::optional<MidiSend> switchSend(const SendEvent& e) {
     m.number = std::clamp(e.key, 0, t == "HWNameLCD" ? 16383 : 127);
     m.low = std::clamp(e.low, 0, 127);
     m.high = 0;
+    placeFrom(e, t == "HWNameLCD", m);
     return m;
   } else if (t == "HWLCD" || t == "HWString") {
-    // "ON" and "OFF", as GrandOrgue writes a switch's state.
+    // "ON" and "OFF", as GrandOrgue writes a switch's state, at the place
+    // on the line the event gives (#1012).
     MidiSend d;
     d.display = t == "HWLCD" ? MidiDisplay::Lcd : MidiDisplay::Text;
     d.number = std::clamp(e.key, 0, t == "HWLCD" ? 16383 : 127);
     d.low = std::clamp(e.low, 0, 127);
-    return hex(MidiMap::displayBytes(d, "ON"), MidiMap::displayBytes(d, "OFF"));
+    placeFrom(e, t == "HWLCD", d);
+    std::string onLine, offLine;
+    MidiMap::placeOnLine(d, "ON", onLine);
+    MidiMap::placeOnLine(d, "OFF", offLine);
+    return hex(MidiMap::displayBytes(d, onLine), MidiMap::displayBytes(d, offLine));
   } else {
     return std::nullopt;
   }
@@ -620,12 +643,14 @@ std::optional<MidiSend> controlSend(const SendEvent& e) {
     m.number = std::clamp(e.key, 0, t == "HWLCD" ? 16383 : 127);
     m.low = std::clamp(e.low, 0, 127);
     m.high = 1;
+    placeFrom(e, t == "HWLCD", m);
   } else if (t == "HWNameLCD" || t == "HWNameString") {
     m.kind = MidiSourceKind::SysEx;
     m.display = t == "HWNameLCD" ? MidiDisplay::Lcd : MidiDisplay::Text;
     m.number = std::clamp(e.key, 0, t == "HWNameLCD" ? 16383 : 127);
     m.low = std::clamp(e.low, 0, 127);
     m.high = 0;
+    placeFrom(e, t == "HWNameLCD", m);
   } else {
     return std::nullopt;
   }
@@ -645,6 +670,7 @@ std::optional<MidiSend> displaySend(const SendEvent& e) {
   m.low = std::clamp(e.low, 0, 127);
   m.high = 1;
   m.device = e.device;
+  placeFrom(e, lcd, m);
   return m;
 }
 

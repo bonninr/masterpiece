@@ -1,0 +1,2 @@
+"Moved here from %1, which no longer answers it." = "Přesunuto sem z %1, které na ni už nereaguje."
+"another control" = "jiný ovladač"

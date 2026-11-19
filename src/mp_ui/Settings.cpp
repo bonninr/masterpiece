@@ -193,6 +193,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
   voicing_.setToggleState(sw.enableVoicing, juce::dontSendNotification);
   originalPitch_.setToggleState(sw.playAtOriginalOrganPitch,
                                juce::dontSendNotification);
+  enableSwitches();
 
   // The profile is the control most players should ever need. It is first on
   // the panel and it moves all four settings below it; those stay visible
@@ -890,12 +891,7 @@ void EnginePanel::revert() {
   enableStreamControls(openStream_);
   showPreload(openPreload_);
 
-  // simpleWavOnly greys the rest out; restoring the states has to restore
-  // that too, or the panel lies about what is reachable.
-  const bool detailed = !openSwitch_.simpleWavOnly;
-  for (auto* b : {&wind_, &tremulant_, &enclosure_, &voicing_})
-    b->setEnabled(detailed);
-  bellows_.setEnabled(detailed && wind_.getToggleState());
+  enableSwitches();
   syncPerformance();
 }
 
@@ -935,10 +931,14 @@ void EnginePanel::pushSwitches() {
   sw.enableVoicing = voicing_.getToggleState();
   sw.playAtOriginalOrganPitch = originalPitch_.getToggleState();
   proc_.setEngineSwitch(sw);
+  enableSwitches();
+}
 
-  // simpleWavOnly bypasses everything; showing the others as still-on would
-  // be a lie about what the engine is doing.
-  const bool detailed = !sw.simpleWavOnly;
+// Bypass all effects bypasses everything; the switches under it are greyed
+// while it is ticked, as the panel opens too (#1012), or the panel shows
+// them as reachable when they are not.
+void EnginePanel::enableSwitches() {
+  const bool detailed = !simpleWav_.getToggleState();
   for (auto* b : {&wind_, &tremulant_, &enclosure_, &voicing_})
     b->setEnabled(detailed);
   bellows_.setEnabled(detailed && wind_.getToggleState());

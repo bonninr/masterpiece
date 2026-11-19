@@ -1,0 +1,2 @@
+"Moved here from %1, which no longer answers it." = "Hierher verschoben von %1, das nicht mehr darauf reagiert."
+"another control" = "einem anderen Bedienelement"

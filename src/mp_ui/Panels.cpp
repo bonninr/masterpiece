@@ -31,9 +31,11 @@ void splitFootage(const std::string& raw, std::string& name, std::string& footag
     for (size_t at; (at = label.find(mark)) != std::string::npos;)
       label.replace(at, 3, "'");
   // A footage at the end: 8', 2 2/3', 1 1/3, 16; a mixture's ranks: IV, III-IV,
-  // 4f, 3-5f.
+  // 4f, 3-5f. A half stop's mark after it stays with it on its line, as in
+  // "Gedackt 8' D" (#1012): B, D, T, S, Bass, Discant, Dessus, Treble.
   static const std::regex tail(
-      R"(^(.*?)[\s,]+((?:\d+\s+)?\d+(?:/\d+)?\s*(?:'|ft\.?)?|[IVX]+(?:\s*-\s*[IVX]+)?|\d+(?:\s*-\s*\d+)?\s*(?:f|fach|rangs?|rks?)\.?)\s*$)",
+      R"(^(.*?)[\s,]+((?:(?:\d+\s+)?\d+(?:/\d+)?\s*(?:'|ft\.?)?|[IVX]+(?:\s*-\s*[IVX]+)?|\d+(?:\s*-\s*\d+)?\s*(?:f|fach|rangs?|rks?)\.?))"
+      R"((?:\s+\(?(?:[BDTS]|bas|basse?|bajo|baixo|disc|discant|diskant|dessus|treble|tiple)\.?\)?)?)\s*$)",
       std::regex::icase);
   std::smatch m;
   if (std::regex_match(label, m, tail) && !m[1].str().empty()) {
@@ -207,6 +209,33 @@ static std::string nameKey(const std::string& name) {
     if (std::isalnum(static_cast<unsigned char>(ch)) != 0)
       key += static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
   return key;
+}
+
+// A division's own prefix, repeated on its stops ("HW Principal", "SW
+// Viola"), says nothing inside that division's column. The short capitalised
+// first word that most of the column's elements share is dropped from those
+// that carry it; a coupler named "III / I" keeps its name.
+void dropSharedPrefix(PanelSection& sec) {
+  std::map<std::string, size_t> firsts;
+  auto firstWord = [](const std::string& n) {
+    const auto space = n.find(' ');
+    if (space == std::string::npos || space == 0 || space > 3) return std::string();
+    const std::string w = n.substr(0, space);
+    return std::all_of(w.begin(), w.end(), [](char ch) { return std::isupper(static_cast<unsigned char>(ch)) != 0; })
+               ? w : std::string();
+  };
+  for (const auto& e : sec.elements)
+    if (const auto w = firstWord(e.name); !w.empty()) ++firsts[w];
+  std::string prefix;
+  size_t most = 0;
+  for (const auto& [w, n] : firsts)
+    if (n > most) { most = n; prefix = w; }
+  if (prefix.empty() || most < 2 || most * 2 < sec.elements.size()) return;
+  // Every space after the prefix goes with it: "P  Subbas" is "Subbas",
+  // not " Subbas", which would sit off the button's centre (#1012).
+  for (auto& e : sec.elements)
+    if (firstWord(e.name) == prefix)
+      e.name = e.name.substr(std::min(e.name.size(), e.name.find_first_not_of(' ', prefix.size())));
 }
 
 std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
@@ -508,29 +537,7 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
     }
   if (steps >= 3) addControl(crescendo, TRANS("Crescendo").toStdString());
 
-  // A division's own prefix, repeated on its stops ("HW Principal", "SW
-  // Viola"), says nothing inside that division's column. The short capitalised
-  // first word that most of the column's elements share is dropped from those
-  // that carry it; a coupler named "III / I" keeps its name.
-  for (auto& sec : divisions) {
-    std::map<std::string, size_t> firsts;
-    auto firstWord = [](const std::string& n) {
-      const auto space = n.find(' ');
-      if (space == std::string::npos || space == 0 || space > 3) return std::string();
-      const std::string w = n.substr(0, space);
-      return std::all_of(w.begin(), w.end(), [](char ch) { return std::isupper(static_cast<unsigned char>(ch)) != 0; })
-                 ? w : std::string();
-    };
-    for (const auto& e : sec.elements)
-      if (const auto w = firstWord(e.name); !w.empty()) ++firsts[w];
-    std::string prefix;
-    size_t most = 0;
-    for (const auto& [w, n] : firsts)
-      if (n > most) { most = n; prefix = w; }
-    if (prefix.empty() || most < 2 || most * 2 < sec.elements.size()) continue;
-    for (auto& e : sec.elements)
-      if (firstWord(e.name) == prefix) e.name = e.name.substr(prefix.size() + 1);
-  }
+  for (auto& sec : divisions) dropSharedPrefix(sec);
 
   std::vector<PanelSection> out = std::move(divisions);
   if (!other.elements.empty()) out.push_back(std::move(other));
@@ -759,6 +766,10 @@ public:
     if (owner_.editing_) {
       // The tick: shown, or hidden from the panel.
       auto box = tickArea().withSizeKeepingCentre(16.0f, 16.0f);
+      // A dark ground under the white box, so it shows on a light button as
+      // well as on a dark one (#1012).
+      g.setColour(juce::Colours::black.withAlpha(0.6f));
+      g.fillRoundedRectangle(box.expanded(2.0f), 3.0f);
       g.setColour(juce::Colours::white);
       g.drawRect(box, 1.5f);
       if (!hidden) {
@@ -1132,6 +1143,7 @@ void PanelView::setEditing(bool editing) {
   if (editing && !editing_) editScale_ = scale();
   editing_ = editing;
   layoutSections();
+  refreshSizeControls();
 }
 
 void PanelView::changed() {
@@ -1253,6 +1265,9 @@ void PanelView::refreshSizeControls() {
   smaller_.setEnabled(!layout_.fitToWindow && layout_.scale > 50);
   bigger_.setEnabled(!layout_.fitToWindow && layout_.scale < 250);
   fit_.setToggleState(layout_.fitToWindow, juce::dontSendNotification);
+  // While editing the size holds still, so the hidden elements shown for
+  // editing shrink nothing; Fit has nothing to do until Edit is off (#1012).
+  fit_.setEnabled(!editing_);
 }
 
 void PanelView::layoutSections() {
@@ -1326,6 +1341,11 @@ void PanelView::timerCallback() {
     return;
   }
   if (getTimerInterval() >= 250) startTimerHz(15);
+  // While an organ loads, the engine's switches are the next organ's, by
+  // numbers this panel's cells share: following them lit the old panel with
+  // the new organ's registration (#1012). The panel holds still; the panels
+  // are made afresh for the new organ when the load ends.
+  if (proc_.organLoading()) return;
   for (auto* c : cells_) {
     if (auto* cell = dynamic_cast<Cell*>(c)) cell->follow();
     else if (auto* fader = dynamic_cast<Fader*>(c)) fader->follow();

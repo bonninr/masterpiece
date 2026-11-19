@@ -79,6 +79,7 @@ public:
 private:
   void timerCallback() override;
   void pushSwitches();
+  void enableSwitches();
   // Apply one of the quality presets to the memory settings at once.
   void applyProfile(int id);
   // The performance presets: the engine, the threads and the polyphony.

@@ -1,0 +1,2 @@
+"Moved here from %1, which no longer answers it." = "Déplacé ici depuis %1, qui n'y répond plus."
+"another control" = "une autre commande"

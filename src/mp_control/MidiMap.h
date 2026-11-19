@@ -412,6 +412,14 @@ struct MidiSend {
   // `number` and its colour in `low`; Text the 16-character string, F0 7D 19
   // <id> <text> F7. `high` is 1 for the value, 0 for the name. Kind SysEx.
   MidiDisplay display = MidiDisplay::None;
+  // Where on the display's line the text goes, as GrandOrgue's
+  // MIDISendStart and MIDISendLength (#1012): the text, cut or padded to
+  // `length` characters, is written from character `start` of one line kept
+  // for that display, and the whole line is sent, so several objects share
+  // one display. 0 and 0: the text fills the line from its start.
+  int start = 0;
+  int length = 0;
+  bool placed() const { return start > 0 || length > 0; }
   // The MIDI output it goes to, by its label in Settings > MIDI output
   // (outputForSend); empty for every output (#1001).
   std::string device;
@@ -421,7 +429,7 @@ struct MidiSend {
            channel == o.channel && number == o.number && low == o.low && high == o.high &&
            sysExOn == o.sysExOn && sysExOff == o.sysExOff && offProgram == o.offProgram &&
            noteOff == o.noteOff && parameter == o.parameter && display == o.display &&
-           device == o.device;
+           start == o.start && length == o.length && device == o.device;
   }
   bool showsValue() const { return display != MidiDisplay::None && high == 1; }
 };
@@ -648,6 +656,10 @@ public:
   // A display send's message with its text (#928): ASCII, accented letters
   // without their accents, cut or padded with spaces to the display's width.
   static std::vector<uint8_t> displayBytes(const MidiSend& s, const std::string& utf8);
+  // A placed send's text written into the display's line (as wide as the
+  // display, spaces when new): from `start`, cut or padded to `length`, or to
+  // the line's end when `length` is 0. Returns the whole line.
+  static std::string placeOnLine(const MidiSend& s, const std::string& utf8, std::string& line);
   // The text a display send shows: the object's name, or a control's value
   // 0..127 as a percentage.
   static std::string displayText(const MidiSend& s, const std::string& name, int value);
@@ -692,6 +704,13 @@ public:
   std::string deviceIdentifierField(int deviceId) const;
   int readDevice(const std::string& name, std::istream& rest);
   bool fromText(const std::string& text);
+  // The lines the last fromText could not read and skipped, by their number
+  // from 1, so the loader can name them in the log (#1012).
+  struct UnreadLine {
+    int number = 0;
+    std::string text;
+  };
+  const std::vector<UnreadLine>& unreadLines() const { return unread_; }
 
   // Which keyboard each MIDI channel plays. Not a binding — a binding turns one
   // message into one action, and this decides where a whole channel's keys go —
@@ -816,6 +835,7 @@ private:
   // expression pedal commonly works two swell boxes (#90).
   std::unordered_map<MidiSource, std::vector<MidiBinding>, MidiSourceHash> alsoDrives_;
   std::vector<MidiBinding> ordered_; // stable order for the UI and for saving
+  std::vector<UnreadLine> unread_;
   std::vector<MidiSend> sends_;
   std::vector<KeyShortcut> shortcuts_;
   // Latching switches remember their own state: the console sends "button
