@@ -738,8 +738,12 @@ jobs:
   # Linux as a Flatpak (discussion #237): one bundle for every distribution,
   # run in a sandbox. Built in the freedesktop SDK's own container from
   # packaging/flatpak; the bundle installs with "flatpak install".
+  # Built for what is merged into dev and main, and for a build started by
+  # hand; not for a pull request, which it only slowed, nor for a preview.
   flatpak:
-    if: github.event.action != 'labeled' || github.event.label.name == 'pgo'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'))
     runs-on: ubuntu-latest
     timeout-minutes: ${{ (inputs.pgo || contains(github.event.pull_request.labels.*.name, 'pgo') || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 180 || 90 }}
     container:
