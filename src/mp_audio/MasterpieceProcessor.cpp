@@ -9829,6 +9829,33 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
         wind_.lastSettleSteps() > 0
             ? "load: wind settled by integration, " + juce::String(wind_.lastSettleSteps()) + " steps"
             : "load: wind solved in " + juce::String(wind_.lastSettleSweeps()) + " sweeps");
+  // A windchest left without wind once the organ has started plays nothing
+  // with the wind model on: named in the log, with the valves a switch keeps
+  // shut, so a silent organ shows why (#1174).
+  if (wind_.active()) {
+    juce::StringArray empty, shut;
+    for (const auto& [id, c] : model_.wind) {
+      if (c.infiniteVolume || c.defaultPressureInches <= 0.0) continue;
+      if (wind_.pressureFor(id) < 0.05 * c.defaultPressureInches)
+        empty.add(juce::String::fromUTF8(c.name.c_str()) + " (" + juce::String(static_cast<juce::int64>(id)) + ")");
+    }
+    for (const auto& l : model_.windLinks) {
+      if (l.valveSwitchId == 0) continue;
+      const bool engaged = engagedSwitches_.count(l.valveSwitchId) != 0;
+      if (engaged == l.valveOpenWhenEngaged) continue;
+      const auto sw = model_.switches.find(l.valveSwitchId);
+      shut.addIfNotAlreadyThere(
+          "'" + juce::String::fromUTF8(sw != model_.switches.end() ? sw->second.name.c_str() : "") + "' (switch " +
+          juce::String(static_cast<juce::int64>(l.valveSwitchId)) + ")");
+    }
+    if (!empty.isEmpty()) {
+      empty.sort(true);
+      juce::Logger::writeToLog("load: wind: " + juce::String(empty.size()) +
+                               " windchest(s) without wind after the start: " + empty.joinIntoString(", "));
+      if (!shut.isEmpty())
+        juce::Logger::writeToLog("load: wind: valves kept shut by switch: " + shut.joinIntoString(", "));
+    }
+  }
   setterSwitchId_ = 0;
   for (const auto& [id, sw] : model_.switches)
     if (sw.asgnCode == 12) {
