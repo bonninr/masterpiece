@@ -1226,3 +1226,4 @@ countries: it ch sm va
 "The bit of the controller that carries this switch, 0 for the lowest" = "Il bit del controller che porta questo interruttore, 0 per il più basso"
 "RPN" = "RPN"
 "NRPN" = "NRPN"
+"Pair %1" = "Coppia %1"

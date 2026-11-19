@@ -1226,3 +1226,4 @@ countries: fr be ca ch lu mc
 "The bit of the controller that carries this switch, 0 for the lowest" = "Le bit du contrôleur qui porte ce commutateur, 0 pour le plus bas"
 "RPN" = "RPN"
 "NRPN" = "NRPN"
+"Pair %1" = "Paire %1"
