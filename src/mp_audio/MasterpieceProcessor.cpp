@@ -2795,7 +2795,7 @@ juce::String MasterpieceProcessor::settingsBody() const {
 }
 
 bool MasterpieceProcessor::isMixerKey(const juce::String& key) {
-  return key == "buses" || key == "busname" || key == "defaultroute" || key == "busir" || key == "buseq" || key == "busfilt" || key == "groups";
+  return key == "buses" || key == "busname" || key == "defaultroute" || key == "busir" || key == "buseq" || key == "busfilt" || key == "livepair" || key == "groups";
 }
 
 juce::String MasterpieceProcessor::mixerLines() const {
@@ -2848,6 +2848,9 @@ juce::String MasterpieceProcessor::mixerLines() const {
            << juce::String(r.mix, 3) << " " << juce::String(r.irFile) << "\n";
     }
   }
+  // The outputs' faders not at full (#1197): "livepair <place from 1> <value>".
+  for (int i = 0; i < LiveLevels::kMaxPairs; ++i)
+    if (const int v = liveLevels_.pair(i); v != LiveLevels::kFull) text << "livepair " << i + 1 << " " << v << "\n";
   // An output's EQ and filters (#1188): "buseq <busId> <the voicing EQ's
   // line>"; "busfilt <busId> <high-pass Hz> <type> <low-pass Hz> <type>
   // <delay ms> <invert>", a frequency of 0 off, the types 0-3 as
@@ -2987,6 +2990,14 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
     if (busId > 0 && e.fromLine(val.fromFirstOccurrenceOf(" ", false, false).trim().toStdString())) {
       mixer_.busEq[busId] = e;
       refreshMixerBuses();
+    }
+  } else if (key == "livepair") {
+    const auto parts = juce::StringArray::fromTokens(val, " ", "");
+    if (parts.size() >= 2 && parts[0].getIntValue() >= 1 && parts[0].getIntValue() <= LiveLevels::kMaxPairs) {
+      const int i = parts[0].getIntValue() - 1;
+      const int v = juce::jlimit(0, LiveLevels::kTop, parts[1].getIntValue());
+      savedPairLevels_[i] = v;
+      liveLevels_.setPair(i, v);
     }
   } else if (key == "busfilt") {
     const auto parts = juce::StringArray::fromTokens(val, " ", "");
@@ -3184,6 +3195,25 @@ bool MasterpieceProcessor::saveSettings() const {
     text << " " << juce::String::fromUTF8(m.name.c_str()) << "\n";
   }
 
+  // The faders of this organ not at full (#1197): "livelevel rank|division
+  // <id> <value>" and "livelevel group|mix <place from 1> <value>".
+  {
+    std::vector<std::pair<Id, int>> ranks, divisions;
+    for (const auto& [rankId, index] : liveRankIndex_)
+      if (const int v = liveLevels_.rank(index); v != LiveLevels::kFull) ranks.emplace_back(rankId, v);
+    for (const auto& [divisionId, division] : model_.divisions)
+      if (const int index = liveDivisionIndexOf(divisionId); index >= 0)
+        if (const int v = liveLevels_.division(index); v != LiveLevels::kFull) divisions.emplace_back(divisionId, v);
+    std::sort(ranks.begin(), ranks.end());
+    std::sort(divisions.begin(), divisions.end());
+    for (const auto& [id, v] : ranks) text << "livelevel rank " << juce::String(id) << " " << v << "\n";
+    for (const auto& [id, v] : divisions) text << "livelevel division " << juce::String(id) << " " << v << "\n";
+    for (int g = 0; g < liveLevels_.groupCount(); ++g)
+      if (const int v = liveLevels_.group(g); v != LiveLevels::kFull) text << "livelevel group " << g + 1 << " " << v << "\n";
+    for (int m = 0; m < LiveLevels::kMaxMixes; ++m)
+      if (const int v = liveLevels_.mix(m); v != LiveLevels::kFull) text << "livelevel mix " << m + 1 << " " << v << "\n";
+  }
+
   // Voicing, per organ for the same reason as the routes: a rank or pipe id
   // means nothing in another instrument. BOTH slots are written, and which one
   // is live, so an A/B survives a reload — the comparison is the work, and
@@ -3262,6 +3292,10 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   // mix, or worse, at its tuning.
   mixer_.rankRoutings.clear();
   rankMixes_.clear();
+  savedRankLevels_.clear();
+  savedDivisionLevels_.clear();
+  savedGroupLevels_.clear();
+  savedMixLevels_.clear();
   voicing_.a.clear();
   voicing_.b.clear();
   voicing_.usingB = false;
@@ -3336,6 +3370,19 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
     }
     if (key == "licenceconfirmed") {
       licenceConfirmed_ = val.getIntValue() != 0;
+      continue;
+    }
+    if (key == "livelevel") {
+      // "livelevel rank|division <id> <value>", "livelevel group|mix <n> <value>"
+      auto tok = juce::StringArray::fromTokens(val, " ", "");
+      tok.removeEmptyStrings();
+      if (tok.size() < 3) continue;
+      const int v = juce::jlimit(0, LiveLevels::kTop, tok[2].getIntValue());
+      const auto id = tok[1].getLargeIntValue();
+      if (tok[0] == "rank") savedRankLevels_[static_cast<Id>(id)] = v;
+      else if (tok[0] == "division") savedDivisionLevels_[static_cast<Id>(id)] = v;
+      else if (tok[0] == "group" && id >= 1) savedGroupLevels_[static_cast<int>(id) - 1] = v;
+      else if (tok[0] == "mix" && id >= 1) savedMixLevels_[static_cast<int>(id) - 1] = v;
       continue;
     }
     if (key == "voicingadj") {
@@ -4676,7 +4723,23 @@ bool MasterpieceProcessor::saveMidiMapIfDirty() {
   return saveMidiMap();
 }
 
+void MasterpieceProcessor::applySavedLiveLevels() {
+  for (const auto& [rankId, v] : savedRankLevels_)
+    if (const int i = liveRankIndexOf(rankId); i >= 0) liveLevels_.setRank(i, v);
+  for (const auto& [divisionId, v] : savedDivisionLevels_)
+    if (const int i = liveDivisionIndexOf(divisionId); i >= 0) liveLevels_.setDivision(i, v);
+  for (const auto& [i, v] : savedGroupLevels_)
+    if (i < liveLevels_.groupCount()) liveLevels_.setGroup(i, v);
+  for (const auto& [i, v] : savedMixLevels_)
+    if (i < LiveLevels::kMaxMixes) liveLevels_.setMix(i, v);
+  for (const auto& [i, v] : savedPairLevels_)
+    if (i < LiveLevels::kMaxPairs) liveLevels_.setPair(i, v);
+}
+
 bool MasterpieceProcessor::saveSettingsIfDirty() {
+  // A fader moved since the last flush, from the mixer, MIDI or the API.
+  if (livePairsDirty_.exchange(false, std::memory_order_acq_rel)) mixerDirty_.store(true, std::memory_order_release);
+  if (liveLevelsDirty_.exchange(false, std::memory_order_acq_rel)) settingsDirty_.store(true, std::memory_order_release);
   // The outputs, speaker groups and default destination are the machine's:
   // in the global file, for every organ.
   if (mixerDirty_.exchange(false, std::memory_order_acq_rel)) {
@@ -9607,9 +9670,14 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
       const auto g = rankGroup.find(ranks[i]);
       groupOfRank.push_back(g == rankGroup.end() ? -1 : g->second);
     }
+    // The outputs' faders are the machine's: kept across the reset below.
+    for (int i = 0; i < LiveLevels::kMaxPairs; ++i)
+      if (const int v = liveLevels_.pair(i); v != LiveLevels::kFull) savedPairLevels_[i] = v;
+      else savedPairLevels_.erase(i);
     liveLevels_.configure(std::move(divisionOfRank), static_cast<int>(divisions.size()), std::move(groupOfRank),
                           static_cast<int>(liveGroupNames_.size()));
     applyRankMixes();
+    applySavedLiveLevels();
     sizeStripMeters();
   }
   // The stop families of this organ, and their places in the speaker groups.

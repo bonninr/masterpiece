@@ -1,3 +1,1 @@
 "Pipe %1" = "Tubo %1"
-"The rank's own level or tuning, which each pipe adds to its own" = "El nivel o la afinación propios de la fila, que cada tubo suma al suyo"
-"Each pipe's own level or tuning, lowest note on the left. A click on a pipe's fader chooses that pipe for the faders above; a drag sets it; a double-click puts it back." = "El nivel o la afinación propios de cada tubo, la nota más grave a la izquierda. Un clic en el fader de un tubo lo elige para los faders de arriba; arrastrar lo ajusta; un doble clic lo restablece."

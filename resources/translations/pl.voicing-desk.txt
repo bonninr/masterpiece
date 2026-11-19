@@ -1,3 +1,1 @@
 "Pipe %1" = "Piszczałka %1"
-"The rank's own level or tuning, which each pipe adds to its own" = "Własny poziom lub strój szeregu, który każda piszczałka dodaje do swojego"
-"Each pipe's own level or tuning, lowest note on the left. A click on a pipe's fader chooses that pipe for the faders above; a drag sets it; a double-click puts it back." = "Własny poziom lub strój każdej piszczałki, najniższy dźwięk po lewej. Kliknięcie suwaka piszczałki wybiera ją dla suwaków powyżej; przeciągnięcie ją ustawia; dwuklik ją przywraca."

@@ -35,11 +35,11 @@ public:
   void positionComboBoxText(juce::ComboBox& box, juce::Label& label) override;
   static constexpr int kComboArrow = 12;
 
-  // The cap's size along the travel and across it. A vertical fader shorter
-  // than kShortTravel takes the short cap.
+  // The cap's size along the travel and across it, on a mixer strip.
   // Small caps, so the scale and the meter keep the room (#1020).
   static constexpr int kCapLength = 22, kCapWidth = 16;
-  static constexpr int kCapLengthShort = 16, kShortTravel = 220;
+  // The flat bar every fader outside a mixer strip has (#1188).
+  static constexpr int kPlainCapLength = 6;
   static constexpr int kCapLengthHorizontal = 10;
   // One look for every fader, kept for the program's life.
   static FaderLook& shared();

@@ -1,0 +1,8 @@
+"The rank's own value of what the desk shows, which each pipe adds to its own" = "Własna wartość szeregu dla tego, co pokazuje pulpit; każda piszczałka dodaje ją do swojej"
+"Each pipe's own value of what the desk shows, lowest note on the left. A click chooses the pipe for the faders above and sets it; a drag across the pipes draws them; a double-click puts one back; the wheel moves one a step." = "Własna wartość każdej piszczałki dla tego, co pokazuje pulpit, najniższa nuta z lewej. Kliknięcie wybiera piszczałkę dla suwaków powyżej i ją ustawia; przeciągnięcie po piszczałkach je rysuje; dwuklik przywraca jedną; kółko przesuwa jedną o krok."
+"The division's treble, above 3 kHz, added to each rank's: heard at once" = "Wysokie tony manuału powyżej 3 kHz, dodane do tych każdego szeregu: słychać od razu"
+"The division's bass, below 200 Hz, added to each rank's: heard at once" = "Bas manuału poniżej 200 Hz, dodany do basu każdego szeregu: słychać od razu"
+"Where the division stands, from full left to full right: heard at once" = "Gdzie stoi manuał, od skrajnie lewej do skrajnie prawej: słychać od razu"
+"The division's stereo width: 0% mono, 100% as recorded, 200% twice as wide" = "Szerokość stereo manuału: 0% mono, 100% jak nagrano, 200% dwa razy szerzej"
+"Each division's treble, bass, pan and width, which every rank of it hears" = "Wysokie tony, bas, panorama i szerokość każdej manuału, które słyszą wszystkie jej szeregi"
+"Division EQ..." = "Korektor manuału..."

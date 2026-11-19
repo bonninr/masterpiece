@@ -117,18 +117,33 @@ class VoicingSet {
   Map divisions_;
 };
 
-// The two adjustments a pipe of its own has, level and tuning, as the view of
-// every pipe of a rank shows them one at a time (#849).
-enum class VoicingField { Level, Tuning };
+// The adjustments a pipe of its own has, as the desk of every pipe of a rank
+// shows them one at a time (#849): its level and tuning, and its treble and
+// bass shelves (#1188).
+enum class VoicingField { Level, Tuning, Brightness, Bass };
 
 inline float voicingValue(const PipeVoicing& v, VoicingField f) {
-  return f == VoicingField::Level ? v.gainDb : v.tuningCents;
+  switch (f) {
+    case VoicingField::Tuning: return v.tuningCents;
+    case VoicingField::Brightness: return v.brightnessDb;
+    case VoicingField::Bass: return v.bassDb;
+    case VoicingField::Level: break;
+  }
+  return v.gainDb;
 }
 
 inline void setVoicingValue(PipeVoicing& v, VoicingField f, float value) {
-  if (f == VoicingField::Level) v.gainDb = value;
-  else v.tuningCents = value;
+  switch (f) {
+    case VoicingField::Tuning: v.tuningCents = value; return;
+    case VoicingField::Brightness: v.brightnessDb = value; return;
+    case VoicingField::Bass: v.bassDb = value; return;
+    case VoicingField::Level: break;
+  }
+  v.gainDb = value;
 }
+
+// How far a field goes either way: 50 cents of tuning, 12 dB of the others.
+inline float voicingRange(VoicingField f) { return f == VoicingField::Tuning ? 50.0f : 12.0f; }
 
 // A stroke across the pipes of a rank, as a drag over the view of every pipe
 // draws it: from the pipe at `from` holding `fromValue` to the pipe at `to`

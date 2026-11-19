@@ -1,0 +1,8 @@
+"The rank's own value of what the desk shows, which each pipe adds to its own" = "La valeur propre du rang pour ce que montre le pupitre, que chaque tuyau ajoute à la sienne"
+"Each pipe's own value of what the desk shows, lowest note on the left. A click chooses the pipe for the faders above and sets it; a drag across the pipes draws them; a double-click puts one back; the wheel moves one a step." = "La valeur propre de chaque tuyau pour ce que montre le pupitre, la note la plus grave à gauche. Un clic choisit le tuyau pour les curseurs du haut et le règle ; un glissé sur les tuyaux les dessine ; un double-clic en remet un ; la molette en déplace un d'un pas."
+"The division's treble, above 3 kHz, added to each rank's: heard at once" = "Les aigus de la division au-dessus de 3 kHz, ajoutés à ceux de chaque rang : s'entendent aussitôt"
+"The division's bass, below 200 Hz, added to each rank's: heard at once" = "Les graves de la division en dessous de 200 Hz, ajoutés à ceux de chaque rang : s'entendent aussitôt"
+"Where the division stands, from full left to full right: heard at once" = "La place de la division, de tout à gauche à tout à droite : s'entend aussitôt"
+"The division's stereo width: 0% mono, 100% as recorded, 200% twice as wide" = "La largeur stéréo de la division : 0 % mono, 100 % comme enregistré, 200 % deux fois plus large"
+"Each division's treble, bass, pan and width, which every rank of it hears" = "Les aigus, graves, panoramique et largeur de chaque division, que tous ses rangs entendent"
+"Division EQ..." = "Égaliseur de division..."

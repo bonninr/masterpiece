@@ -1,0 +1,8 @@
+"The rank's own value of what the desk shows, which each pipe adds to its own" = "Der eigene Wert der Reihe für das, was das Pult zeigt; jede Pfeife addiert ihn zu ihrem eigenen"
+"Each pipe's own value of what the desk shows, lowest note on the left. A click chooses the pipe for the faders above and sets it; a drag across the pipes draws them; a double-click puts one back; the wheel moves one a step." = "Der eigene Wert jeder Pfeife für das, was das Pult zeigt, der tiefste Ton links. Ein Klick wählt die Pfeife für die Regler oben und stellt sie ein; Ziehen über die Pfeifen zeichnet sie; ein Doppelklick setzt eine zurück; das Mausrad bewegt eine um einen Schritt."
+"The division's treble, above 3 kHz, added to each rank's: heard at once" = "Die Höhen des Werks über 3 kHz, zu denen jeder Reihe hinzu: sofort hörbar"
+"The division's bass, below 200 Hz, added to each rank's: heard at once" = "Der Bass des Werks unter 200 Hz, zu dem jeder Reihe hinzu: sofort hörbar"
+"Where the division stands, from full left to full right: heard at once" = "Wo das Werk steht, von ganz links bis ganz rechts: sofort hörbar"
+"The division's stereo width: 0% mono, 100% as recorded, 200% twice as wide" = "Die Stereobreite des Werks: 0 % mono, 100 % wie aufgenommen, 200 % doppelt so breit"
+"Each division's treble, bass, pan and width, which every rank of it hears" = "Höhen, Bass, Panorama und Breite jedes Werks, die alle seine Reihen hören"
+"Division EQ..." = "Werk-Equalizer..."

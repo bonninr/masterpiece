@@ -1,0 +1,8 @@
+"The rank's own value of what the desk shows, which each pipe adds to its own" = "De eigen waarde van de pijpenrij voor wat de tafel toont, die elke pijp bij de hare optelt"
+"Each pipe's own value of what the desk shows, lowest note on the left. A click chooses the pipe for the faders above and sets it; a drag across the pipes draws them; a double-click puts one back; the wheel moves one a step." = "De eigen waarde van elke pijp voor wat de tafel toont, de laagste noot links. Een klik kiest de pijp voor de schuiven erboven en stelt haar in; slepen over de pijpen tekent ze; een dubbelklik zet er één terug; het wiel verschuift er één een stap."
+"The division's treble, above 3 kHz, added to each rank's: heard at once" = "De hoogtes van het werk boven 3 kHz, bovenop die van elke pijpenrij: meteen hoorbaar"
+"The division's bass, below 200 Hz, added to each rank's: heard at once" = "De bas van het werk onder 200 Hz, bovenop die van elke pijpenrij: meteen hoorbaar"
+"Where the division stands, from full left to full right: heard at once" = "Waar het werk staat, van helemaal links tot helemaal rechts: meteen hoorbaar"
+"The division's stereo width: 0% mono, 100% as recorded, 200% twice as wide" = "De stereobreedte van het werk: 0% mono, 100% zoals opgenomen, 200% twee keer zo breed"
+"Each division's treble, bass, pan and width, which every rank of it hears" = "Hoogtes, bas, panorama en breedte van elk werk, die al zijn pijpenrijen horen"
+"Division EQ..." = "Werk-equalizer..."

@@ -574,9 +574,6 @@ private:
   juce::Label noteLabel_;
   juce::Slider note_{juce::Slider::IncDecButtons, juce::Slider::TextBoxLeft};
   // Every pipe of the rank at once, in a window of its own (#849).
-  juce::TextButton everyPipe_{TRANS("Every pipe...")};
-  juce::Component::SafePointer<juce::DialogWindow> everyPipeWindow_;
-  void showEveryPipe();
   // Every fader stands upright at a fixed size, so a wide window keeps them
   // together as on a desk (#1188).
   juce::Label gainLabel_, tuneLabel_;
@@ -586,20 +583,11 @@ private:
   juce::Label brightLabel_, bassLabel_;
   juce::Slider bright_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
   juce::Slider bass_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
-  // A division's EQ, which its ranks hear added to their own.
-  juce::Label divisionLabel_, divBrightLabel_, divBassLabel_;
-  juce::ComboBox division_;
-  juce::Slider divBright_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
-  juce::Slider divBass_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
-  // Where the rank and the division stand: pan and stereo width, heard at once.
-  juce::Label panLabel_, widthLabel_, divPanLabel_, divWidthLabel_;
+  // Where the rank stands: pan and stereo width, heard at once. A division's
+  // EQ, pan and width are on the mixer (#1188).
+  juce::Label panLabel_, widthLabel_;
   juce::Slider pan_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
   juce::Slider width_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
-  juce::Slider divPan_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
-  juce::Slider divWidth_{juce::Slider::LinearVertical, juce::Slider::TextBoxBelow};
-  std::vector<Id> divisionIds_;
-  void loadDivision();
-  void pushDivision();
   // Every pipe of the rank on the page (#1188): the rank's own level or
   // tuning at the left, then a fader per pipe, lowest note first, a gap
   // between octaves. A click on a pipe's fader chooses that pipe above.
@@ -751,6 +739,8 @@ private:
   // Each output's EQ, and its crossover filters, delay and polarity (#1188).
   juce::TextButton outputEq_{TRANS("Output EQ...")};
   juce::TextButton crossover_{TRANS("Crossover...")};
+  // Each division's EQ, pan and width, moved here from the Voicing tab (#1188).
+  juce::TextButton divisionEq_{TRANS("Division EQ...")};
   // Speaker groups: outputs that share the pipes sent to them, note by note.
   juce::TextButton speakerGroups_{TRANS("Speaker groups...")};
   // Each output's name, stereo or mono, its channels and its sends.

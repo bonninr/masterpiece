@@ -55,9 +55,11 @@ FaderLook& FaderLook::shared() {
 }
 
 int FaderLook::capLength(const juce::Slider& s) {
+  // A mixer strip's fader has a desk's cap; every other fader a flat bar
+  // (#1188).
+  if (!s.getProperties().contains("longCap")) return kPlainCapLength;
   if (s.isHorizontal()) return kCapLengthHorizontal;
-  if (s.getProperties().contains("longCap")) return kCapLength;
-  return s.getHeight() < kShortTravel ? kCapLengthShort : kCapLength;
+  return kCapLength;
 }
 
 int FaderLook::getSliderThumbRadius(juce::Slider& s) { return capLength(s) / 2; }
@@ -227,6 +229,18 @@ void FaderLook::drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, 
         g.drawText(text, box, juce::Justification::centred, false);
       }
     }
+  }
+
+  // Outside a mixer strip, a flat bar in the fader's colour across the slot,
+  // centred on the value (#1188).
+  if (!props.contains("longCap")) {
+    const float thick = static_cast<float>(kPlainCapLength) - 2.0f;
+    const juce::Rectangle<float> bar =
+        vertical ? juce::Rectangle<float>(area.getCentreX() - across / 2.0f, sliderPos - thick / 2.0f, across, thick)
+                 : juce::Rectangle<float>(sliderPos - thick / 2.0f, area.getCentreY() - across / 2.0f, thick, across);
+    g.setColour(s.findColour(juce::Slider::thumbColourId).withMultipliedAlpha(alpha));
+    g.fillRoundedRectangle(bar, 1.5f);
+    return;
   }
 
   // The cap, centred on the value.

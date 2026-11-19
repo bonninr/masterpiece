@@ -1,3 +1,1 @@
 "Pipe %1" = "Pijp %1"
-"The rank's own level or tuning, which each pipe adds to its own" = "Het eigen niveau of de eigen stemming van de rij, die elke pijp bij de zijne optelt"
-"Each pipe's own level or tuning, lowest note on the left. A click on a pipe's fader chooses that pipe for the faders above; a drag sets it; a double-click puts it back." = "Het eigen niveau of de eigen stemming van elke pijp, de laagste toon links. Een klik op de fader van een pijp kiest die pijp voor de faders erboven; slepen stelt hem in; dubbelklikken zet hem terug."

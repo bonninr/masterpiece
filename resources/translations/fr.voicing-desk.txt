@@ -1,3 +1,1 @@
 "Pipe %1" = "Tuyau %1"
-"The rank's own level or tuning, which each pipe adds to its own" = "Le niveau ou l'accord propre du rang, que chaque tuyau ajoute au sien"
-"Each pipe's own level or tuning, lowest note on the left. A click on a pipe's fader chooses that pipe for the faders above; a drag sets it; a double-click puts it back." = "Le niveau ou l'accord propre de chaque tuyau, la note la plus grave à gauche. Un clic sur le fader d'un tuyau le choisit pour les faders du haut ; un glisser le règle ; un double-clic le remet."

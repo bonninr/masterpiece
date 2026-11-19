@@ -1961,14 +1961,22 @@ public:
   int liveRankLevel(int index) const { return liveLevels_.rank(index); }
   int liveDivisionLevel(int index) const { return liveLevels_.division(index); }
   int livePairLevel(int index) const { return liveLevels_.pair(index); }
+  // Each fader moved is kept (#1197): an output's with the machine's
+  // outputs, the others with the organ, saved on the next flush.
   void setLiveRankLevel(int index, int value) {
-    if (!organLoading()) liveLevels_.setRank(index, value);
+    if (organLoading()) return;
+    liveLevels_.setRank(index, value);
+    liveLevelsDirty_.store(true, std::memory_order_release);
   }
   void setLiveDivisionLevel(int index, int value) {
-    if (!organLoading()) liveLevels_.setDivision(index, value);
+    if (organLoading()) return;
+    liveLevels_.setDivision(index, value);
+    liveLevelsDirty_.store(true, std::memory_order_release);
   }
   void setLivePairLevel(int index, int value) {
-    if (!organLoading()) liveLevels_.setPair(index, value);
+    if (organLoading()) return;
+    liveLevels_.setPair(index, value);
+    livePairsDirty_.store(true, std::memory_order_release);
   }
   int liveRankCount() const { return liveLevels_.rankCount(); }
   int liveDivisionCount() const { return liveLevels_.divisionCount(); }
@@ -1977,7 +1985,9 @@ public:
   // MIDI names one by its place from 1.
   int liveGroupLevel(int index) const { return liveLevels_.group(index); }
   void setLiveGroupLevel(int index, int value) {
-    if (!organLoading()) liveLevels_.setGroup(index, value);
+    if (organLoading()) return;
+    liveLevels_.setGroup(index, value);
+    liveLevelsDirty_.store(true, std::memory_order_release);
   }
   int liveGroupCount() const { return liveLevels_.groupCount(); }
   // Mixes: sets of ranks the player names, each with a fader on the mixer,
@@ -1993,7 +2003,9 @@ public:
   void setRankMixes(std::vector<RankMix> mixes);
   int liveMixLevel(int index) const { return liveLevels_.mix(index); }
   void setLiveMixLevel(int index, int value) {
-    if (!organLoading()) liveLevels_.setMix(index, value);
+    if (organLoading()) return;
+    liveLevels_.setMix(index, value);
+    liveLevelsDirty_.store(true, std::memory_order_release);
   }
   int liveMixOfRank(int rankIndex) const { return liveLevels_.rankMix(rankIndex); }
   const std::vector<std::string>& liveGroupNames() const { return liveGroupNames_; }
@@ -2100,7 +2112,12 @@ public:
   // After a pipe's or a rank's level in the voicing has changed: the pipes
   // sounding take the new level, in a short fade, without being played
   // again (#765). Message thread.
-  void voicingChanged() { voicingChanged_.store(true, std::memory_order_release); }
+  // Also saved with the organ on the next flush, with no button to press
+  // (#1188).
+  void voicingChanged() {
+    voicingChanged_.store(true, std::memory_order_release);
+    markSettingsDirty();
+  }
 
   VoicingAB& voicing() { return voicing_; }
   // After the voicing's EQ has changed -- a rank's or a division's
@@ -2493,6 +2510,13 @@ private:
     settingsDirty_.store(true, std::memory_order_release);
   }
   std::atomic<bool> mixerDirty_{false};
+  // The faders kept (#1197): the organ's by id, read from its file before
+  // the faders are set up and put on them after; the outputs' by place, kept
+  // across organs and in the machine's file. Only faders not at full.
+  std::atomic<bool> liveLevelsDirty_{false}, livePairsDirty_{false};
+  std::unordered_map<Id, int> savedRankLevels_, savedDivisionLevels_;
+  std::unordered_map<int, int> savedGroupLevels_, savedMixLevels_, savedPairLevels_;
+  void applySavedLiveLevels();
   bool mixerInGlobal_ = false;
   std::vector<RankMix> rankMixes_;
   // Each id once and each rank once, then into the live levels.

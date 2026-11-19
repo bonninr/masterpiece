@@ -164,7 +164,7 @@ Routes each rank to a stereo pair of output channels. No sample set declares an 
 | Level faders | A live level for each output pair, each division and each rank, heard at once on the pipes sounding. Full is the level as voiced; the steps are even in decibels over the lower 40 dB, and the bottom is silence. A division's fader acts on every rank in it. | Full | **Off** to 0 dB | At once |
 | **MIDI** | Shows the knob or pedal learned for that level. **Learn: move the knob or pedal** waits for a controller to move; a key played meanwhile plays. **Clear mapping** removes it. | | | At once |
 
-The level faders are a performance's balance and are not saved: every fader is full again when an organ loads. The knobs learned for them are kept with the organ's MIDI mapping; a pair's knob is kept for every organ. The control API reads and sets the same faders as `divisions`, `pairs` and `ranklevels`, and the web console shows the division and pair faders under **Levels**.
+The level faders are kept: an output's with the machine's outputs, for every organ, and the others (divisions, ranks, perspectives, mixes) with the organ, saved a moment after each move, with no button to press. Mute and solo are not kept. The knobs learned for them are kept with the organ's MIDI mapping; a pair's knob is kept for every organ. The control API reads and sets the same faders as `divisions`, `pairs` and `ranklevels`, and the web console shows the division and pair faders under **Levels**.
 
 **Stored.** The number of pairs and their device channels are the key `buses` in the organ file, and in the global file when **Save as default** is used on the Loading tab. An output's EQ is `buseq <output> <on> <gain> <ten bands> [<ten frequencies> <ten widths>]`, and its crossover `busfilt <output> <high-pass Hz> <type> <low-pass Hz> <type> <delay ms> <invert>`, a frequency of 0 off and the types 0 to 3 Butterworth 12, Butterworth 24, Linkwitz-Riley 12, Linkwitz-Riley 24; both in the global file with the outputs. The rank routes are the keys `route <rank> bus <n>` in the organ file; they are written by **Save for this organ**, and by any other change that makes Masterpiece rewrite the organ file.
 
@@ -200,9 +200,9 @@ A shelf for the treble and one for the bass, for each rank, each division and ea
 | **Bass** | The bass shelf of the selected rank, or of the pipes chosen, as **Brightness**. | 0 dB | -12 to +12 dB in steps of 0.5 | At once for a rank; from the next note for a pipe |
 | **Pan** | Where the selected rank stands, from full left to full right. Active when **Applies to** is **The whole rank**. | 0 | -100 to +100 | At once |
 | **Width** | The selected rank's stereo width: 0% mono, 100% as recorded, 200% twice as wide. Active when **Applies to** is **The whole rank**. | 100% | 0 to 200% | At once |
-| **Division EQ** | The division whose shelves are set below. | The first division | The divisions of the loaded organ | At once |
-| Division **Brightness** and **Bass** | The treble and bass shelves of the chosen division. Every rank in it hears them added to its own. | 0 dB | -12 to +12 dB in steps of 0.5 | At once |
-| Division **Pan** and **Width** | Where the chosen division stands and its width. Every rank in it hears them: the pans add, held to full left and full right, and the widths multiply. | 0 and 100% | -100 to +100; 0 to 200% | At once |
+| **Shows** | What the desk of every pipe shows and sets: each pipe's **Level**, **Tuning**, **Brightness** or **Bass**, with the rank's own at its left. A click chooses a pipe and sets it, a drag across the pipes draws them, a double-click puts one back, the wheel moves one a step. | **Level** | **Level**, **Tuning**, **Brightness**, **Bass** | At once for a level; from the next note for the rest |
+
+A division's treble, bass, pan and width are on the mixer: **Organ settings > Outputs > Division EQ...**, one row per division. Every rank in a division hears its shelves added to its own; the pans add, held to full left and full right, and the widths multiply. The voicing is saved with the organ a moment after each change, with no button to press.
 
 ## Combination sets
 

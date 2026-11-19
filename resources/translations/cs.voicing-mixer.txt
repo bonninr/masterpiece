@@ -1,0 +1,8 @@
+"The rank's own value of what the desk shows, which each pipe adds to its own" = "Vlastní hodnota řady pro to, co ukazuje pult; každá píšťala ji přičte ke své"
+"Each pipe's own value of what the desk shows, lowest note on the left. A click chooses the pipe for the faders above and sets it; a drag across the pipes draws them; a double-click puts one back; the wheel moves one a step." = "Vlastní hodnota každé píšťaly pro to, co ukazuje pult, nejnižší tón vlevo. Kliknutí vybere píšťalu pro posuvníky nahoře a nastaví ji; tažení přes píšťaly je nakreslí; dvojklik jednu vrátí; kolečko jednu posune o krok."
+"The division's treble, above 3 kHz, added to each rank's: heard at once" = "Výšky díla nad 3 kHz, k výškám každé řady: slyší se ihned"
+"The division's bass, below 200 Hz, added to each rank's: heard at once" = "Basy díla pod 200 Hz, k basům každé řady: slyší se ihned"
+"Where the division stands, from full left to full right: heard at once" = "Kde dílo stojí, od úplně vlevo po úplně vpravo: slyší se ihned"
+"The division's stereo width: 0% mono, 100% as recorded, 200% twice as wide" = "Stereo šířka díla: 0 % mono, 100 % jak nahráno, 200 % dvakrát širší"
+"Each division's treble, bass, pan and width, which every rank of it hears" = "Výšky, basy, panoráma a šířka každého díla, které slyší všechny jeho řady"
+"Division EQ..." = "Ekvalizér díla..."

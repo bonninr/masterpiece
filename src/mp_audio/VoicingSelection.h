@@ -83,6 +83,17 @@ enum VoicingValues : unsigned {
   kVoicingWidth = 32,
 };
 
+// The value of `which` that a field is.
+inline unsigned voicingValuesOf(VoicingField f) {
+  switch (f) {
+    case VoicingField::Tuning: return kVoicingTuning;
+    case VoicingField::Brightness: return kVoicingBrightness;
+    case VoicingField::Bass: return kVoicingBass;
+    case VoicingField::Level: break;
+  }
+  return kVoicingLevel;
+}
+
 // The values named in `which`, taken from `v`, for every rank or pipe
 // reached. A pipe of its own takes a level, a tuning and its two shelves
 // (#1188); the pan and the width are a rank's.
