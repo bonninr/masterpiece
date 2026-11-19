@@ -1200,7 +1200,6 @@ countries: de at ch li lu
 "Changes %1 pipes" = "Ändert %1 Pfeifen"
 "From GrandOrgue..." = "Aus GrandOrgue..."
 "From GrandOrgue" = "Aus GrandOrgue"
-"The MIDI settings this organ has in GrandOrgue, from its settings file (.cmb)" = "Die MIDI-Einstellungen dieser Orgel in GrandOrgue, aus ihrer Einstellungsdatei (.cmb)"
 "Load this organ from its GrandOrgue .organ file to bring its MIDI settings over." = "Laden Sie diese Orgel aus ihrer GrandOrgue-Datei .organ, um ihre MIDI-Einstellungen zu übernehmen."
 "GrandOrgue's settings for this organ" = "GrandOrgue-Einstellungen für diese Orgel"
 "This file holds no MIDI settings from GrandOrgue." = "Diese Datei enthält keine MIDI-Einstellungen aus GrandOrgue."

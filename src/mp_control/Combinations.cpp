@@ -1,5 +1,6 @@
 #include "Combinations.h"
 
+#include <algorithm>
 #include <sstream>
 
 namespace mp {
@@ -66,6 +67,29 @@ void CombinationSystem::recall(Id combinationId,
     if (!want && !combo.canDisengage) continue;
     out.push_back({el.controlledSwitchId, want});
   }
+  // What a stored registration names beyond the definition's list, as only
+  // store() puts there, in a fixed order.
+  std::vector<std::pair<Id, bool>> extra;
+  for (const auto& [sw, want] : statesIt->second) {
+    const bool listed = std::any_of(combo.elements.begin(), combo.elements.end(),
+                                    [&](const CombinationElement& el) { return el.controlledSwitchId == sw; });
+    if (!listed) extra.emplace_back(sw, want);
+  }
+  std::sort(extra.begin(), extra.end());
+  for (const auto& [sw, want] : extra) {
+    if (want && !combo.canEngage) continue;
+    if (!want && !combo.canDisengage) continue;
+    out.push_back({sw, want});
+  }
+}
+
+bool CombinationSystem::store(Id combinationId, const std::vector<std::pair<Id, bool>>& states) {
+  if (model_ == nullptr || model_->combinations.count(combinationId) == 0) return false;
+  auto& stored = stored_[combinationId];
+  stored.clear();
+  for (const auto& [sw, on] : states)
+    if (sw != 0) stored[sw] = on;
+  return true;
 }
 
 bool CombinationSystem::capture(Id combinationId,

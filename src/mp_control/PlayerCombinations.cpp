@@ -396,6 +396,28 @@ bool PlayerCombinations::captureGeneral(int n, const Reader& isEngaged) {
   return true;
 }
 
+bool PlayerCombinations::storeGeneral(int n, const Reader& isEngaged) {
+  if (n < 1 || n > kMaxGenerals) return false;
+  if (n > generalCount_) setGeneralCount(n);
+  captureInto(generals_[static_cast<size_t>(n)], 0, true, isEngaged);
+  return true;
+}
+
+bool PlayerCombinations::storeDivisional(Id divisionId, int n, const Reader& isEngaged) {
+  if (n < 1 || n > kMaxDivisionals) return false;
+  if (n > divisionalCount_) setDivisionalCount(n);
+  Registration* r = divisional(divisionId, n);
+  if (r == nullptr) return false;
+  captureInto(*r, divisionId, false, isEngaged);
+  return true;
+}
+
+bool PlayerCombinations::storeFrame(int oneBased, const Reader& isEngaged) {
+  if (oneBased < 1 || oneBased > kMaxFrames) return false;
+  captureInto(frames_[static_cast<size_t>(oneBased)], 0, true, isEngaged);
+  return true;
+}
+
 bool PlayerCombinations::captureDivisional(Id divisionId, int n,
                                            const Reader& isEngaged) {
   Registration* r = divisional(divisionId, n);

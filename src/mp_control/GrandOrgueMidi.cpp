@@ -1,4 +1,5 @@
 #include "GrandOrgueMidi.h"
+#include "GrandOrgueCmb.h"
 
 #include <algorithm>
 #include <cctype>
@@ -15,57 +16,10 @@ namespace mp {
 
 namespace {
 
-std::string lower(std::string s) {
-  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-  return s;
-}
-
-std::string trim(const std::string& s) {
-  size_t a = 0, b = s.size();
-  while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
-  while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
-  return s.substr(a, b - a);
-}
-
-// The file's sections in order, each with its keys.
-struct Section {
-  std::string name;
-  std::unordered_map<std::string, std::string> keys;
-
-  bool has(const std::string& key) const { return keys.count(key) != 0; }
-  std::string str(const std::string& key, const std::string& fallback = {}) const {
-    const auto it = keys.find(key);
-    return it == keys.end() ? fallback : it->second;
-  }
-  int num(const std::string& key, int fallback) const {
-    const auto it = keys.find(key);
-    if (it == keys.end() || it->second.empty()) return fallback;
-    char* end = nullptr;
-    const long v = std::strtol(it->second.c_str(), &end, 10);
-    return end == it->second.c_str() ? fallback : static_cast<int>(v);
-  }
-};
-
-std::vector<Section> readSections(const std::string& text) {
-  std::vector<Section> out;
-  std::istringstream in(text);
-  std::string line;
-  bool first = true;
-  while (std::getline(in, line)) {
-    if (first && line.rfind("\xef\xbb\xbf", 0) == 0) line.erase(0, 3);
-    first = false;
-    line = trim(line);
-    if (line.empty() || line[0] == ';' || line[0] == '#') continue;
-    if (line.front() == '[' && line.back() == ']') {
-      out.push_back({line.substr(1, line.size() - 2), {}});
-      continue;
-    }
-    const size_t eq = line.find('=');
-    if (eq == std::string::npos || out.empty()) continue;
-    out.back().keys[trim(line.substr(0, eq))] = trim(line.substr(eq + 1));
-  }
-  return out;
-}
+using gocmb::lower;
+using gocmb::trim;
+using gocmb::Section;
+using gocmb::readSections;
 
 std::string n3(int i) {
   char b[16];

@@ -1,5 +1,6 @@
 add_library(mp_control STATIC Control.h Control.cpp MidiMap.h MidiMap.cpp
-                              GrandOrgueMidi.h GrandOrgueMidi.cpp
+                              GrandOrgueMidi.h GrandOrgueMidi.cpp GrandOrgueCmb.h
+                              GrandOrgueSettings.h GrandOrgueSettings.cpp
                               SwitchNetwork.h SwitchNetwork.cpp
                               Combinations.h Combinations.cpp
                               StageSwitches.h StageSwitches.cpp

@@ -358,6 +358,44 @@ The MIDI tab has three things for a console that is turned on and played without
 - **Learn quit** and **Learn power off**: buttons that save and quit Masterpiece, or save, quit and shut the computer down. So that a noisy input learned for one cannot turn a console off at every start, a button is obeyed only once Masterpiece has run two minutes, and only when it is held three seconds; letting go sooner does nothing. A button whose message has no release (a program change or a system exclusive message) is pressed twice within two seconds. A press before the two minutes is written to the log with the time left. The power-off button also needs **Allow quitting Masterpiece and shutting the computer down** on the Remote tab, as the control API's power-off does; without it the hold is written to the log and nothing happens. Quitting needs no permission.
 - **Temperament** with **Learn**: a button for one temperament of the list.
 
+## Bringing an organ over from GrandOrgue
+
+**Organ settings > MIDI > From GrandOrgue...** reads GrandOrgue's settings file for the organ that is loaded and brings over what Masterpiece can use. The organ must be loaded from its GrandOrgue `.organ` file. GrandOrgue keeps the settings file in its Data folder as `<hash>-0.cmb`, compressed or plain; Masterpiece reads both.
+
+The import replaces what it brings: the MIDI mappings of the objects the file names, the pistons it holds, and the voicing of each rank it holds. Everything else stays as it was. A window then lists what came over and what was left out, one line each.
+
+| From GrandOrgue | In Masterpiece |
+|---|---|
+| Each object's MIDI events, its lamps and display messages, its computer keys | The object's MIDI window, and **Settings > Console events** for the ready lamp |
+| The organ's generals and divisionals, as the player set them | The organ's own pistons |
+| The setter's generals 1 to 100 (banks A and B) | The player's generals 1 to 100 |
+| The setter's sequencer frames 1 to 999 | The sequencer's steps 1 to 999 |
+| The setter's divisionals 1 to 20 of each manual (banks A and B) | The player's divisionals 1 to 20 of that manual's division |
+| Amplitude and UserGain, at the organ, windchest group, rank and pipe | **Level** on the Voicing tab, for the rank and the pipe |
+| ManualTuning and AutoTuningCorrection | **Tuning** |
+| ToneBalance | **Brightness** for a negative value, **Bass** for a positive one |
+| AudioGroup | The rank's route, to the output of the same name |
+| The organ's volume | The master volume, as a change from GrandOrgue's default of -15 dB |
+| The temperament | The temperament of the same name |
+| Each swell's position, each drawstop's state | The swell, and the drawstop, as GrandOrgue left them |
+| The metronome's tempo and bar | The metronome's **Tempo** and **Beats per bar** |
+
+Levels and tuning add up over the four levels, as in GrandOrgue: the organ's and the windchest group's change goes to every rank on them. A value beyond Masterpiece's range (a level from -24 to +12 dB, tuning of 50 cents either way, a shelf of 12 dB) is taken to the edge of the range, and the window counts them.
+
+ToneBalance is a one-pole filter in GrandOrgue, a low-pass for a negative value and a high-pass for a positive one. Masterpiece takes it as the cut that filter gives at 6 kHz (**Brightness**) or at 100 Hz (**Bass**).
+
+A player's piston in Masterpiece holds every element: what a GrandOrgue registration does not name is stored as retired. The organ's own pistons keep GrandOrgue's way, and move only what the registration names.
+
+Left out, and counted in the window:
+
+- the setter's generals past 100, divisionals past 20 and frames past 999;
+- the crescendo's stages: Masterpiece has no programmable crescendo;
+- divisional couplers, and registration entries that name nothing in this organ;
+- each pipe's Delay and ReleaseTail;
+- a temperament Masterpiece does not have.
+
+Not read: the sample loading options (bits per sample, channels, loops, compression, attack and release loading), window places and sizes, and the setter's own buttons (Regular, Scope, Insert, Delete, the banks).
+
 ## The MIDI map files
 
 A mapping is stored in the player's data folder, never inside a sample set:
