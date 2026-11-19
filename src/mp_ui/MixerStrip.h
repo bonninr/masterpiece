@@ -130,6 +130,17 @@ public:
   // Where 0 dB stands on the travel, from the bottom: three quarters up, as on
   // a desk, the boost above it and the cut below.
   static constexpr double kUnityAt = 0.75;
+  // The travel under 0 dB, as a desk's fader has it (#1195): the 10 dB under
+  // 0 dB, where a balance is set, take the most room, and each 10 dB further
+  // down less, to -40 dB just above the bottom; the bottom is silence. Only
+  // where the cap stands changes: the live level's steps, what MIDI sends
+  // and what is saved stay the same.
+  static constexpr double kTravelDb[] = {0.0, -10.0, -20.0, -30.0, -40.0};
+  static constexpr double kTravelAt[] = {kUnityAt, 0.48, 0.28, 0.14, 0.04};
+  // A live level's place on the travel, 0 the bottom and 1 the top, and the
+  // level at a place, not yet rounded to a step.
+  static double travelOf(double value);
+  static double valueAt(double proportion);
 
 private:
   void showValue();

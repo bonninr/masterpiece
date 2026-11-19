@@ -1,5 +1,7 @@
 #include "MixerStrip.h"
 
+#include <iterator>
+
 #include "../mp_audio/LiveLevels.h"
 
 #include <algorithm>
@@ -344,6 +346,50 @@ void StripMeter::paint(juce::Graphics& g) {
 
 // ----------------------------------------------------------------- the strip
 
+namespace {
+// The travel of a level in dB, from -40 dB up to 0 dB, between the marks
+// around it.
+double travelOfDb(double db) {
+  const auto& dbs = ChannelStrip::kTravelDb;
+  const auto& at = ChannelStrip::kTravelAt;
+  for (size_t i = 1; i < std::size(dbs); ++i)
+    if (db >= dbs[i]) {
+      const double t = (db - dbs[i]) / (dbs[i - 1] - dbs[i]);
+      return at[i] + t * (at[i - 1] - at[i]);
+    }
+  return at[std::size(at) - 1];
+}
+double dbOfTravel(double p) {
+  const auto& dbs = ChannelStrip::kTravelDb;
+  const auto& at = ChannelStrip::kTravelAt;
+  for (size_t i = 1; i < std::size(at); ++i)
+    if (p >= at[i]) {
+      const double t = (p - at[i]) / (at[i - 1] - at[i]);
+      return dbs[i] + t * (dbs[i - 1] - dbs[i]);
+    }
+  return dbs[std::size(dbs) - 1];
+}
+// The level of a step under 0 dB, as the live levels have it.
+double dbOfStep(double v) { return -40.0 * (1.0 - v / kFullValue); }
+}  // namespace
+
+double ChannelStrip::travelOf(double v) {
+  v = juce::jlimit(0.0, kTopValue, v);
+  if (v >= kFullValue) return kUnityAt + (1.0 - kUnityAt) * (v - kFullValue) / (kTopValue - kFullValue);
+  // Silence to the lowest step takes the bottom of the travel.
+  const double lowest = travelOfDb(dbOfStep(1.0));
+  if (v <= 1.0) return lowest * v;
+  return travelOfDb(dbOfStep(v));
+}
+
+double ChannelStrip::valueAt(double p) {
+  p = juce::jlimit(0.0, 1.0, p);
+  if (p >= kUnityAt) return kFullValue + (kTopValue - kFullValue) * (p - kUnityAt) / (1.0 - kUnityAt);
+  const double lowest = travelOfDb(dbOfStep(1.0));
+  if (p <= lowest) return p / lowest;
+  return kFullValue * (1.0 + dbOfTravel(p) / 40.0);
+}
+
 ChannelStrip::ChannelStrip(Kind kind, const juce::String& name, const juce::String& tooltip)
     : kind_(kind), name_(name) {
   fader.setLookAndFeel(&FaderLook::shared());
@@ -353,15 +399,8 @@ ChannelStrip::ChannelStrip(Kind kind, const juce::String& name, const juce::Stri
   // quarter, the cut below. Only where the cap stands changes; the values,
   // what MIDI sends and what is saved, are the live levels' own.
   fader.setNormalisableRange(juce::NormalisableRange<double>(
-      0.0, kTopValue,
-      [](double, double, double p) {
-        return p <= kUnityAt ? kFullValue * p / kUnityAt
-                             : kFullValue + (kTopValue - kFullValue) * (p - kUnityAt) / (1.0 - kUnityAt);
-      },
-      [](double, double, double v) {
-        return v <= kFullValue ? kUnityAt * v / kFullValue
-                               : kUnityAt + (1.0 - kUnityAt) * (v - kFullValue) / (kTopValue - kFullValue);
-      },
+      0.0, kTopValue, [](double, double, double p) { return valueAt(p); },
+      [](double, double, double v) { return travelOf(v); },
       [](double, double, double v) { return std::round(juce::jlimit(0.0, kTopValue, v)); }));
   fader.setDoubleClickReturnValue(true, LiveLevels::kFull);
   fader.setSliderSnapsToMousePosition(false);
