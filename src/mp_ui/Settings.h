@@ -854,6 +854,8 @@ class LanguagePanel : public juce::Component {
 public:
   explicit LanguagePanel(MasterpieceProcessor& p);
   void resized() override;
+  // The height its rows take, laid out as resized() places them.
+  static int contentHeight();
 
 private:
   MasterpieceProcessor& proc_;
@@ -878,6 +880,24 @@ public:
   int getTabButtonBestWidth(juce::TabBarButton& button, int tabDepth) override;
   // The narrowest the tab can be with every word of its name whole.
   static int longestWordWidth(juce::TabBarButton& button, int tabDepth);
+};
+
+// The General tab: the program's own settings, then its language, text size
+// and font, which were a tab of their own (Preferences) with three controls.
+// Every setting of both is here, as it was.
+class GeneralTab : public juce::Component {
+public:
+  GeneralTab(EnginePanel& general, LanguagePanel& language);
+  // The height both need. Asked again whenever General's rows change (its
+  // display mode shows more or fewer): the language rows follow it.
+  int contentHeight();
+  void resized() override;
+
+private:
+  // Lays both out at the tab's width; returns General's height.
+  int place();
+  EnginePanel& general_;
+  LanguagePanel& language_;
 };
 
 class SettingsWindow : public juce::Component {
@@ -907,7 +927,8 @@ private:
   // set up once and seldom visited again (#276).
   std::unique_ptr<juce::Component> audio_;
   std::unique_ptr<ScrollHost> audioScroll_;  // after audio_: it goes first
-  MetronomePanel metronome_;
+  // The metronome has its own window, in the Window menu, with the same
+  // panel the tab had (#1180).
   std::unique_ptr<MidiPanel> midi_;
   std::unique_ptr<ScrollHost> midiScroll_;  // after midi_: it goes first
   std::unique_ptr<MidiPanel> events_;
@@ -915,9 +936,10 @@ private:
   EnginePanel performance_;
   ScrollHost performanceScroll_{performance_, 0, [this] { return performance_.contentHeight(); }};
   EnginePanel general_;
-  ScrollHost generalScroll_{general_, 0, [this] { return general_.contentHeight(); }};
-  DisplayPanel display_;
   LanguagePanel language_;
+  GeneralTab generalTab_{general_, language_};  // after both: it holds them
+  ScrollHost generalScroll_{generalTab_, 0, [this] { return generalTab_.contentHeight(); }};
+  DisplayPanel display_;
   LogPanel log_;
   std::unique_ptr<RemotePanel> remote_;
 };

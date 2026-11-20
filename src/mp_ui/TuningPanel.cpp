@@ -28,8 +28,14 @@ juce::String signedSemitones(int n) {
 } // namespace
 
 juce::String TuningPanel::summary(const MasterpieceProcessor& p) {
+  // Short enough for the band's button: the pitch is always A's, so it is
+  // written bare, and whole as a player says it (440), with its tenth only
+  // when it has one (415.3). The button's tooltip and the window name each
+  // part.
   juce::String s(p.temperamentName());
-  s << "  A " << juce::String(p.masterPitchHz(), 1);
+  const double hz = p.masterPitchHz();
+  const double whole = std::round(hz);
+  s << "  " << (std::abs(hz - whole) < 0.05 ? juce::String(static_cast<int>(whole)) : juce::String(hz, 1));
   if (p.transpose() != 0) s << "  " << signedSemitones(p.transpose());
   return s;
 }
