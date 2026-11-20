@@ -12137,14 +12137,16 @@ public:
     MP_CHECK(v.rank(201).tuningCents == 0.0f && v.rank(202).tuningCents == 5.0f, "and keeps its own tuning");
     MP_CHECK(mp::shownVoicing(v, m, t).gainDb == -2.0f, "the sliders show the first rank");
 
-    // One side: every pipe on it, and only a level and a tuning.
+    // One side: every pipe on it, its level and its shelves (#1188); no pan.
     t.scope = mp::VoicingScope::CSharpSide;
     mp::PipeVoicing side;
     side.gainDb = 1.5f;
     side.brightnessDb = 6.0f;
-    mp::setVoicing(v, m, t, side, mp::kVoicingLevel | mp::kVoicingBrightness);
+    side.balance = 0.5f;
+    mp::setVoicing(v, m, t, side, mp::kVoicingLevel | mp::kVoicingBrightness | mp::kVoicingPan);
     MP_CHECK(v.pipe(2011).gainDb == 1.5f && v.pipe(2023).gainDb == 1.5f, "the C# pipes take the level");
-    MP_CHECK(v.pipe(2011).brightnessDb == 0.0f, "a pipe takes no EQ of its own");
+    MP_CHECK(v.pipe(2011).brightnessDb == 6.0f, "and a treble shelf of their own");
+    MP_CHECK(v.pipe(2011).balance == 0.0f, "a pipe takes no pan of its own");
     MP_CHECK(v.pipes().count(2010) == 0 && v.pipes().count(2030) == 0, "the C pipes and the rank not chosen stay");
 
     // A step keeps the group's shape.

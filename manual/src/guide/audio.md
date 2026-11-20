@@ -153,10 +153,23 @@ On Debian and Ubuntu the jackd2 package writes this file as `audio.conf.disabled
 | **Spread ranks evenly** | Assigns the ranks in rank-number order to the pairs in turn, so that the routing is audible straight away | | At once |
 | **All to pair 1** | Puts every rank on **Pair 1** | | At once |
 | **Save for this organ** | Writes the organ's settings file, including the routes | | At once |
-| **Bass management...** | One row per pair: **Off**, or a crossover of **40** to **200 Hz**, and **Subwoofer on N**. The lows of both channels of the pair, under the crossover, go to that device channel, and the rest to the pair. Several pairs can share one subwoofer. The crossover is Linkwitz-Riley of the 4th order: the pair and the subwoofer add up flat. | Off | At once |
+| **Output EQ...** | One output's ten-band EQ at a time, chosen in the box at the top: a correction for the speaker on that output, as the voicing EQ is for the whole organ. It acts after what the output sends to the other outputs, which have their own, and before its meter. Off or flat, the output is not filtered. | Off | At once |
+| **Crossover...** | One row per output: **High-pass** and **Low-pass**, each **Off** or 20 Hz to 20 kHz, **Butterworth** or **Linkwitz-Riley**, **12** or **24 dB**; **Delay** up to 100 ms; **Invert**. A digital crossover: a two-way or three-way speaker, or any other, is built from outputs fed by one output through its sends, each with its band; with Linkwitz-Riley filters meeting at the same frequency the bands add back up flat. No band is decided for you. | Off | At once |
 | Rank list | One row per rank, labelled with its number and name, with a **Pair** box | **Pair 1** | At once |
 
 A rank is routed when a note starts, so notes already sounding keep the pair they began on. A rank with no entry plays through the first pair, so an organ is audible before the Mixer is opened. The pair of a rank is independent of its enclosure: a Swell rank stays behind the Swell shades whichever pair carries it.
+
+### A subwoofer, or a speaker of several ways
+
+The crossover splits the organ into bands in the program, so no crossover is needed between the interface and the amplifiers. Nothing is decided for you: each band is an output of its own, fed by the output that carries the ranks.
+
+A subwoofer under a stereo pair, crossing at 80 Hz:
+
+1. **Outputs...**: two outputs. Output 1 stereo on channels 1-2; output 2 mono on the subwoofer's channel, for example 3.
+2. **Outputs...**: output 1 plays into output 2, at **+6 dB**: a mono output takes half of each side, and the send puts the level back.
+3. **Crossover...**: output 1, **High-pass 80 Hz, Linkwitz-Riley 24 dB**. Output 2, **Low-pass 80 Hz, Linkwitz-Riley 24 dB**, and if the subwoofer stands far from the speakers, a **Delay** to bring it in time: 1 ms for every 34 cm it is nearer.
+
+The two speakers and the subwoofer then add up to what the pair carried alone. A three-way speaker is built the same way, with an output per driver and a band on each: low-pass on the lowest, high-pass and low-pass on the middle, high-pass on the highest, the edges that meet at the same frequency. A Linkwitz-Riley filter of 12 dB an octave needs one of the two outputs at a crossing inverted. Never connect a tweeter to an output without its high-pass: the organ's lowest notes would reach it.
 
 ### Stored
 

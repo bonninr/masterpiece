@@ -478,6 +478,10 @@ struct Voice {
   // The pitch the pipe sounds, for its harmonic level (#809); 0 when its
   // layer adjusts none.
   double harmonicHz = 0.0;
+  // The player's shelves for this one pipe (#1188), a bass shelf at 200 Hz and
+  // a treble shelf at 3 kHz, as a rank's are. 0 dB is no shelf.
+  float pipeBassDb = 0.0f;
+  float pipeBrightDb = 0.0f;
   // The largest sample this pipe has added to the output since the meters
   // last took it, every gain applied. Measured only while the mixer's meters
   // are on (setMetering).
@@ -550,6 +554,9 @@ struct VoiceStart {
   double pitchPerUnit = 0.0;
   double pitchFloor = 0.0;
   float voicingGain = 1.0f;  // the voicing's level; see Voice::voicingGain
+  // The pipe's own shelves; see Voice::pipeBassDb.
+  float pipeBassDb = 0.0f;
+  float pipeBrightDb = 0.0f;
   // The attack's emphasis; see Voice::attackBoost. 0 frames is none.
   float attackBoost = 0.0f;
   int attackFrames = 0;
@@ -1175,11 +1182,15 @@ private:
   // voice and output channel, and a buffer per render thread that a shelved
   // voice renders into before it is filtered. A voice without a shelf never
   // reads any of them.
-  // A voice has up to two: the layer's voicing EQ, then its level of the
-  // third and upper harmonics (#809).
+  // A voice has up to four: the layer's voicing EQ, its level of the third
+  // and upper harmonics (#809), then the player's bass and treble shelves
+  // for the pipe (#1188).
   static constexpr int kShelfChunk = 256;
-  static constexpr int kShelfSections = 2;
+  static constexpr int kShelfSections = 4;
   static constexpr int kShelfStates = kShelfSections * 2;
+  // A pipe's own shelves stand where a rank's do (RankEq.h).
+  static constexpr double kPipeBassHz = 200.0;
+  static constexpr double kPipeBrightHz = 3000.0;
   struct ShelfSection {
     float b0 = 1.0f, b1 = 0.0f, b2 = 0.0f, a1 = 0.0f, a2 = 0.0f;
   };
