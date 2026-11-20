@@ -1490,6 +1490,185 @@ public:
   }
 };
 
+// #1199: a coupler to a keyboard plays every division that keyboard's keys
+// play through the switches, not only the keyboard's own. Caen's G.O. keys
+// feed the G.O. and, beside it, the division of its reeds; the tirasse G.O.
+// brought the pedal the foundations and never the reeds. The reeds follow
+// their appel d'anches as the keys' own wiring has it: here a G.O. key reaches
+// the reeds only while the appel is drawn, and so does the tirasse.
+class CoupledReedsTest final : public mp::test::Test {
+public:
+  CoupledReedsTest() : Test("functional.control.coupled-reeds", Category::Functional) {}
+
+  void run() override {
+    const juce::File dir =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-coupled-reeds");
+    dir.getChildFile("OrganDefinitions").createDirectory();
+    const juce::File odf =
+        dir.getChildFile("OrganDefinitions").getChildFile("cr.Organ_Hauptwerk_xml");
+    auto link = [](int from, int to, int condition = 0) {
+      juce::String s = "<SwitchLinkage><SourceSwitchID>" + juce::String(from) +
+                       "</SourceSwitchID><DestSwitchID>" + juce::String(to) + "</DestSwitchID>";
+      if (condition != 0)
+        s << "<ConditionSwitchID>" << condition
+          << "</ConditionSwitchID><ConditionSwitchLinkIfEngaged>Y</ConditionSwitchLinkIfEngaged>";
+      return s + "<EngageLinkActionCode>1</EngageLinkActionCode>"
+                 "<DisengageLinkActionCode>2</DisengageLinkActionCode></SwitchLinkage>";
+    };
+    odf.replaceWithText(
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General>"
+        "<Identification_UniqueOrganID>1</Identification_UniqueOrganID>"
+        "</_General></ObjectList>"
+        "<ObjectList ObjectType=\"Keyboard\">"
+        "<Keyboard><KeyboardID>1</KeyboardID><Name>1. Pedale</Name>"
+        "<DefaultInputOutputKeyboardAsgnCode>1</DefaultInputOutputKeyboardAsgnCode>"
+        "<KeyGen_NumberOfKeys>32</KeyGen_NumberOfKeys>"
+        "<KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey>"
+        "<Hint_PrimaryAssociatedDivisionID>1</Hint_PrimaryAssociatedDivisionID></Keyboard>"
+        "<Keyboard><KeyboardID>2</KeyboardID><Name>2. Grand-Orgue</Name>"
+        "<DefaultInputOutputKeyboardAsgnCode>2</DefaultInputOutputKeyboardAsgnCode>"
+        "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys>"
+        "<KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey>"
+        "<Hint_PrimaryAssociatedDivisionID>2</Hint_PrimaryAssociatedDivisionID></Keyboard>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Division\">"
+        "<Division><DivisionID>1</DivisionID><Name>1. Pedale</Name></Division>"
+        "<Division><DivisionID>2</DivisionID><Name>2. Grand-Orgue</Name></Division>"
+        "<Division><DivisionID>3</DivisionID><Name>3. Grand-Orgue anches</Name></Division>"
+        "</ObjectList>"
+        // The stops name no rank: the pipework is wired through the switches.
+        "<ObjectList ObjectType=\"Stop\">"
+        "<Stop><StopID>1</StopID><Name>Soubasse 16</Name><DivisionID>1</DivisionID>"
+        "<ControllingSwitchID>21001</ControllingSwitchID></Stop>"
+        "<Stop><StopID>2</StopID><Name>Montre 8</Name><DivisionID>2</DivisionID>"
+        "<ControllingSwitchID>21002</ControllingSwitchID></Stop>"
+        "<Stop><StopID>3</StopID><Name>Bombarde 16</Name><DivisionID>3</DivisionID>"
+        "<ControllingSwitchID>21003</ControllingSwitchID></Stop>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Rank\">"
+        "<Rank><RankID>11</RankID><Name>Soubasse</Name></Rank>"
+        "<Rank><RankID>12</RankID><Name>Montre</Name></Rank>"
+        "<Rank><RankID>13</RankID><Name>Bombarde</Name></Rank>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\">"
+        "<Pipe_SoundEngine01><PipeID>101</PipeID><RankID>11</RankID>"
+        "<NormalMIDINoteNumber>60</NormalMIDINoteNumber>"
+        "<ControllingPalletSwitchID>9001</ControllingPalletSwitchID></Pipe_SoundEngine01>"
+        "<Pipe_SoundEngine01><PipeID>102</PipeID><RankID>12</RankID>"
+        "<NormalMIDINoteNumber>60</NormalMIDINoteNumber>"
+        "<ControllingPalletSwitchID>9002</ControllingPalletSwitchID></Pipe_SoundEngine01>"
+        "<Pipe_SoundEngine01><PipeID>103</PipeID><RankID>13</RankID>"
+        "<NormalMIDINoteNumber>60</NormalMIDINoteNumber>"
+        "<ControllingPalletSwitchID>9003</ControllingPalletSwitchID></Pipe_SoundEngine01>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"KeyboardKey\">"
+        "<KeyboardKey><KeyboardID>2</KeyboardID><SwitchID>5001</SwitchID>"
+        "<NormalMIDINoteNumber>60</NormalMIDINoteNumber></KeyboardKey>"
+        "<KeyboardKey><KeyboardID>1</KeyboardID><SwitchID>5002</SwitchID>"
+        "<NormalMIDINoteNumber>60</NormalMIDINoteNumber></KeyboardKey>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"DivisionInput\">"
+        "<DivisionInput><DivisionID>1</DivisionID><SwitchID>900</SwitchID>"
+        "<NormalMIDINoteNumber>60</NormalMIDINoteNumber></DivisionInput>"
+        "<DivisionInput><DivisionID>2</DivisionID><SwitchID>800</SwitchID>"
+        "<NormalMIDINoteNumber>60</NormalMIDINoteNumber></DivisionInput>"
+        "<DivisionInput><DivisionID>3</DivisionID><SwitchID>700</SwitchID>"
+        "<NormalMIDINoteNumber>60</NormalMIDINoteNumber></DivisionInput>"
+        "</ObjectList>"
+        // The G.O. key feeds the foundations, and the reeds behind the appel
+        // d'anches (400); the pedal key feeds the pedal.
+        "<ObjectList ObjectType=\"SwitchLinkage\">" +
+        link(5001, 800) + link(5001, 700, 400) + link(5002, 900) + link(900, 9001) +
+        link(800, 9002) + link(700, 9003) +
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">"
+        "<Switch><SwitchID>21001</SwitchID><Name>Soubasse 16</Name><Latching>Y</Latching></Switch>"
+        "<Switch><SwitchID>21002</SwitchID><Name>Montre 8</Name><Latching>Y</Latching></Switch>"
+        "<Switch><SwitchID>21003</SwitchID><Name>Bombarde 16</Name><Latching>Y</Latching></Switch>"
+        "<Switch><SwitchID>300</SwitchID><Name>Tirasse G.O.</Name><Latching>Y</Latching></Switch>"
+        "<Switch><SwitchID>400</SwitchID><Name>Anches G.O.</Name><Latching>Y</Latching></Switch>"
+        "</ObjectList>"
+        // The tirasse: the pedal plays the G.O. keyboard while it is drawn.
+        "<ObjectList ObjectType=\"KeyAction\">"
+        "<KeyAction><SourceKeyboardID>1</SourceKeyboardID>"
+        "<DestIsKeyboardNotDivision>Y</DestIsKeyboardNotDivision><DestKeyboardID>2</DestKeyboardID>"
+        "<ActionTypeCode>1</ActionTypeCode>"
+        "<ConditionSwitchID>300</ConditionSwitchID>"
+        "<ConditionSwitchLinkIfEngaged>Y</ConditionSwitchLinkIfEngaged>"
+        "<MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey>"
+        "<NumberOfKeys>32</NumberOfKeys></KeyAction>"
+        "</ObjectList></Hauptwerk>");
+
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    const bool hadSettings = settings.existsAsFile();
+    proc.setRateAndBufferSizeDetails(48000.0, 256);
+    proc.prepareToPlay(48000.0, 256);
+    auto r = proc.loadOrgan(odf, 0, false);
+    MP_CHECK(r.ok, "the organ with a reeds division loads");
+    proc.setStopEngaged(1, true);
+    proc.setStopEngaged(2, true);
+    proc.setStopEngaged(3, true);
+
+    juce::AudioBuffer<float> buf(2, 256);
+    auto block = [&](juce::MidiBuffer m) {
+      buf.clear();
+      proc.processBlock(buf, m);
+    };
+    auto note = [](int channel, bool on) {
+      juce::MidiBuffer m;
+      m.addEvent(on ? juce::MidiMessage::noteOn(channel, 60, 0.8f)
+                    : juce::MidiMessage::noteOff(channel, 60),
+                 0);
+      return m;
+    };
+
+    // The G.O.'s own key, the appel drawn: foundations and reeds.
+    proc.setSwitchEngaged(400, true);
+    block(note(2, true));
+    MP_CHECK(proc.switchEngaged(800), "the G.O. key reaches its foundations");
+    MP_CHECK(proc.switchEngaged(700), "and, with the appel drawn, its reeds");
+    block(note(2, false));
+    for (int i = 0; i < 4; ++i) block({});
+    MP_CHECK(!proc.switchEngaged(800) && !proc.switchEngaged(700), "and lets both go");
+
+    // The tirasse drawn: the pedal key plays what a G.O. key plays.
+    proc.setSwitchEngaged(300, true);
+    block(note(1, true));
+    MP_CHECK(proc.switchEngaged(900), "the pedal key plays the pedal");
+    MP_CHECK(proc.switchEngaged(800), "the tirasse brings the G.O. foundations");
+    MP_CHECK(proc.switchEngaged(700), "and the G.O. reeds behind their drawn appel (#1199)");
+    MP_CHECK(proc.switchEngaged(9003), "so the reed's pallet opens");
+    block(note(1, false));
+    for (int i = 0; i < 4; ++i) block({});
+    MP_CHECK(!proc.switchEngaged(800) && !proc.switchEngaged(700),
+             "the pedal key let go: the coupled inputs open again");
+
+    // The appel retired: the tirasse brings the foundations only, as a G.O.
+    // key does.
+    proc.setSwitchEngaged(400, false);
+    block(note(1, true));
+    MP_CHECK(proc.switchEngaged(800), "without the appel the foundations still come");
+    MP_CHECK(!proc.switchEngaged(700), "and the reeds stay silent");
+    block(note(1, false));
+    for (int i = 0; i < 4; ++i) block({});
+
+    // The tirasse pushed in: the pedal key leaves the G.O. alone.
+    proc.setSwitchEngaged(400, true);
+    proc.setSwitchEngaged(300, false);
+    block(note(1, true));
+    MP_CHECK(proc.switchEngaged(900), "the pedal still plays the pedal");
+    MP_CHECK(!proc.switchEngaged(800) && !proc.switchEngaged(700),
+             "and nothing of the G.O. without the tirasse");
+    block(note(1, false));
+
+    proc.releaseResources();
+    if (!hadSettings) settings.deleteFile();
+    dir.deleteRecursively();
+  }
+};
+
 #endif // MP_TEST_HAS_AUDIO
 
 class EncryptedDetectionTest final : public mp::test::Test {
@@ -12855,6 +13034,7 @@ static StartupSafetyTest g_startupSafety;
 static MidiQueueThreadsTest g_midiQueueThreads;
 static PlayerControlTest g_playerControl;
 static CoupledInputTest g_coupledInput;
+static CoupledReedsTest g_coupledReeds;
 static IrRateTest g_irRate;
 static RoomLevelTest g_roomLevel;
 #endif
