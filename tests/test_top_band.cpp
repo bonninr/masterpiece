@@ -28,11 +28,11 @@ constexpr int kOneRowFrom = 1024 - 16;
 
 // The menu names measured as the window measures them, in the language in
 // force.
-std::array<int, 5> measureMenus() {
-  std::array<int, 5> widths{};
+std::array<int, mp::ui::kMenuCount> measureMenus() {
+  std::array<int, mp::ui::kMenuCount> widths{};
   juce::TextButton file{TRANS("File")}, organ{TRANS("Organ")}, view{TRANS("View")},
-      settings{TRANS("Settings")}, help{TRANS("Help")};
-  juce::TextButton* const buttons[] = {&file, &organ, &view, &settings, &help};
+      settings{TRANS("Settings")}, window{TRANS("Window")}, help{TRANS("Help")};
+  juce::TextButton* const buttons[] = {&file, &organ, &view, &settings, &window, &help};
   for (size_t i = 0; i < widths.size(); ++i) widths[i] = mp::ui::textButtonTextWidth(*buttons[i]);
   return widths;
 }

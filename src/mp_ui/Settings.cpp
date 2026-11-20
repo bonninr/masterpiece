@@ -2413,14 +2413,18 @@ void MidiPanel::applyPart() {
   std::vector<juce::Component*> console{&inputsLabel_, &outputsLabel_, &output_, &feedback_, &echoLitLabel_,
                                         &echoLit_, &echoDarkLabel_, &echoDark_, &holdEcho_, &cancelResets_,
                                         &leaveHeld_, &sustain_, &noiseFilter_, &archive_, &archiveSilence_,
-                                        &archiveSize_, &archiveAge_, &consoleHeading_, &learnPagePrev_, &learnPageNext_, &learnLayout_,
-                                        &learnStopList_, &learnKeyboard_, &learnCombinations_};
-  // The tab's whole purpose, so Simple mode shows these too.
+                                        &archiveSize_, &archiveAge_};
+  // The tab's whole purpose, so Simple mode shows these too. The console's
+  // own buttons learned here (page, size, panel, keyboard, combinations) sit
+  // with the rest of what ties a console to the program; Simple mode leaves
+  // them out, as it did on the MIDI tab.
   const std::vector<juce::Component*> events{
       &powerHeading_, &learnQuit_, &learnPowerOff_, &lampLabel_, &lampKind_, &lampChannel_, &lampNumber_,
       &lampLit_, &lampDark_, &loadMessageLabel_, &loadMessage_, &unloadMessageLabel_, &unloadMessage_,
-      &sendLoadMessage_, &sendUnloadMessage_, &scoreHeading_, &learnScoreBack_, &learnScoreForward_,
-      &scoreSendsLabel_, &scoreKind_, &scoreChannel_, &scoreForward_, &scoreBack_};
+      &sendLoadMessage_, &sendUnloadMessage_, &consoleHeading_, &learnPagePrev_, &learnPageNext_,
+      &learnLayout_, &learnStopList_, &learnKeyboard_, &learnCombinations_, &scoreHeading_,
+      &learnScoreBack_, &learnScoreForward_, &scoreSendsLabel_, &scoreKind_, &scoreChannel_,
+      &scoreForward_, &scoreBack_};
   for (auto& b : inputs_) console.push_back(b.get());
   console.push_back(&defaultChannelsLabel_);
   for (auto& c : defaultRoleLabels_) console.push_back(&c);
@@ -3048,22 +3052,6 @@ void MidiPanel::resized() {
     archiveSilence_.setBounds(row.removeFromLeft(200).reduced(2, 1));
     archiveSize_.setBounds(row.removeFromLeft(110).reduced(2, 1));
     archiveAge_.setBounds(row.removeFromLeft(120).reduced(2, 1));
-    r.removeFromTop(kGap);
-    // Console actions, on their own row under the same idea: things a physical
-    // console's thumb pistons do that the organ file never mentions.
-    row = r.removeFromTop(kRow);
-    consoleHeading_.setBounds(row.removeFromLeft(120));
-    for (auto* b : {&learnPagePrev_, &learnPageNext_, &learnLayout_}) {
-      b->setBounds(row.removeFromLeft(150).reduced(2, 0));
-      row.removeFromLeft(6);
-    }
-    r.removeFromTop(4);
-    row = r.removeFromTop(kRow);
-    row.removeFromLeft(120);
-    for (auto* b : {&learnStopList_, &learnKeyboard_, &learnCombinations_}) {
-      b->setBounds(row.removeFromLeft(150).reduced(2, 0));
-      row.removeFromLeft(6);
-    }
   }
   if (part_ == Part::Events) {
     r.removeFromTop(4);
@@ -3103,6 +3091,26 @@ void MidiPanel::resized() {
     unloadMessage_.setBounds(row.removeFromLeft(306).reduced(2, 2));
     row.removeFromLeft(6);
     sendUnloadMessage_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+
+    // Console actions: things a physical console's thumb pistons do that the
+    // organ file never mentions. Advanced mode only, as they were on the MIDI
+    // tab.
+    if (!shownSimple_) {
+      r.removeFromTop(4);
+      row = r.removeFromTop(kRow);
+      consoleHeading_.setBounds(row.removeFromLeft(120));
+      for (auto* b : {&learnPagePrev_, &learnPageNext_, &learnLayout_}) {
+        b->setBounds(row.removeFromLeft(150).reduced(2, 0));
+        row.removeFromLeft(6);
+      }
+      r.removeFromTop(4);
+      row = r.removeFromTop(kRow);
+      row.removeFromLeft(120);
+      for (auto* b : {&learnStopList_, &learnKeyboard_, &learnCombinations_}) {
+        b->setBounds(row.removeFromLeft(150).reduced(2, 0));
+        row.removeFromLeft(6);
+      }
+    }
 
     r.removeFromTop(4);
     row = r.removeFromTop(kRow);
@@ -6802,6 +6810,35 @@ void LanguagePanel::resized() {
   r.removeFromTop(kGap);
 }
 
+int LanguagePanel::contentHeight() {
+  // As resized() lays the rows out: the margin, the heading, the list, text
+  // size and font, the note, and the margin again.
+  return 16 + kRow + kRow + kGap + kRow + 4 + kRow + kGap + kRow + kGap + 16;
+}
+
+// --------------------------------------------------------------- general
+
+GeneralTab::GeneralTab(EnginePanel& general, LanguagePanel& language) : general_(general), language_(language) {
+  addAndMakeVisible(general_);
+  addAndMakeVisible(language_);
+}
+
+int GeneralTab::place() {
+  const int w = getWidth();
+  // General lays its rows out from its top whatever its height: at a new
+  // width it is laid out tall first, and the height its rows took is then
+  // its height. The language rows go under it.
+  if (general_.getWidth() != w || general_.getHeight() <= 0) general_.setBounds(0, 0, w, 1 << 15);
+  const int h = general_.contentHeight();
+  general_.setBounds(0, 0, w, h);
+  language_.setBounds(0, h, w, LanguagePanel::contentHeight());
+  return h;
+}
+
+int GeneralTab::contentHeight() { return place() + LanguagePanel::contentHeight(); }
+
+void GeneralTab::resized() { place(); }
+
 // --------------------------------------------------------------- window
 
 namespace {
@@ -6848,15 +6885,17 @@ int TabNamesLook::getTabButtonBestWidth(juce::TabBarButton& button, int tabDepth
 
 SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
                                juce::AudioDeviceManager* devices)
-    : metronome_(p), performance_(p, EnginePanel::Part::Performance),
-      general_(p, EnginePanel::Part::General), display_(p), language_(p), log_(p) {
+    : performance_(p, EnginePanel::Part::Performance), general_(p, EnginePanel::Part::General),
+      language_(p), display_(p), log_(p) {
   const auto bg = juce::Colour(0xff1b1e24);
   addAndMakeVisible(tabs_);
   tabs_.getTabbedButtonBar().setLookAndFeel(&tabNamesLook_);
-  // General first: its display mode decides what every other tab shows.
+  // General first: its display mode decides what every other tab shows. The
+  // language, text size and font are part of it (they were Preferences).
   tabs_.addTab(TRANS("General"), bg, &generalScroll_, false);
-  // Without a device manager -- a plugin, whose host owns the audio device
-  // and the MIDI ports -- the Audio and MIDI tabs are left out.
+  // Then the sound: the device, and how the computer plays it. Without a
+  // device manager -- a plugin, whose host owns the audio device and the
+  // MIDI ports -- the Audio and MIDI tabs are left out.
   if (devices != nullptr) {
     auto panel = std::make_unique<AudioSettingsPanel>(*devices, p);
     auto* audio = panel.get();
@@ -6865,20 +6904,19 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
     audioScroll_ = std::make_unique<ScrollHost>(*audio_, 0, [audio] { return audio->contentHeight(); });
     tabs_.addTab(TRANS("Audio"), bg, audioScroll_.get(), false);
   }
+  tabs_.addTab(TRANS("Performance"), bg, &performanceScroll_, false);
+  // Then MIDI: the devices and channels, then the console's own messages and
+  // its learning, then its text display. The metronome is a window of its own,
+  // in the Window menu.
   if (devices != nullptr) {
     midi_ = std::make_unique<MidiPanel>(p, *devices, MidiPanel::Part::Console);
     midiScroll_ = std::make_unique<ScrollHost>(*midi_, 0, [this] { return midi_->contentHeight(); });
     tabs_.addTab(TRANS("MIDI"), bg, midiScroll_.get(), false);
-  }
-  tabs_.addTab(TRANS("Performance"), bg, &performanceScroll_, false);
-  tabs_.addTab(TRANS("Metronome"), bg, &metronome_, false);
-  tabs_.addTab(TRANS("Console display"), bg, &display_, false);
-  if (devices != nullptr) {
     events_ = std::make_unique<MidiPanel>(p, *devices, MidiPanel::Part::Events);
     eventsScroll_ = std::make_unique<ScrollHost>(*events_, 0, [this] { return events_->contentHeight(); });
-    tabs_.addTab(TRANS("Console events"), bg, eventsScroll_.get(), false);
+    tabs_.addTab(TRANS("Console MIDI"), bg, eventsScroll_.get(), false);
   }
-  tabs_.addTab(TRANS("Preferences"), bg, &language_, false);
+  tabs_.addTab(TRANS("Console display"), bg, &display_, false);
   // Only where the program runs the server: the standalone program sets
   // remoteStatus; a plugin does not.
   if (p.remoteStatus) {

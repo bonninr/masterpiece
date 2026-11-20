@@ -1,5 +1,3 @@
-"Learn tabs in turn..." = "Registerwippen na elkaar leren..."
-"Learn tabs in turn" = "Registerwippen na elkaar leren"
 "Start" = "Starten"
 "Skip" = "Overslaan"
 "Restart here" = "Hier opnieuw beginnen"

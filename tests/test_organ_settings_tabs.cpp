@@ -30,10 +30,10 @@ public:
     }
     {
       mp::ui::SettingsWindow settings(proc, nullptr);
-      settings.showTab("Metronome");
+      settings.showTab("Performance");
       for (const char* name : {"Reverb", "Combination sets"}) {
         settings.showTab(name);
-        MP_CHECK(settings.currentTab() == "Metronome", std::string("Settings no longer has ") + name);
+        MP_CHECK(settings.currentTab() == "Performance", std::string("Settings no longer has ") + name);
       }
     }
   }
