@@ -63,6 +63,7 @@ const std::unordered_set<std::string>& knownTables() {
     "TextInstance", "TextStyle",
     // Masterpiece's own, written by the GrandOrgue import
     "MasterpieceRankWindchest", "MasterpieceSwitchDisplay", "MasterpieceGrandOrgueObject",
+    "MasterpieceGrandOrgueRank", "MasterpieceGrandOrgueVoicing",
     "MasterpieceGeneralCancel", "MasterpieceNoiseEffect",
     // combinations
     "Combination", "CombinationElement",
@@ -1292,6 +1293,26 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     std::transform(section.begin(), section.end(), section.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     if (!section.empty()) outModel.grandOrgueObjects[section] = object;
+  });
+  const auto lowered = [](std::string t) {
+    std::transform(t.begin(), t.end(), t.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return t;
+  };
+  forEachRow(odfRoot, "MasterpieceGrandOrgueRank", [&](pugi::xml_node row) {
+    OrganModel::GrandOrgueRank r;
+    r.rankId = fieldInt(row, "RankID", nullptr, 0);
+    r.firstMidi = fieldInt(row, "FirstMidi", nullptr, 36);
+    r.windchest = fieldInt(row, "Windchest", nullptr, 1);
+    const std::string section = lowered(field(row, "Section", nullptr));
+    if (!section.empty() && r.rankId != 0) outModel.grandOrgueRanks[section].push_back(r);
+  });
+  forEachRow(odfRoot, "MasterpieceGrandOrgueVoicing", [&](pugi::xml_node row) {
+    OrganModel::GrandOrgueVoicing v;
+    v.amplitude = fieldDouble(row, "Amplitude", nullptr, 100.0);
+    v.gain = fieldDouble(row, "Gain", nullptr, 0.0);
+    v.pitchTuning = fieldDouble(row, "PitchTuning", nullptr, 0.0);
+    const std::string section = lowered(field(row, "Section", nullptr));
+    if (!section.empty()) outModel.grandOrgueVoicing[section] = v;
   });
 
   // ---- M3.1: the wind system. Compartments, the pipes between them, and

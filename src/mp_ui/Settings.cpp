@@ -2261,7 +2261,8 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
   addAndMakeVisible(clearMap_);
   clearMap_.onClick = [this] { proc_.editMidiMap([](MidiMap& map) { map.clear(); }); };
   addChildComponent(fromGrandOrgue_);
-  fromGrandOrgue_.setTooltip(TRANS("The MIDI settings this organ has in GrandOrgue, from its settings file (.cmb)"));
+  fromGrandOrgue_.setTooltip(
+      TRANS("What GrandOrgue keeps for this organ in its settings file (.cmb): MIDI, registrations, voicing, the swells and the temperament"));
   fromGrandOrgue_.onClick = [this] { importFromGrandOrgue(); };
 
   addAndMakeVisible(mapStatus_);
@@ -2575,6 +2576,48 @@ MidiPanel::~MidiPanel() { stopTimer(); }
 // <hash>-0.cmb in its Data folder, compressed or plain (#865). The events this
 // program has a binding for replace the mappings of the objects they name;
 // the window then says what was taken and what was left out.
+// What came over from a GrandOrgue settings file beside its MIDI, and what
+// was left out, one line each; nothing for what the file did not hold.
+static void appendGrandOrgueSettingsLines(const GrandOrgueSettingsReport& g, juce::StringArray& lines) {
+  const auto n = [](int v) { return juce::String(v); };
+  if (g.organPistons + g.generals + g.frames + g.divisionals > 0)
+    lines.add(TRANS("Registrations: %1 of the organ's pistons, %2 generals, %3 sequencer steps, %4 divisionals")
+                  .replace("%1", n(g.organPistons))
+                  .replace("%2", n(g.generals))
+                  .replace("%3", n(g.frames))
+                  .replace("%4", n(g.divisionals)));
+  if (g.generalsLeftOut + g.framesLeftOut + g.divisionalsLeftOut > 0)
+    lines.add(TRANS("Beyond Masterpiece's pistons, left out: %1 generals, %2 sequencer steps, %3 divisionals")
+                  .replace("%1", n(g.generalsLeftOut))
+                  .replace("%2", n(g.framesLeftOut))
+                  .replace("%3", n(g.divisionalsLeftOut)));
+  if (g.crescendoStages > 0)
+    lines.add(TRANS("Crescendo stages, left out: %1").replace("%1", n(g.crescendoStages)));
+  if (g.unknownElements + g.divisionalCouplers > 0)
+    lines.add(TRANS("Registration entries with nothing to work here, left out: %1")
+                  .replace("%1", n(g.unknownElements + g.divisionalCouplers)));
+  if (g.voicedRanks + g.voicedPipes > 0)
+    lines.add(TRANS("Voicing: %1 ranks, %2 pipes").replace("%1", n(g.voicedRanks)).replace("%2", n(g.voicedPipes)));
+  if (g.voicingClamped > 0)
+    lines.add(TRANS("Voicing values beyond Masterpiece's range, taken to its edge: %1").replace("%1", n(g.voicingClamped)));
+  if (g.delays + g.releaseTails > 0)
+    lines.add(TRANS("Delays and release tails, left out: %1").replace("%1", n(g.delays + g.releaseTails)));
+  if (g.routedRanks > 0)
+    lines.add(TRANS("Ranks routed to the output named as their audio group: %1").replace("%1", n(g.routedRanks)));
+  if (!g.groupsWithoutOutput.empty()) {
+    juce::StringArray names;
+    for (const auto& s : g.groupsWithoutOutput) names.add(juce::String::fromUTF8(s.c_str()));
+    lines.add(TRANS("Audio groups with no output of that name: %1").replace("%1", names.joinIntoString(", ")));
+  }
+  if (!g.temperament.empty())
+    lines.add((g.temperamentTaken ? TRANS("Temperament: %1") : TRANS("Temperament %1, not in Masterpiece, left out"))
+                  .replace("%1", juce::String::fromUTF8(g.temperament.c_str())));
+  if (g.volume) lines.add(TRANS("Organ volume"));
+  if (g.swells > 0) lines.add(TRANS("Swell positions: %1").replace("%1", n(g.swells)));
+  if (g.drawn > 0) lines.add(TRANS("Stops drawn as GrandOrgue left them: %1").replace("%1", n(g.drawn)));
+  if (g.metronome) lines.add(TRANS("Metronome tempo and bar"));
+}
+
 void MidiPanel::importFromGrandOrgue() {
   if (proc_.organModel().grandOrgueObjects.empty()) {
     juce::AlertWindow::showAsync(
@@ -2612,6 +2655,10 @@ void MidiPanel::importFromGrandOrgue() {
         GrandOrgueMidiReport r;
         self->proc_.editMidiMap(
             [&](MidiMap& map) { r = importGrandOrgueMidi(text, self->proc_.organModel(), map); });
+        // And the rest of the file: registrations, voicing, the organ (#1012).
+        GrandOrgueSettingsReport g;
+        const auto settings = readGrandOrgueSettings(text, self->proc_.organModel(), g);
+        if (g.ok) self->proc_.applyGrandOrgueSettings(settings, g);
         juce::StringArray lines;
         if (!r.ok) {
           lines.add(TRANS("This file holds no MIDI settings from GrandOrgue."));
@@ -2636,6 +2683,7 @@ void MidiPanel::importFromGrandOrgue() {
           if (r.anyDevice > 0)
             lines.add(TRANS("Devices not connected now, taken as any console: %1").replace("%1", juce::String(r.anyDevice)));
         }
+        if (g.ok) appendGrandOrgueSettingsLines(g, lines);
         self->refresh();
         juce::AlertWindow::showAsync(juce::MessageBoxOptions()
                                          .withIconType(juce::MessageBoxIconType::InfoIcon)

@@ -23,6 +23,7 @@
 #include <functional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace mp {
@@ -57,6 +58,11 @@ public:
   // `isEngaged` reads the live console. Does nothing to a combination the
   // organ marks as fixed, which is what "fixed" means.
   bool capture(Id combinationId, const std::function<bool(Id)>& isEngaged);
+  // A registration brought from elsewhere (a GrandOrgue settings file): the
+  // switches it names, each drawn or retired, in place of what was stored.
+  // It may name switches the organ's definition does not list for this
+  // piston; recall moves those too.
+  bool store(Id combinationId, const std::vector<std::pair<Id, bool>>& states);
 
   // Setter mode: while this is on, pressing a piston stores instead of
   // recalling. It is a switch on the console like any other; the caller says

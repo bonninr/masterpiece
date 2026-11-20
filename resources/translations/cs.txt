@@ -1200,7 +1200,6 @@ countries: cz
 "Changes %1 pipes" = "Mění %1 píšťal"
 "From GrandOrgue..." = "Z GrandOrgue..."
 "From GrandOrgue" = "Z GrandOrgue"
-"The MIDI settings this organ has in GrandOrgue, from its settings file (.cmb)" = "Nastavení MIDI, která má tento varhanový nástroj v GrandOrgue, z jeho souboru nastavení (.cmb)"
 "Load this organ from its GrandOrgue .organ file to bring its MIDI settings over." = "Načtěte tento nástroj z jeho souboru GrandOrgue .organ a přeneste tak jeho nastavení MIDI."
 "GrandOrgue's settings for this organ" = "Nastavení GrandOrgue pro tento nástroj"
 "This file holds no MIDI settings from GrandOrgue." = "Tento soubor neobsahuje žádná nastavení MIDI z GrandOrgue."

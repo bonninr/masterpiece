@@ -11784,6 +11784,93 @@ std::vector<MidiBinding> MasterpieceProcessor::setObjectBindings(MidiTargetKind 
   return displaced;
 }
 
+void MasterpieceProcessor::applyGrandOrgueSettings(const GrandOrgueSettings& s, GrandOrgueSettingsReport& report) {
+  // ---- registrations: the organ's pistons, and the setter's memory in the
+  // player's own. A player piston holds every element: what the file does not
+  // name is stored as retired.
+  const auto readerFor = [this](const GrandOrgueRegistration& reg) {
+    std::unordered_map<Id, bool> drawn;
+    for (const auto& [sw, on] : reg.switches) drawn[sw] = on;
+    return [this, drawn = std::move(drawn)](const PlayerCombinations::Element& e) {
+      Id sw = e.id;
+      if (e.kind == PlayerCombinations::ElementKind::Stop) {
+        const auto it = model_.stops.find(e.id);
+        sw = it == model_.stops.end() ? 0 : it->second.controllingSwitchId;
+      }
+      const auto f = drawn.find(sw);
+      return f != drawn.end() && f->second;
+    };
+  };
+  bool registrations = false;
+  {
+    const AudioLock audio(*this);
+    for (const auto& [piston, reg] : s.organPistons) {
+      const Id combo = combinations_.combinationForSwitch(piston);
+      registrations |= combo != 0 && combinations_.store(combo, reg.switches);
+    }
+    for (const auto& [n, reg] : s.generals) registrations |= player_.storeGeneral(n, readerFor(reg));
+    for (const auto& [n, reg] : s.frames) registrations |= player_.storeFrame(n, readerFor(reg));
+    for (const auto& [key, reg] : s.divisionals)
+      registrations |= player_.storeDivisional(key.first, key.second, readerFor(reg));
+  }
+  if (registrations) combinationsDirty_.store(true, std::memory_order_release);
+
+  // ---- voicing: each rank the file holds takes its level, tuning and
+  // shelves; its pan and width stay. Its pipes start again from the rank.
+  if (!s.ranks.empty() || !s.pipes.empty()) {
+    auto& live = voicing_.live();
+    const auto take = [](PipeVoicing v, const GrandOrgueVoice& g) {
+      v.gainDb = static_cast<float>(g.gainDb);
+      v.tuningCents = static_cast<float>(g.tuningCents);
+      v.brightnessDb = static_cast<float>(g.brightnessDb);
+      v.bassDb = static_cast<float>(g.bassDb);
+      return v;
+    };
+    for (const auto& [rankId, g] : s.ranks) {
+      live.setRank(rankId, take(live.rank(rankId), g));
+      const auto it = model_.ranks.find(rankId);
+      if (it == model_.ranks.end()) continue;
+      for (const auto& pipe : it->second.pipes) {
+        const auto own = s.pipes.find(pipe.pipeId);
+        live.setPipe(pipe.pipeId, take(live.pipe(pipe.pipeId), own != s.pipes.end() ? own->second : GrandOrgueVoice{}));
+      }
+    }
+    for (const auto& [pipeId, g] : s.pipes)
+      live.setPipe(pipeId, take(live.pipe(pipeId), g));
+    applyVoicingEq();
+  }
+
+  // ---- routing: a rank's audio group to the output of the same name.
+  {
+    std::vector<std::pair<Id, std::variant<BusId, int>>> routes;
+    std::set<std::string> missing;
+    for (const auto& [rankId, group] : s.audioGroups) {
+      const juce::String wanted = juce::String::fromUTF8(group.c_str()).trim();
+      const MixerBus* found = nullptr;
+      for (const auto& b : mixer_.buses)
+        if (juce::String::fromUTF8(b.name.c_str()).trim().equalsIgnoreCase(wanted)) found = &b;
+      if (found != nullptr) routes.emplace_back(rankId, found->id);
+      else missing.insert(group);
+    }
+    if (!routes.empty()) setRankRoutes(routes);
+    report.routedRanks = static_cast<int>(routes.size());
+    report.groupsWithoutOutput.assign(missing.begin(), missing.end());
+  }
+
+  // ---- the organ.
+  if (!s.temperament.empty())
+    if (const auto t = temperamentFromGrandOrgue(s.temperament))
+      report.temperamentTaken = setTemperament(*t);
+  if (s.volumeChangeDb)
+    if (auto* p = apvts_.getParameter("masterGain"))
+      p->setValueNotifyingHost(p->convertTo0to1(juce::Decibels::decibelsToGain(static_cast<float>(*s.volumeChangeDb))));
+  for (const auto& [control, value] : s.swells) setControlValue(control, value);
+  for (const auto& [sw, on] : s.drawn) setSwitchEngaged(sw, on);
+  if (s.metronomeBpm) metronome_.setTempo(juce::jlimit(20.0, 300.0, static_cast<double>(*s.metronomeBpm)));
+  if (s.metronomeBeats) metronome_.setBeatsPerBar(juce::jlimit(0, 12, *s.metronomeBeats));
+  markSettingsDirty();
+}
+
 void MasterpieceProcessor::addBindingsFrom(const MidiMap& other, const std::vector<MidiBinding>& rows) {
   if (rows.empty()) return;
   {

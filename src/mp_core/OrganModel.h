@@ -1138,6 +1138,25 @@ struct OrganModel {
     Id id = 0;
   };
   std::unordered_map<std::string, GrandOrgueObject> grandOrgueObjects;
+  // A GrandOrgue rank by its section ("rank003", or "stop005" for a stop
+  // carrying its own pipes): the ranks it became, a tremulant twin too, and
+  // its first note, from which its pipes are numbered. Its windchest group by
+  // number, as the settings file names it.
+  struct GrandOrgueRank {
+    Id rankId = 0;
+    int firstMidi = 36;
+    int windchest = 1;
+  };
+  std::unordered_map<std::string, std::vector<GrandOrgueRank>> grandOrgueRanks;
+  // The definition's own voicing where it is not neutral, by section, or
+  // section and pipe ("rank003/pipe012"): what a GrandOrgue settings file's
+  // values are changes from.
+  struct GrandOrgueVoicing {
+    double amplitude = 100.0;  // per cent
+    double gain = 0.0;         // dB
+    double pitchTuning = 0.0;  // cents
+  };
+  std::unordered_map<std::string, GrandOrgueVoicing> grandOrgueVoicing;
 
   std::unordered_map<Id, SampleRef> samples; // Sample table registry (M1.1/M1.2)
   std::unordered_map<Id, InstallationPackage> packages; // where the audio lives

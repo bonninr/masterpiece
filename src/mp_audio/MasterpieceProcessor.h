@@ -10,6 +10,7 @@
 #include "../mp_control/Control.h"
 #include "../mp_control/MidiMap.h"
 #include "../mp_control/Combinations.h"
+#include "../mp_control/GrandOrgueSettings.h"
 #include "../mp_control/StageSwitches.h"
 #include "../mp_control/PlayerCombinations.h"
 #include "../mp_control/PedalCoupling.h"
@@ -817,6 +818,11 @@ public:
   // one message works one control, so a message used elsewhere moves here,
   // and the dialog says so (#1012).
   std::vector<MidiBinding> setObjectBindings(MidiTargetKind kind, Id id, const std::vector<MidiBinding>& rows);
+  // What a GrandOrgue settings file holds beside its MIDI (#1012), read by
+  // readGrandOrgueSettings: registrations, voicing, the organ's settings.
+  // Applied to the organ loaded, and saved with it. Message thread. The
+  // report's routing and temperament lines are filled in here.
+  void applyGrandOrgueSettings(const GrandOrgueSettings& settings, GrandOrgueSettingsReport& report);
   // Bindings taken from another map, a console profile's (#866): each one's
   // device named again in this map, all added at once and saved.
   void addBindingsFrom(const MidiMap& other, const std::vector<MidiBinding>& rows);

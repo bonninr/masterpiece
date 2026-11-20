@@ -1200,7 +1200,6 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Changes %1 pipes" = "Cambia %1 tubos"
 "From GrandOrgue..." = "Desde GrandOrgue..."
 "From GrandOrgue" = "Desde GrandOrgue"
-"The MIDI settings this organ has in GrandOrgue, from its settings file (.cmb)" = "Los ajustes MIDI de este órgano en GrandOrgue, desde su archivo de ajustes (.cmb)"
 "Load this organ from its GrandOrgue .organ file to bring its MIDI settings over." = "Cargue este órgano desde su archivo .organ de GrandOrgue para traer sus ajustes MIDI."
 "GrandOrgue's settings for this organ" = "Ajustes de GrandOrgue para este órgano"
 "This file holds no MIDI settings from GrandOrgue." = "Este archivo no contiene ajustes MIDI de GrandOrgue."

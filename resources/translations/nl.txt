@@ -1201,7 +1201,6 @@ countries: nl be sr
 "Changes %1 pipes" = "Wijzigt %1 pijpen"
 "From GrandOrgue..." = "Uit GrandOrgue..."
 "From GrandOrgue" = "Uit GrandOrgue"
-"The MIDI settings this organ has in GrandOrgue, from its settings file (.cmb)" = "De MIDI-instellingen van dit orgel in GrandOrgue, uit het instellingenbestand (.cmb)"
 "Load this organ from its GrandOrgue .organ file to bring its MIDI settings over." = "Laad dit orgel uit zijn GrandOrgue-bestand .organ om de MIDI-instellingen over te nemen."
 "GrandOrgue's settings for this organ" = "GrandOrgue-instellingen voor dit orgel"
 "This file holds no MIDI settings from GrandOrgue." = "Dit bestand bevat geen MIDI-instellingen uit GrandOrgue."

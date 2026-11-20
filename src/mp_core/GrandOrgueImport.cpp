@@ -348,6 +348,22 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     chestDb[w] = levelDb(ini, sec);
     chestCents[w] = centsAt(ini, sec);
   }
+  // The definition's own voicing at each level, where it is not neutral: a
+  // GrandOrgue settings file stores the player's Amplitude, UserGain and
+  // Tuning as values, not as changes, and these are what they changed from.
+  auto voicingDefault = [&](const std::string& sec, const std::string& prefix) {
+    const double amp = ini.real(sec, prefix + "AmplitudeLevel", 100.0);
+    const double gain = ini.real(sec, prefix + "Gain", 0.0);
+    const double cents = ini.real(sec, prefix + "PitchTuning", 0.0);
+    if (amp == 100.0 && gain == 0.0 && cents == 0.0) return;
+    auto v = out.row("MasterpieceGrandOrgueVoicing");
+    Emitter::set(v, "Section", prefix.empty() ? sec : sec + "/" + prefix);
+    Emitter::set(v, "Amplitude", amp);
+    Emitter::set(v, "Gain", gain);
+    Emitter::set(v, "PitchTuning", cents);
+  };
+  voicingDefault("Organ", "");
+  for (int w = 1; w <= windchests; ++w) voicingDefault("WindchestGroup" + n3(w), "");
 
   // ---- samples, pipes, ranks ------------------------------------------------
   std::map<std::string, int> sampleIds;  // relative file -> SampleID
@@ -448,6 +464,16 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       Emitter::set(n, "RankID", rankId);
     }
     rankFirstMidi[rankId] = firstMidiOf(rankSec);
+    // Where a GrandOrgue settings file finds this rank and its pipes: by its
+    // section, its pipes by number from its first note.
+    {
+      auto g = out.row("MasterpieceGrandOrgueRank");
+      Emitter::set(g, "Section", rankSec);
+      Emitter::set(g, "RankID", rankId);
+      Emitter::set(g, "FirstMidi", firstMidiOf(rankSec));
+      Emitter::set(g, "Windchest", ini.num(rankSec, "WindchestGroup", 1));
+    }
+    if (tremulantTake == 0) voicingDefault(rankSec, "");
     const int count = ini.num(rankSec, "NumberOfLogicalPipes", 0);
     auto& ids = rankPipeIds[rankId];
     for (int p = 1; p <= count; ++p) {
@@ -461,6 +487,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       if (sec != rankSec) note("REF: pipes play the pipe they name as a pipe of their own");
       const int pipeId = nextPipeId++;
       ids.back() = pipeId;
+      if (tremulantTake == 0) voicingDefault(rankSec, "Pipe" + n3(p));
       // The pipe's place is in THIS rank, whatever it borrows: a REF pipe
       // takes the slot it is written in and only sounds like the pipe it
       // names. Its pitch is unaffected -- the sample is declared at this
@@ -1067,6 +1094,20 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     const int n = ini.num("Manual" + n3(m), "Switch" + n3(k), 0);
     return n > 0 ? kGoSwitchBase + n : 0;
   };
+  // Each manual's own lists, by place: a GrandOrgue settings file names a
+  // divisional's stops, couplers, tremulants and switches by their place in
+  // the manual, and a general's by manual and place.
+  for (int m = hasPedals ? 0 : 1; m <= manualCount; ++m) {
+    const std::string msec = "Manual" + n3(m);
+    const auto place = [&](const char* what, int k, int sw) {
+      if (sw != 0) goObject(msec + "/" + what + n3(k), 1, sw);
+    };
+    for (int k = 1; k <= ini.num(msec, "NumberOfStops", 0); ++k) place("Stop", k, manualStopSwitch(m, k));
+    for (int k = 1; k <= ini.num(msec, "NumberOfCouplers", 0); ++k) place("Coupler", k, manualCouplerSwitch(m, k));
+    for (int k = 1; k <= ini.num(msec, "NumberOfTremulants", 0); ++k)
+      place("Tremulant", k, tremulantSwitch(ini.num(msec, "Tremulant" + n3(k), 0)));
+    for (int k = 1; k <= ini.num(msec, "NumberOfSwitches", 0); ++k) place("Switch", k, manualSwitch(m, k));
+  }
   int nextCombination = 1;
   auto combination = [&](const std::string& sec, int piston, const std::string& name,
                          const std::vector<std::pair<int, bool>>& elements) {
@@ -1144,6 +1185,9 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       }
       combination(sec, kDivisionalBase + m * 100 + d,
                   ini.str(sec, "Name", ini.str(msec, "Name", msec) + " " + std::to_string(d)), el);
+      // The manual it belongs to: a settings file names a divisional by its
+      // own section, and its stops by their place in this manual.
+      goObject(msec + "/" + sec, 1, kDivisionalBase + m * 100 + d);
       // Whose divisional it is, for the generated panel (#489).
       if (manualInfo.count(m) != 0)
         Emitter::set(out.lists["Combination"].last_child(), "DivisionID", manualInfo[m].kb);

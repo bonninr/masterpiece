@@ -118,6 +118,12 @@ public:
   using Reader = std::function<bool(const Element&)>;
   bool captureGeneral(int n, const Reader& isEngaged);
   bool captureDivisional(Id divisionId, int n, const Reader& isEngaged);
+  // The same, from elsewhere (a GrandOrgue settings file): stored without
+  // lighting the piston or moving the sequencer. A general beyond the count
+  // shown raises the count.
+  bool storeGeneral(int n, const Reader& isEngaged);
+  bool storeDivisional(Id divisionId, int n, const Reader& isEngaged);
+  bool storeFrame(int oneBased, const Reader& isEngaged);
   void recallGeneral(int n, std::vector<Change>& out) const;
   void recallDivisional(Id divisionId, int n, std::vector<Change>& out) const;
   void generalCancel(std::vector<Change>& out) const;
