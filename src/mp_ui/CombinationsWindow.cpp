@@ -50,7 +50,7 @@ juce::String describe(const MidiBinding& b) {
   what = what.replace("%1", juce::String(b.source.number));
   if (b.source.channel > 0) what << " " << TRANS("ch %1").replace("%1", juce::String(b.source.channel));
   if (b.targetKind == MidiTargetKind::Setter || b.targetKind == MidiTargetKind::PedalCombinationsCoupled)
-    what << "  " << (b.trigger == MidiTrigger::Momentary ? TRANS("(held)") : TRANS("(toggles)"));
+    what << "  " << (b.trigger == MidiTrigger::Momentary ? TRANS("(while held)") : TRANS("(toggle)"));
   return what;
 }
 
@@ -631,8 +631,8 @@ void CombinationsPanel::showMidiMenu(PistonButton& b, MidiTargetKind kind,
   for (const auto& line : sendsAndKeys) menu.addSectionHeader(line);
   menu.addSeparator();
   if (offerHold) {
-    menu.addItem(1, TRANS("Learn: held while pressed"));
-    menu.addItem(2, TRANS("Learn: toggles"));
+    menu.addItem(1, TRANS("Learn: while held"));
+    menu.addItem(2, TRANS("Learn: toggle"));
   } else {
     menu.addItem(1, TRANS("Learn"));
   }
