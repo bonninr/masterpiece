@@ -1206,7 +1206,11 @@ private:
         setBounds(mp::ui::screenBounds());
         sceneWatch_.startTimer(500);
         // Every panel, dialog, menu and alert in a layer over the console.
-        addAndMakeVisible(panelHost_);
+        // A layer beside the content component, placed by resized(), so it is
+        // added as a Component's child: ResizableWindow's own overload takes
+        // only a pointer, hides the reference one on some compilers, and
+        // asserts in a debug build that a child bypasses the content (#1201).
+        juce::Component::addAndMakeVisible(panelHost_);
         mp::ui::setPanelHost(&panelHost_);
        #else
         setBounds(mp::ui::screenArea());
