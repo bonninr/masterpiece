@@ -7619,6 +7619,56 @@ void MasterpieceProcessor::buildCouplerInputs() {
   for (const auto& [stopId, stop] : model_.stops)
     if (!stop.ranks.empty()) ranked.insert(stop.divisionId);
 
+  // What a key closes through the switches: the first division inputs it
+  // reaches, and the conditions on the way. A coupler to a keyboard plays what
+  // that keyboard's keys play (below).
+  using Condition = std::pair<Id, bool>;  // a linkage's condition switch, and the sense it is live in
+  struct KeyPath {
+    Id input = 0;
+    std::vector<Condition> conditions;
+  };
+  std::unordered_map<Id, std::vector<KeyPath>> pathsOfKey;
+  {
+    struct Hop {
+      Id dest = 0;
+      Condition condition{0, true};
+    };
+    std::unordered_map<Id, std::vector<Hop>> feeds;
+    for (const auto& l : model_.switchLinkages)
+      if (l.sourceSwitchId != l.destSwitchId)
+        feeds[l.sourceSwitchId].push_back({l.destSwitchId, {l.conditionSwitchId, l.conditionWhenEngaged}});
+    std::unordered_set<Id> inputs;
+    for (const auto& in : model_.divisionInputs)
+      if (in.switchId != 0) inputs.insert(in.switchId);
+    for (const auto& [keySwitch, key] : model_.keyboardKeys) {
+      (void)key;
+      std::vector<std::pair<Id, std::vector<Condition>>> todo{{keySwitch, {}}};
+      std::unordered_set<Id> seen{keySwitch};
+      while (!todo.empty() && seen.size() < 4096) {
+        auto [at, onWay] = std::move(todo.back());
+        todo.pop_back();
+        const auto next = feeds.find(at);
+        if (next == feeds.end()) continue;
+        for (const Hop& h : next->second) {
+          if (!seen.insert(h.dest).second) continue;
+          auto conditions = onWay;
+          if (h.condition.first != 0) conditions.push_back(h.condition);
+          // The first input reached closes the rest of the way itself.
+          if (inputs.count(h.dest) != 0)
+            pathsOfKey[keySwitch].push_back({h.dest, std::move(conditions)});
+          else
+            todo.emplace_back(h.dest, std::move(conditions));
+        }
+      }
+    }
+  }
+  struct ThroughKeyboard {
+    Id coupler = 0;
+    Id keyboard = 0;
+    std::vector<Id> divisions;  // the divisions the coupler's own inputs open
+  };
+  std::vector<ThroughKeyboard> throughKeyboards;
+
   std::vector<Id> reached;
   for (const KeyAction& a : model_.keyActions) {
     if (a.conditionSwitchId == 0) continue;
@@ -7636,6 +7686,89 @@ void MasterpieceProcessor::buildCouplerInputs() {
     }
     for (const Id division : reached)
       addCoupledInputs(static_cast<Id>(a.conditionSwitchId), division, ranked.count(division) == 0);
+    if (a.destIsKeyboard && a.destKeyboard != 0)
+      throughKeyboards.push_back(
+          {static_cast<Id>(a.conditionSwitchId), static_cast<Id>(a.destKeyboard), reached});
+  }
+
+  // A coupler to a keyboard plays what that keyboard's keys play. On a set
+  // wired through its switches they reach more than the keyboard's own
+  // division: Caen's G.O. keys feed the G.O. and, beside it, the division of
+  // its reeds (#1067). The inputs above open only the divisions
+  // divisionsThrough() names, the keyboard's own, so the tirasse G.O. brought
+  // the pedal the foundations and never the reeds (#1199). The coupled input
+  // that opens the keyboard's own division for a key now opens the other
+  // divisions that key reaches as well, behind the conditions that set them
+  // apart from the keyboard's own: an appel d'anches on the way from the key
+  // to the reeds still decides, and a condition all of the key's ways share is
+  // the coupler's to pass, as it is for the keyboard's own division.
+  if (!throughKeyboards.empty() && !pathsOfKey.empty()) {
+    std::unordered_map<Id, std::pair<Id, int>> inputAt;  // input switch -> division, note
+    for (const auto& in : model_.divisionInputs)
+      if (in.switchId != 0)
+        inputAt.emplace(in.switchId, std::make_pair(static_cast<Id>(in.divisionId), in.midiNote));
+    std::set<std::pair<Id, Id>> wired;
+    for (const ThroughKeyboard& t : throughKeyboards) {
+      auto opened = [&t](Id division) {
+        return std::find(t.divisions.begin(), t.divisions.end(), division) != t.divisions.end();
+      };
+      for (const auto& [keySwitch, key] : model_.keyboardKeys) {
+        if (static_cast<Id>(key.keyboardId) != t.keyboard) continue;
+        const auto paths = pathsOfKey.find(keySwitch);
+        if (paths == pathsOfKey.end()) continue;
+        // The coupled input this key's note closes already.
+        const KeyPath* own = nullptr;
+        Id ownSwitch = 0;
+        for (const KeyPath& p : paths->second) {
+          const auto at = inputAt.find(p.input);
+          if (at == inputAt.end() || !opened(at->second.first)) continue;
+          const auto ci =
+              coupledInput_.find(CoupledInputKey{t.coupler, at->second.first, at->second.second});
+          if (ci == coupledInput_.end() || ci->second.input != p.input) continue;
+          own = &p;
+          ownSwitch = ci->second.own;
+          break;
+        }
+        if (own == nullptr) continue;
+        for (const KeyPath& p : paths->second) {
+          const auto at = inputAt.find(p.input);
+          if (at == inputAt.end() || opened(at->second.first)) continue;
+          if (!wired.insert({ownSwitch, p.input}).second) continue;
+          std::vector<Condition> apart;
+          for (const Condition& c : p.conditions)
+            if (std::find(own->conditions.begin(), own->conditions.end(), c) == own->conditions.end())
+              apart.push_back(c);
+          // A linkage has room for one condition: more go through switches of
+          // the engine's own, one linkage each.
+          Id from = ownSwitch;
+          const size_t hops = std::max<size_t>(apart.size(), 1);
+          for (size_t i = 0; i < hops; ++i) {
+            Id to = p.input;
+            if (i + 1 < hops) {
+              to = nextCoupledSwitch_++;
+              Switch sw;
+              sw.switchId = to;
+              sw.name = "coupled input";
+              sw.latching = false;
+              sw.clickable = false;
+              model_.switches[to] = sw;
+            }
+            SwitchLinkage l;
+            l.sourceSwitchId = from;
+            l.destSwitchId = to;
+            if (i < apart.size()) {
+              l.conditionSwitchId = apart[i].first;
+              l.conditionWhenEngaged = apart[i].second;
+            }
+            l.sourceWhenEngaged = true;
+            l.engageAction = 1;
+            l.disengageAction = 2;
+            model_.switchLinkages.push_back(l);
+            from = to;
+          }
+        }
+      }
+    }
   }
   // Ten notes held on every coupled division at once is far beyond a player;
   // the audio thread adds to these and must not allocate.
