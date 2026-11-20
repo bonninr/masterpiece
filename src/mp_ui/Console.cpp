@@ -1440,10 +1440,11 @@ void showSwitchMidiMenu(MasterpieceProcessor& proc, Id switchId,
   const bool latching = sw == proc.organModel().switches.end() || sw->second.latching;
   menu.addItem(6, latching ? TRANS("Learn") : TRANS("Learn (held while pressed)"));
   juce::PopupMenu other;
-  other.addItem(1, TRANS("Toggle: each press draws or cancels"));
+  // In the words of the MIDI window's "What it does", for the same choices.
+  other.addItem(1, TRANS("Each press toggles"));
   other.addItem(2, TRANS("Held while pressed"));
-  other.addItem(3, TRANS("Draws it only"));
-  other.addItem(4, TRANS("Cancels it only"));
+  other.addItem(3, TRANS("Draws it"));
+  other.addItem(4, TRANS("Cancels it"));
   menu.addSubMenu(TRANS("Learn another way"), other);
   menu.addSeparator();
   menu.addItem(5, TRANS("Clear mapping"), mapped);

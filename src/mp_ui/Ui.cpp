@@ -1099,13 +1099,13 @@ int textButtonTextWidth(juce::TextButton& b) {
   return juce::GlyphArrangement::getStringWidthInt(b.getLookAndFeel().getTextButtonFont(b, 32), b.getButtonText());
 }
 
-TopBandLayout layoutTopBand(juce::Rectangle<int>& area, const std::array<int, 5>& menuText, bool mobile) {
+TopBandLayout layoutTopBand(juce::Rectangle<int>& area, const std::array<int, kMenuCount>& menuText, bool mobile) {
   TopBandLayout out;
   // Each menu button as wide as its own name, in every language: a width
   // fitted to the longest English name left the short ones padded and the
   // band too wide for one row at 1240 pixels. A fingertip wide on a phone or
   // tablet.
-  int menuWidths[5] = {};
+  int menuWidths[kMenuCount] = {};
   int menus = 0;
   for (size_t i = 0; i < menuText.size(); ++i) {
     menuWidths[i] = juce::jlimit(mobile ? 84 : 52, juce::jmax(mobile ? 84 : 52, kMenuMaxWidth),
@@ -1380,21 +1380,22 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     if (!pagesCanFloat()) return;
     juce::PopupMenu menu;
     const bool open = pageWindowFor(page) != nullptr;
-    menu.addItem(1, open ? TRANS("Bring its window to the front") : TRANS("Open in its own window"));
+    // Detach, as the panel's own button says for the same thing.
+    menu.addItem(1, open ? TRANS("Bring window to the front") : TRANS("Detach"));
     // A set can draw its pages again for another screen shape -- Buckeburg's
     // jambs in portrait -- and a window of its own can show that one while
     // the main window keeps its layout.
     if (!open && console_.layoutCount() > 1)
       for (int l = 0; l < console_.layoutCount(); ++l)
-        menu.addItem(10 + l, TRANS("Open in its own window, %1").replace("%1", layoutName(l)));
-    if (open) menu.addItem(2, TRANS("Close its window"));
+        menu.addItem(10 + l, TRANS("Detach, %1").replace("%1", layoutName(l)));
+    if (open) menu.addItem(2, TRANS("Close window"));
     menu.showMenuAsync(juce::PopupMenu::Options(), [this, page](int choice) {
       if (choice == 1) openPageWindow(page);
       if (choice == 2) closePageWindow(pageWindowFor(page));
       if (choice >= 10) openPageWindow(page, {}, choice - 10);
     });
   };
-  for (auto* b : {&fileMenu_, &organMenu_, &viewMenu_, &settingsButton_, &helpMenu_}) {
+  for (auto* b : {&fileMenu_, &organMenu_, &viewMenu_, &settingsButton_, &windowMenu_, &helpMenu_}) {
     addAndMakeVisible(*b);
     b->setTriggeredOnMouseDown(true);
   }
@@ -1402,6 +1403,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   organMenu_.onClick = [this] { showOrganMenu(); };
   viewMenu_.onClick = [this] { showViewMenu(); };
   settingsButton_.onClick = [this] { showSettingsMenu(); };
+  windowMenu_.onClick = [this] { showWindowMenu(); };
   helpMenu_.onClick = [this] { showHelpMenu(); };
   addChildComponent(fullScreenBack_);
   addChildComponent(exitFullScreen_);
@@ -2589,8 +2591,9 @@ void MasterpieceEditor::resized() {
   // than the bar's, so they are placed into the right of the same strip and
   // the bar lays itself out in whatever is left -- no reparenting, and the
   // status line absorbs the difference.
-  juce::TextButton* const menuButtons[] = {&fileMenu_, &organMenu_, &viewMenu_, &settingsButton_, &helpMenu_};
-  std::array<int, 5> menuText{};
+  juce::TextButton* const menuButtons[] = {&fileMenu_,       &organMenu_,  &viewMenu_,
+                                           &settingsButton_, &windowMenu_, &helpMenu_};
+  std::array<int, kMenuCount> menuText{};
   for (size_t i = 0; i < menuText.size(); ++i) menuText[i] = textButtonTextWidth(*menuButtons[i]);
   const auto band = layoutTopBand(r, menuText, kMobile);
   for (size_t i = 0; i < menuText.size(); ++i) menuButtons[i]->setBounds(band.menus[i].reduced(2));
@@ -2606,9 +2609,10 @@ void MasterpieceEditor::resized() {
   fullScreenBack_.setVisible(fullScreen_ && fullScreenBand_);
   exitFullScreen_.setVisible(fullScreen_ && fullScreenBand_);
   if (fullScreen_) {
-    juce::Component* const bandParts[] = {&top_,       &fileMenu_, &organMenu_,   &viewMenu_,     &settingsButton_,
-                                          &helpMenu_,  &panicButton_, &saveStateButton_, &tuningButton_, &stepPrev_,
-                                          &stepFrame_, &stepNext_, &setter_};
+    juce::Component* const bandParts[] = {&top_,        &fileMenu_,     &organMenu_,      &viewMenu_,
+                                          &settingsButton_, &windowMenu_, &helpMenu_,     &panicButton_,
+                                          &saveStateButton_, &tuningButton_, &stepPrev_,  &stepFrame_,
+                                          &stepNext_,   &setter_};
     top_.statusLabel().setBounds({});
     updateNotice_.setBounds({});
     if (fullScreenBand_) {
@@ -3206,7 +3210,7 @@ void MasterpieceEditor::showFileMenu() {
   if (!kMobile) {
     // An organ's packages put in the organs folder, and taken out (#1024).
     menu.addSeparator();
-    menu.addItem(30, TRANS("Install organ..."));
+    menu.addItem(30, TRANS("Install organ package..."));
     menu.addItem(31, TRANS("Uninstall organ..."));
     menu.addSeparator();
     menu.addItem(20, TRANS("Import settings..."));
@@ -3266,7 +3270,7 @@ void MasterpieceEditor::showOrganMenu() {
   menu.addItem(5, TRANS("Reload organ"), loaded);
   menu.addItem(6, TRANS("Copy settings from another organ..."), loaded && !kMobile);
   // The console's tabs mapped one after another (#866).
-  menu.addItem(9, TRANS("Learn tabs in turn..."), loaded);
+  menu.addItem(9, TRANS("Learn MIDI in turn..."), loaded);
   menu.addItem(11, TRANS("Console profile..."));
   menu.addItem(10, TRANS("Map from console profile..."), loaded && activeConsoleProfile().existsAsFile());
   // A licence confirmed for this organ can be taken back here.
@@ -3354,27 +3358,14 @@ void MasterpieceEditor::showViewMenu() {
       layouts.addItem(200 + i, layoutNames_[i], true, console_.layout() == i);
     menu.addSubMenu(TRANS("Console layout"), layouts);
   }
-  menu.addSeparator();
-  menu.addItem(14, TRANS("Split keyboard"), true, splitWindow_ != nullptr && splitWindow_->isVisible());
-  menu.addItem(19, TRANS("Couplers"), true, couplersWindow_ != nullptr && couplersWindow_->isVisible());
-  menu.addItem(5, TRANS("Recorder"), true, recorderWindow_ != nullptr && recorderWindow_->isVisible());
-  menu.addItem(22, TRANS("Tuner"), true, tunerWindow_ != nullptr && tunerWindow_->isVisible());
-  menu.addItem(23, TRANS("Metronome"), true, metronomeWindow_ != nullptr && metronomeWindow_->isVisible());
+  // The tool windows beside the console are in the Window menu.
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&viewMenu_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
                        if (safe == nullptr || c == 0) return;
                        if (c >= 1000) safe->panelItemChosen(c);
-                       // The settings windows follow it on their own.
-                       if (c == 5) safe->toggleRecorder();
-                       if (c == 22) safe->toggleTuner();
-                       if (c == 23)
-                         safe->showMetronome(safe->metronomeWindow_ == nullptr ||
-                                             !safe->metronomeWindow_->isVisible());
                        if (c == 15) safe->toggleStopList();
                        if (c == 11) safe->toggleSwell();
                        if (c == 12) safe->toggleKeyboard();
-                       if (c == 14) safe->toggleSplitKeyboard();
-                       if (c == 19) safe->toggleCouplers();
 #if MP_HAS_SCORE
                        if (c == 16) safe->showScore();
 #endif
@@ -3400,6 +3391,29 @@ void MasterpieceEditor::showViewMenu() {
                      });
 }
 
+void MasterpieceEditor::showWindowMenu() {
+  // The tool windows beside the console, each ticked while it is open: they
+  // were the last items of the View menu, which now holds only what the main
+  // window shows. Each opens or closes as it did there.
+  juce::PopupMenu menu;
+  menu.addItem(19, TRANS("Couplers"), true, couplersWindow_ != nullptr && couplersWindow_->isVisible());
+  menu.addItem(5, TRANS("Recorder"), true, recorderWindow_ != nullptr && recorderWindow_->isVisible());
+  menu.addItem(23, TRANS("Metronome"), true, metronomeWindow_ != nullptr && metronomeWindow_->isVisible());
+  menu.addItem(22, TRANS("Tuner"), true, tunerWindow_ != nullptr && tunerWindow_->isVisible());
+  menu.addItem(14, TRANS("Split keyboard"), true, splitWindow_ != nullptr && splitWindow_->isVisible());
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&windowMenu_),
+                     [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
+                       if (safe == nullptr || c == 0) return;
+                       if (c == 19) safe->toggleCouplers();
+                       if (c == 5) safe->toggleRecorder();
+                       if (c == 23)
+                         safe->showMetronome(safe->metronomeWindow_ == nullptr ||
+                                             !safe->metronomeWindow_->isVisible());
+                       if (c == 22) safe->toggleTuner();
+                       if (c == 14) safe->toggleSplitKeyboard();
+                     });
+}
+
 void MasterpieceEditor::chooseLayout(int index) {
   if (index < 0 || index >= console_.layoutCount()) return;
   console_.setLayout(index);
@@ -3412,18 +3426,17 @@ void MasterpieceEditor::showSettingsMenu() {
   // devices, and its window has no Audio and MIDI sections.
   juce::PopupMenu menu;
   const bool standalone = juce::JUCEApplicationBase::isStandaloneApp();
+  // In the order of the window's tabs. The metronome is a window of its own,
+  // in the Window menu (#1180), and Preferences is part of General.
   const juce::StringArray tabs =
-      standalone ? juce::StringArray{"General", "Audio", "MIDI", "Performance", "Metronome",
-                                     "Console display", "Console events", "Preferences", "Remote control"}
-                 : juce::StringArray{"General", "Performance", "Metronome", "Console display", "Preferences"};
+      standalone ? juce::StringArray{"General", "Audio", "Performance", "MIDI", "Console MIDI",
+                                     "Console display", "Remote control"}
+                 : juce::StringArray{"General", "Performance", "Console display"};
   for (int i = 0; i < tabs.size(); ++i) menu.addItem(40 + i, TRANS(tabs[i]) + "...");
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this), tabs](int c) {
                        if (safe == nullptr || c < 40 || c - 40 >= tabs.size()) return;
-                       // The metronome opens beside the console, where stops can
-                       // still be drawn (#1180); its Settings tab stays too.
-                       if (tabs[c - 40] == "Metronome") safe->showMetronome(true);
-                       else if (safe->onSettingsTab) safe->onSettingsTab(TRANS(tabs[c - 40]));
+                       if (safe->onSettingsTab) safe->onSettingsTab(TRANS(tabs[c - 40]));
                        else if (safe->onSettings) safe->onSettings();
                      });
 }

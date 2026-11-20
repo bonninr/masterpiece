@@ -1,5 +1,3 @@
-"Learn tabs in turn..." = "Aprender las teclas de registro una tras otra..."
-"Learn tabs in turn" = "Aprender las teclas de registro una tras otra"
 "Start" = "Iniciar"
 "Skip" = "Saltar"
 "Restart here" = "Reiniciar aquí"

@@ -591,7 +591,7 @@ namespace {
 void launch(MasterpieceProcessor& p, InstallPanel::Mode mode, const juce::File& package, InstallPanel::Open open) {
   juce::DialogWindow::LaunchOptions o;
   o.content.setOwned(new InstallPanel(p, mode, package, std::move(open)));
-  o.dialogTitle = mode == InstallPanel::Mode::Install ? TRANS("Install organ") : TRANS("Uninstall organ");
+  o.dialogTitle = mode == InstallPanel::Mode::Install ? TRANS("Install organ package") : TRANS("Uninstall organ");
   o.dialogBackgroundColour = kBg;
   o.escapeKeyTriggersCloseButton = true;
   o.useNativeTitleBar = true;

@@ -296,9 +296,11 @@ constexpr int kMenuPadding = 20;
 // narrower to fit, and past that shortened with an ellipsis: the row holds
 // whatever length a language gives a word.
 constexpr int kMenuMaxWidth = 88;
+// File, Organ, View, Settings, Window, Help.
+constexpr size_t kMenuCount = 6;
 
 struct TopBandLayout {
-  std::array<juce::Rectangle<int>, 5> menus;  // File, Organ, View, Settings, Help
+  std::array<juce::Rectangle<int>, kMenuCount> menus;  // File, Organ, View, Settings, Window, Help
   juce::Rectangle<int> bar;                   // the volume and the meter
   juce::Rectangle<int> setter, stepPrev, stepFrame, stepNext, tuning, save, panic;
   bool stacked = false;  // the menus and the bar took a row of their own
@@ -309,8 +311,8 @@ struct TopBandLayout {
 int textButtonTextWidth(juce::TextButton& b);
 
 // Takes the band's row, or two rows on a narrow window, from the top of
-// `area`. `menuText`: the five menu names' widths.
-TopBandLayout layoutTopBand(juce::Rectangle<int>& area, const std::array<int, 5>& menuText, bool mobile);
+// `area`. `menuText`: the menu names' widths, in the order of `menus`.
+TopBandLayout layoutTopBand(juce::Rectangle<int>& area, const std::array<int, kMenuCount>& menuText, bool mobile);
 
 // The width a page tab gives the icon that opens the page in a window of its
 // own. A finger needs a wider target than a mouse: on phones and tablets the
@@ -556,15 +558,18 @@ private:
   void refreshPopOutIcons();
   // Three menus at the left, named in words (#276): File for organs and
   // recordings, View for what the window shows, Settings for the windows that
-  // change how things work.
+  // change how things work, Window for the tool windows beside the console
+  // (the couplers, the recorder, the metronome, the tuner, the split keyboard).
   juce::TextButton fileMenu_{TRANS("File")};
   juce::TextButton organMenu_{TRANS("Organ")};
   juce::TextButton viewMenu_{TRANS("View")};
   juce::TextButton settingsButton_{TRANS("Settings")};
+  juce::TextButton windowMenu_{TRANS("Window")};
   juce::TextButton helpMenu_{TRANS("Help")};
   void showFileMenu();
   void showOrganMenu();
   void showViewMenu();
+  void showWindowMenu();
   void showHelpMenu();
   void checkForUpdatesNow();
   void showAbout();
