@@ -6369,8 +6369,14 @@ std::vector<Id> MasterpieceProcessor::samplesOfStop(Id stopId) const {
   std::vector<Id> out;
   const auto it = model_.stops.find(stopId);
   if (it == model_.stops.end()) return out;
-  for (const auto& e : it->second.ranks) {
-    const auto rit = model_.ranks.find(e.rankId);
+  // A stop that reaches its pipes only through switch wiring has no ranks of
+  // its own; its pallets' ranks count instead (#1061), or its memory read
+  // 0 MB, as Düren's pedal stops did (#1204).
+  std::vector<Id> ranks;
+  for (const auto& e : it->second.ranks) ranks.push_back(e.rankId);
+  if (ranks.empty()) ranks = it->second.palletRanks;
+  for (const Id rankId : ranks) {
+    const auto rit = model_.ranks.find(rankId);
     if (rit == model_.ranks.end()) continue;
     for (const auto& pipe : rit->second.pipes)
       for (const auto& layer : pipe.layers) {
