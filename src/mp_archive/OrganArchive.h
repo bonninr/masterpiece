@@ -53,6 +53,10 @@ struct ArchiveKind {
   bool encryptedHeaders = false; // even the file names are locked
   bool encryptedFiles = false;   // the first file is password-protected
   bool unreadable = false;       // there, and the system refused to open it
+  // Not an archive, and why, for a message that says what to do (#1166):
+  bool textFile = false;         // text (a web page, an error) saved under its name
+  bool organDefinition = false;  // a Hauptwerk XML or GrandOrgue INI definition
+  bool zeroFilled = false;       // only zeros: a download that never wrote
   int64_t bytes = 0;
   // "RAR 4, solid, 6.70 GB"
   std::string describe() const;
