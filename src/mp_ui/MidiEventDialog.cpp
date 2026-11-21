@@ -208,6 +208,10 @@ public:
     if (kind_ == MidiTargetKind::Switch) {
       event_.addItem(TRANS("Controller, one value"), kExactControllerItem);
       event_.addItem(TRANS("Controller, one bit"), kBitControllerItem);
+    } else if (MidiMap::isValuePiston(kind_)) {
+      // One controller, a value per piston, as a notation program sends a
+      // registration change (#1214).
+      event_.addItem(TRANS("Controller, one value"), kExactControllerItem);
     }
     event_.addItem(TRANS("RPN"), kRpnItem);
     event_.addItem(TRANS("NRPN"), kNrpnItem);
