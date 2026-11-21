@@ -2893,7 +2893,7 @@ juce::StringArray MidiPanel::pistonRows() const {
 }
 
 void MidiPanel::showOutputs() {
-  // The ports plugged in, then those chosen before and not plugged in now:
+  // Connected ports, then ticked ports that are disconnected:
   // the choice is kept, and shown as it is. Two ports of one name are two
   // rows, each with its own label (#980).
   auto ports = midiPortLabels(juce::MidiOutput::getAvailableDevices());

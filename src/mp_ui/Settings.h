@@ -436,7 +436,7 @@ private:
   std::array<juce::ComboBox, kDefaultRoles> defaultRoleDevices_;
   void showDefaultChannels();
   // The MIDI outputs, a tick box each beside the inputs (#942, #1020): the
-  // ports plugged in, then those chosen before and not plugged in now.
+  // connected ports, then ticked ports that are disconnected.
   std::vector<std::unique_ptr<juce::ToggleButton>> outputs_;
   juce::Label noOutputs_;
   void showOutputs();
