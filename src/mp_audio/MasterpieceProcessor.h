@@ -1462,6 +1462,17 @@ public:
   // loaded through the player's folder replaced the player's cache.
   static void setCacheDirectoryForTests(const juce::File& dir);
   juce::File cacheDirectorySetting() const { return cacheDir_; }
+  // Where organs opened from their archives are unpacked (definitions,
+  // artwork, the archives' index): beside the sample caches when the player
+  // chose a folder for them, so the program's large files go to one drive of
+  // the player's choice (#1166); otherwise in the program's own folder.
+  juce::File packagedRoot() const;
+  // The folder for one set of archives. A set already unpacked in either
+  // place stays where it is: choosing a cache folder does not walk a solid
+  // archive again.
+  juce::File packagedFolderFor(const juce::String& identity) const;
+  // Both places, the chosen one first, for counting what is unpacked.
+  juce::Array<juce::File> packagedRoots() const;
   // The open organ's sample cache, one file per organ, replaced when it is
   // rebuilt for other settings; an empty File with no organ open.
   juce::File organCacheFile() const;

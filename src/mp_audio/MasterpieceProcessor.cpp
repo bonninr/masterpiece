@@ -4657,6 +4657,28 @@ juce::File MasterpieceProcessor::cacheDirectory() const {
   return defaultCacheDirectory();
 }
 
+juce::File MasterpieceProcessor::packagedRoot() const {
+  if (cacheDir_.getFullPathName().isNotEmpty()) {
+    cacheDir_.createDirectory();
+    if (cacheDir_.isDirectory()) return cacheDir_.getChildFile("Packaged");
+  }
+  return mp::dataFolder().getChildFile("Packaged");
+}
+
+juce::Array<juce::File> MasterpieceProcessor::packagedRoots() const {
+  juce::Array<juce::File> roots{packagedRoot()};
+  roots.addIfNotAlreadyThere(mp::dataFolder().getChildFile("Packaged"));
+  return roots;
+}
+
+juce::File MasterpieceProcessor::packagedFolderFor(const juce::String& identity) const {
+  for (const auto& root : packagedRoots()) {
+    const auto dir = root.getChildFile(identity);
+    if (!readArchiveMarker(dir.getFullPathName().toStdString()).empty()) return dir;
+  }
+  return packagedRoot().getChildFile(identity);
+}
+
 juce::File MasterpieceProcessor::organCacheFile() const {
   if (loadedOdf_ == juce::File()) return {};
   // The name SampleLibrary::cachePath gives a cache per organ.
@@ -8489,8 +8511,6 @@ std::set<std::string> MasterpieceProcessor::joinPackagesFromElsewhere(
 
   // An archive joined to the organ's: its index kept beside the organ, or the
   // one kept when that organ was opened itself, so it is walked once.
-  const juce::File packagedRoot = mp::dataFolder()
-                                      .getChildFile("Packaged");
   auto joinSource = [&](const std::string& source) {
     if (archive != nullptr)
       for (const auto& group : archive->archives())
@@ -8501,7 +8521,7 @@ std::set<std::string> MasterpieceProcessor::joinPackagesFromElsewhere(
     if (!extra.discover(source, error)) return;
     const std::string cache =
         folder.getChildFile("joined-" + juce::String(extra.identity()) + ".txt").getFullPathName().toStdString();
-    const std::string itsOwn = packagedRoot.getChildFile(juce::String(extra.identity()))
+    const std::string itsOwn = packagedFolderFor(juce::String(extra.identity()))
                                    .getChildFile("archive-index.txt")
                                    .getFullPathName()
                                    .toStdString();
@@ -11017,9 +11037,7 @@ juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File
   if (!inspected) return fail(why);
   // Named by the archives themselves, so the same packages open the same
   // folder -- and the organ keeps its settings -- however they were reached.
-  const juce::File dir = mp::dataFolder()
-                             .getChildFile("Packaged")
-                             .getChildFile(archive.identity());
+  const juce::File dir = packagedFolderFor(juce::String(archive.identity()));
   const std::string index = dir.getChildFile("archive-index.txt").getFullPathName().toStdString();
   const std::string marked = readArchiveMarker(dir.getFullPathName().toStdString());
   const bool ready = !marked.empty() && archive.loadIndexFor(index);

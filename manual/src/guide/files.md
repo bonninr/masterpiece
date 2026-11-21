@@ -86,7 +86,7 @@ A text file, one `key value` per line, lines starting with `#` ignored. It holds
 | `eqpreset` | `<id> <gain> <band 1> ... <band 10> <name>`: one of the player's EQ presets, numbered from 101. One line per preset. | **Save as preset...**, **Update**, **Rename...** in **Organ settings > Voicing EQ** |
 | `eqpresetnext` | The number the next EQ preset gets, so a deleted one's is not given again. | The same |
 | `library` | A folder of sample sets Masterpiece has seen or been given; one line each. The standard library folder of Hauptwerk-format installations in the home folder, `~/Hauptwerk/HauptwerkSampleSetsAndComponents`, is added when it exists. | Automatic |
-| `cachedir` | Folder of the sample cache. Absent: the `cache` folder here. | **Cache folder** |
+| `cachedir` | Folder of the sample cache and of `Packaged/`. Absent: the `cache` and `Packaged` folders here. | **Cache folder** |
 | `packagedir` | Package folder where composites look for the organs they play. | **Package folder** |
 | `openfolder`, `dialogfolder <kind> <path>` | Where the file dialogs opened last. | Automatic |
 | `favourite <kind> <slot> <name> \| <target>` | The favourites of organs, temperaments and combination sets. | **File > Open...**, the favourites window |
@@ -153,7 +153,7 @@ Deleting a cache file is safe: the next load of the organ decodes the samples ag
 
 ### `Packaged/<id>/`
 
-When a `.rar` or `.orgue` package opens, Masterpiece unpacks the definition and the console artwork into `Packaged/<id>`, where `<id>` is derived from the archives themselves, so the same packages open the same folder from any location. The samples stay in the archives and are read in place.
+When a `.rar` or `.orgue` package opens, Masterpiece unpacks the definition and the console artwork into `Packaged/<id>`: in the **Cache folder** when one is chosen, otherwise in this folder. A set unpacked before a cache folder was chosen stays where it is. `<id>` `<id>` is derived from the archives themselves, so the same packages open the same folder from any location. The samples stay in the archives and are read in place.
 
 | File in the folder | Holds |
 |---|---|
