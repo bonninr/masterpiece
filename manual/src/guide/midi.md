@@ -69,7 +69,7 @@ Masterpiece opens a JACK client named `Masterpiece MIDI` with one input port, `m
 
 | Name | What it does | Default | Options | Takes effect |
 |---|---|---|---|---|
-| **MIDI outputs** | A tick box per port Masterpiece sends to, beside **MIDI inputs**: lamp and fader messages, key echo to a sound module, and text displays. A port ticked before and not plugged in now stays in the list. | None ticked | Every output the system reports | At once; kept as `midioutput <name>` in `settings.mpglobal`, a line per port. |
+| **MIDI outputs** | A tick box per port Masterpiece sends to, beside **MIDI inputs**: lamp and fader messages, key echo to a sound module, and text displays. Ticked ports stay listed while disconnected. | None ticked | Every output the system reports | At once; kept as `midioutput <name>` in `settings.mpglobal`, a line per port. |
 
 The processor holds the output port, so lamps, motorised faders, key echo and console displays work with any window open or none. The choice is kept in the general settings and the port opens again at the next start. A port that is not plugged in keeps its name and the box shows that name; the log records `midi: the output <name> is not connected; choose it again in Settings, MIDI once it is`.
 
