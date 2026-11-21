@@ -104,8 +104,13 @@ VIAddVersionKey LegalCopyright GPL-3.0-only")
   get_filename_component(_mp_ow_un "${_mp_pkg_dir}/openwith-uninstall.nsh" ABSOLUTE)
   string(REPLACE "/" "${_bs2}" _mp_ow_in "${_mp_ow_in}")
   string(REPLACE "/" "${_bs2}" _mp_ow_un "${_mp_ow_un}")
+  # The player's settings, caches and unpacked organs, removed only when the
+  # player says so (#1166): the uninstaller asks, and a silent uninstall keeps
+  # them unless given /REMOVEDATA.
+  get_filename_component(_mp_data_un "${_mp_pkg_dir}/data-uninstall.nsh" ABSOLUTE)
+  string(REPLACE "/" "${_bs2}" _mp_data_un "${_mp_data_un}")
   set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "!include '${_mp_ow_in}'")
-  set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "!include '${_mp_ow_un}'")
+  set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "!include '${_mp_ow_un}'\n!include '${_mp_data_un}'")
 
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   include(GNUInstallDirs)
