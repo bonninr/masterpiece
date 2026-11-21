@@ -115,7 +115,7 @@ When a default exists, the line beside the buttons reads **Default for organs wi
 
 | Control | What it does | Default | Range or options | Takes effect and storage |
 |---|---|---|---|---|
-| **MIDI output** | The port that lights a console's drawstops and receives the console display. | **None** | **None** and each output port of the system | At once. Global file key `midioutput <name>`, written while a port is chosen; see the note below. |
+| **MIDI outputs** | A tick box per output port, beside **MIDI inputs**: the ports that light a console's drawstops and receive the console display. A port ticked before and not plugged in now stays in the list. | None ticked | Each output port of the system | At once. Global file key `midioutput <name>`, a line per ticked port; see the note below. |
 | **Send stop changes on the MIDI output** | Sends each stop change on the MIDI output, on the message the stop was learned on, so that lit drawstops or a pad controller follow the screen. Off by default because a console that echoes what it just received can latch itself into a loop. | Off | On, off | At once. Global file key `midifeedback 1`, written only while on. |
 | **General Cancel also puts the keyboards back on their own manuals** | After pistons have moved a keyboard to another manual, General Cancel returns every keyboard to the manual it started on. | Off | On, off | At once. Global file key `cancelresetskeyboards`, written only while on. |
 | **Stop changes leave the notes already held alone** | Off, a stop or coupler moved while keys are held sounds or stops on those notes at once, as on a console with electric action. On, the held notes keep the pipes they started with until their keys are let go, and only keys pressed afterwards play the new registration. | Off | On, off | At once. Global file key `stopsleaveheldnotes`, written only while on. |
@@ -239,7 +239,7 @@ This tab drives the text display on a console's jamb, such as a 32-character pan
 
 The fields show: the organ's name; the temperament's name; the pitch as `A=440.0 Hz`; the transposition as `+2`, `0` or `-3`; the number of stops drawn; the crescendo step (0 with the shoe closed); and the name of the combination set (`(default)` for the default set). A message is `F0`, the prefix, the display number, the line number (0 to 3), the text as 7-bit ASCII, `F7`. Accented Latin letters lose their accents; other characters above 7F become `?`. Only lines whose text changed since the last send go out, checked four times a second.
 
-**Stored.** In the global file as `lcd <on> <display> <width> <line1> <line2> <line3> <line4> <prefix>`: `<on>` is 1 or 0, `<display>` the display number, `<width>` the characters per line, each `<line>` the number of the choice in its box (1 for **(blank)** to 8 for **Combination set**, in the order of the table above) and `<prefix>` the hexadecimal bytes, which run to the end of the line. The setup is read again at the next start. The main window sends the display four times a second whether or not this tab is open, so the display follows the organ with any window open or none. The **MIDI output** must be chosen.
+**Stored.** In the global file as `lcd <on> <display> <width> <line1> <line2> <line3> <line4> <prefix>`: `<on>` is 1 or 0, `<display>` the display number, `<width>` the characters per line, each `<line>` the number of the choice in its box (1 for **(blank)** to 8 for **Combination set**, in the order of the table above) and `<prefix>` the hexadecimal bytes, which run to the end of the line. The setup is read again at the next start. The main window sends the display four times a second whether or not this tab is open, so the display follows the organ with any window open or none. A port must be ticked under **MIDI outputs**.
 
 ## Language
 
@@ -351,7 +351,7 @@ The global file is `settings.mpglobal` in the data folder. It holds what belongs
 | `realtimethreads` | `1`. Written only while on. | **Real-time render threads (trial)** on the Loading tab |
 | `midiinputoff` | A device name. One line per unticked input. | **MIDI inputs** |
 | `consolechannel` | A role (0 for the pedal, 1 onward for the manuals) and a channel 1 to 16. | **Use as default for all organs** |
-| `midioutput` | The name of the MIDI output port. Written only while a port is chosen; a port that is not plugged in keeps its name. | **MIDI output** |
+| `midioutput` | The name of a ticked MIDI output port, a line each. A port that is not plugged in keeps its name. | **MIDI outputs** |
 | `midifeedback` | `1`. Written only while on. | **Send stop changes on the MIDI output** |
 | `metronome` | `<bpm> <beats> <level>`: the tempo, the beats per bar and the level. Written when the Metronome tab closes. | The **Metronome** tab |
 | `limiter` | `<on> <ceilingDb> <releaseMs>`: the switch, the ceiling in dBFS and the release in ms. | The **Output limiter** on the **Audio** tab |
