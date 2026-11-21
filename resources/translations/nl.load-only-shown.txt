@@ -1,0 +1,3 @@
+"Load only shown ranks" = "Alleen getoonde pijpenrijen laden"
+"Load the ranks in the list as it is filtered now, and leave out every other rank" = "De pijpenrijen in de lijst laden zoals die nu gefilterd is, en alle andere weglaten"
+"Load every rank in the list as it is filtered now, as well as the ranks already chosen" = "Alle pijpenrijen in de lijst laden zoals die nu gefilterd is, naast de al gekozen pijpenrijen"

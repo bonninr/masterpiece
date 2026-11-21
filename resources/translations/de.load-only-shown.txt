@@ -1,0 +1,3 @@
+"Load only shown ranks" = "Nur angezeigte Reihen laden"
+"Load the ranks in the list as it is filtered now, and leave out every other rank" = "Die Reihen der jetzt gefilterten Liste laden und alle anderen Reihen weglassen"
+"Load every rank in the list as it is filtered now, as well as the ranks already chosen" = "Alle Reihen der jetzt gefilterten Liste laden, zusätzlich zu den schon gewählten"

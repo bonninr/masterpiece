@@ -408,7 +408,7 @@ The **Stops and perspectives** tab chooses what is loaded. The choices are saved
 | **Effects and noises** | Stops nobody draws: key-action noises, coupler and tremulant effects. They keep their own choice. |
 | **Ranks** | Leaves out one rank, whichever stop plays it. This is the finest choice, for the rear ranks of a few stops or a set's tremmed copies. |
 
-The buttons **All stops**, **No stops** and **Only the stops drawn now** set the stop ticks; the filter box and the buttons **Load shown ranks** and **Leave out shown ranks** act on the ranks that match the filter. Clicking a division heading selects or clears its stops, and a drag over the ticks sets several at once.
+The buttons **All stops**, **No stops** and **Only the stops drawn now** set the stop ticks; the filter box and the buttons **Load only shown ranks**, **Load shown ranks** and **Leave out shown ranks** act on the ranks that match the filter; **Load only shown ranks** also leaves out every rank that does not. Clicking a division heading selects or clears its stops, and a drag over the ticks sets several at once.
 
 A set recorded from three or four places holds the whole organ that many times over, so leaving out a perspective can decide whether the organ fits. Each entry shows its estimated memory. A left-out perspective or stop costs no memory; a stop shown dimmed was left out of the load, not broken.
 

@@ -1,0 +1,3 @@
+"Load only shown ranks" = "Načíst jen zobrazené řady"
+"Load the ranks in the list as it is filtered now, and leave out every other rank" = "Načíst řady v seznamu tak, jak je nyní filtrován, a vynechat všechny ostatní řady"
+"Load every rank in the list as it is filtered now, as well as the ranks already chosen" = "Načíst všechny řady v seznamu tak, jak je nyní filtrován, vedle řad už vybraných"

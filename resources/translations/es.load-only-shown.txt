@@ -1,0 +1,3 @@
+"Load only shown ranks" = "Cargar solo las hileras mostradas"
+"Load the ranks in the list as it is filtered now, and leave out every other rank" = "Cargar las hileras de la lista tal como está filtrada ahora, y excluir todas las demás"
+"Load every rank in the list as it is filtered now, as well as the ranks already chosen" = "Cargar todas las hileras de la lista tal como está filtrada ahora, además de las ya elegidas"
