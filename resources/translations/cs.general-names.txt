@@ -1,0 +1,5 @@
+"General %1" = "Generál %1"
+"General %1: %2" = "Generál %1: %2"
+"Name..." = "Název..."
+"Name of general %1" = "Název generálu %1"
+"A name shown on the piston, such as Tutti or Plenum. Empty shows its number." = "Název zobrazený na pistonu, například Tutti nebo Pleno. Prázdný ukazuje jeho číslo."

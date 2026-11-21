@@ -467,7 +467,12 @@ juce::var ControlModel::object(Type type, int index) {
       break;
     }
     case Type::General: {
-      o->setProperty("name", juce::String(index + 1));
+      // The number, then the player's name for it when there is one:
+      // "3 Tutti". A client reading the number keeps it first.
+      {
+        const juce::String own(juce::CharPointer_UTF8(proc_.playerCombinations().generalName(index + 1).c_str()));
+        o->setProperty("name", own.isEmpty() ? juce::String(index + 1) : juce::String(index + 1) + " " + own);
+      }
       o->setProperty("set", proc_.playerCombinations().generalSet(index + 1));
       std::vector<PlayerCombinations::Change> changes;
       proc_.playerCombinations().recallGeneral(index + 1, changes);

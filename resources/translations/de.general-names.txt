@@ -1,0 +1,5 @@
+"General %1" = "Generaltritt %1"
+"General %1: %2" = "Generaltritt %1: %2"
+"Name..." = "Name..."
+"Name of general %1" = "Name des Generaltritts %1"
+"A name shown on the piston, such as Tutti or Plenum. Empty shows its number." = "Ein Name auf dem Piston, etwa Tutti oder Plenum. Leer zeigt seine Nummer."

@@ -303,6 +303,7 @@ void CombinationsPanel::rebuild() {
   for (int n = 1; n <= pc.generalCount(); ++n) {
     auto b = std::make_unique<PistonButton>(juce::String(n));
     auto* raw = b.get();
+    labelGeneral(*b, n);
     b->onClick = [this, n] { proc_.pressGeneral(n); };
     b->onRightClick = [this, raw, n] {
       showMidiMenu(*raw, MidiTargetKind::PlayerGeneral, n, false);
@@ -516,6 +517,8 @@ void CombinationsPanel::refreshState() {
   for (size_t i = 0; i < generals_.size(); ++i) {
     const int n = static_cast<int>(i) + 1;
     paintPiston(*generals_[i], pc.generalSet(n), pc.litGeneral() == n);
+    // A name set elsewhere, or another set chosen: the piston follows.
+    labelGeneral(*generals_[i], n);
   }
   for (auto& d : divisions_) {
     const int lit = pc.litDivisional(d.divisionId);
@@ -641,12 +644,19 @@ void CombinationsPanel::showMidiMenu(PistonButton& b, MidiTargetKind kind,
   // keyboard, as the console's switches have (#226).
   menu.addItem(4, TRANS("MIDI window..."));
   menu.addItem(3, TRANS("Clear mapping"), mapped);
+  if (kind == MidiTargetKind::PlayerGeneral) {
+    menu.addSeparator();
+    menu.addItem(5, TRANS("Name..."));
+  }
 
   const juce::String name = b.getButtonText();
   menu.showMenuAsync(
       juce::PopupMenu::Options().withTargetComponent(&b),
       [this, kind, targetId, name](int choice) {
         switch (choice) {
+          case 5:
+            nameGeneral(static_cast<int>(targetId));
+            break;
           case 4:
             MidiEventDialog::show(proc_, kind, targetId, name);
             break;
@@ -663,6 +673,33 @@ void CombinationsPanel::showMidiMenu(PistonButton& b, MidiTargetKind kind,
             break;
         }
       });
+}
+
+void CombinationsPanel::labelGeneral(juce::Button& b, int n) const {
+  const juce::String own(juce::CharPointer_UTF8(proc_.playerCombinations().generalName(n).c_str()));
+  const juce::String text = own.isEmpty() ? juce::String(n) : own;
+  if (b.getButtonText() != text) b.setButtonText(text);
+  const juce::String tip = own.isEmpty() ? TRANS("General %1").replace("%1", juce::String(n))
+                                         : TRANS("General %1: %2").replace("%1", juce::String(n)).replace("%2", own);
+  if (b.getTooltip() != tip) b.setTooltip(tip);
+}
+
+void CombinationsPanel::nameGeneral(int n) {
+  const juce::String now(juce::CharPointer_UTF8(proc_.playerCombinations().generalName(n).c_str()));
+  namePrompt_ = std::make_unique<juce::AlertWindow>(
+      TRANS("Name of general %1").replace("%1", juce::String(n)),
+      TRANS("A name shown on the piston, such as Tutti or Plenum. Empty shows its number."),
+      juce::MessageBoxIconType::NoIcon);
+  namePrompt_->addTextEditor("name", now, TRANS("Name"));
+  namePrompt_->addButton(TRANS("Save"), 1);
+  namePrompt_->addButton(TRANS("Cancel"), 0);
+  namePrompt_->enterModalState(true, juce::ModalCallbackFunction::create([this, n](int result) {
+    if (result == 1 && namePrompt_ != nullptr) {
+      proc_.setGeneralName(n, namePrompt_->getTextEditorContents("name"));
+      if (static_cast<size_t>(n) <= generals_.size()) labelGeneral(*generals_[static_cast<size_t>(n) - 1], n);
+    }
+    namePrompt_.reset();
+  }));
 }
 
 // ------------------------------------------------------ CombinationsWindow

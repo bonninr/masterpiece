@@ -125,6 +125,11 @@ private:
   juce::TextButton setDelete_{TRANS("Delete")};
   std::vector<std::string> setNames_;
   std::unique_ptr<juce::AlertWindow> setPrompt_;
+  // A general's name (#1214): asked for from its menu, and shown on the
+  // piston in place of its number, the number in the tooltip.
+  std::unique_ptr<juce::AlertWindow> namePrompt_;
+  void nameGeneral(int n);
+  void labelGeneral(juce::Button& b, int n) const;
 
   juce::Label note_;
 };

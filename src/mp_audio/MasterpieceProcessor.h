@@ -652,6 +652,9 @@ public:
   // Store what is drawn into it. False when nothing has been chosen yet.
   bool storeIntoTarget();
   void pressGeneral(int n);
+  // A name for a general ("Tutti", "Plenum"), saved with the combination set
+  // in use. Empty clears it.
+  void setGeneralName(int n, const juce::String& name);
   void pressGeneralCancel();
   void pressDivisional(Id divisionId, int n);
   void pressDivisionalCancel(Id divisionId);

@@ -130,6 +130,11 @@ public:
   void divisionalCancel(Id divisionId, std::vector<Change>& out) const;
 
   bool generalSet(int n) const;
+  // A general's name, chosen by the player (#1214): "Tutti", "Plenum",
+  // "Adagio". Empty for none. Kept with the registrations, so a set made
+  // for a piece keeps its own names. Read and written on the message thread.
+  const std::string& generalName(int n) const;
+  void setGeneralName(int n, std::string name);
   bool divisionalSet(Id divisionId, int n) const;
   // The piston whose registration was recalled or captured last, which is the
   // one a console lights. 0 when the registration has since moved on.
@@ -186,6 +191,7 @@ private:
   int divisionalCount_ = kDefaultDivisionals;
   // Index 0 unused, so a piston's number is its index.
   std::vector<Registration> generals_;
+  std::vector<std::string> generalNames_;  // by number, as generals_
   std::vector<Registration> frames_;
   // divisionIndex * (kMaxDivisionals + 1) + piston
   std::vector<Registration> divisionals_;

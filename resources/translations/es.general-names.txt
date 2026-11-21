@@ -1,0 +1,5 @@
+"General %1" = "Combinación general %1"
+"General %1: %2" = "Combinación general %1: %2"
+"Name..." = "Nombre..."
+"Name of general %1" = "Nombre de la combinación general %1"
+"A name shown on the piston, such as Tutti or Plenum. Empty shows its number." = "Un nombre que se muestra en el pistón, como Tutti o Plenum. Vacío muestra su número."

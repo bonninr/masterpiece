@@ -6680,6 +6680,12 @@ void MasterpieceProcessor::applyPlayerChanges() {
   playerScratch_.clear();
 }
 
+void MasterpieceProcessor::setGeneralName(int n, const juce::String& name) {
+  if (juce::String(player_.generalName(n)) == name.trim()) return;
+  player_.setGeneralName(n, name.toStdString());
+  combinationsDirty_.store(true, std::memory_order_release);
+}
+
 void MasterpieceProcessor::pressGeneral(int n) {
   const AudioLock audio(*this);
   const auto read = [this](const PlayerCombinations::Element& e) {
