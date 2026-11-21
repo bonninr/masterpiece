@@ -2536,6 +2536,23 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
                              "silent. The organ plays without them.")
                            .replace("%1", juce::String(result.samples.failed))) +
                     "\n\n" + which + "\n" + fix);
+  } else if (!graphicsOnly && result.samples.missing > 0) {
+    // Files the definition names and the disk does not have: an organ
+    // installed in part, or a package left out. Only the log said so, and
+    // the stops with none of their samples stayed still under a click (#1211).
+    juce::String which;
+    for (size_t i = 0; i < result.samples.missingFiles.size() && i < 3; ++i)
+      which << juce::String(result.samples.missingFiles[i]) << "\n";
+    showWithLog(TRANS("Some samples are missing"),
+                (result.samples.missing == 1
+                     ? TRANS("1 sample file named by the organ was not found, so the pipes it belongs "
+                             "to are silent. A stop with none of its samples does not respond.")
+                     : TRANS("%1 sample files named by the organ were not found, so the pipes they "
+                             "belong to are silent. A stop with none of its samples does not respond.")
+                           .replace("%1", juce::String(result.samples.missing))) +
+                    "\n\n" + which + "\n" +
+                    TRANS("The organ was installed in part, or a package it needs is missing. "
+                          "Installing the organ again, with every package it needs, usually puts it right."));
   }
   // Say it out loud, once. The status line has no room beside the console's
   // buttons, and a mapping that changes without a word costs more trust than

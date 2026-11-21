@@ -1,0 +1,4 @@
+"Some samples are missing" = "Brakuje niektórych sampli"
+"1 sample file named by the organ was not found, so the pipes it belongs to are silent. A stop with none of its samples does not respond." = "Nie znaleziono 1 pliku sampla wskazanego przez organy, więc piszczałki, do których należy, milczą. Głos bez żadnego ze swoich sampli nie reaguje."
+"%1 sample files named by the organ were not found, so the pipes they belong to are silent. A stop with none of its samples does not respond." = "Nie znaleziono %1 plików sampli wskazanych przez organy, więc piszczałki, do których należą, milczą. Głos bez żadnego ze swoich sampli nie reaguje."
+"The organ was installed in part, or a package it needs is missing. Installing the organ again, with every package it needs, usually puts it right." = "Organy zainstalowano tylko częściowo albo brakuje pakietu, którego potrzebują. Ponowna instalacja organów ze wszystkimi potrzebnymi pakietami zwykle to naprawia."
