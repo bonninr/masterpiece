@@ -46,7 +46,7 @@ The plugins are not built for these packages:
 
 ## Loading it in a host
 
-Add Masterpiece as an instrument on a new track, as for any sampled instrument. The host shows one stereo output and a MIDI input. After a rescan, a host lists it under the manufacturer name Masterpiece.
+Add Masterpiece as an instrument on a new track, as for any sampled instrument. The host shows one output bus, stereo unless the track is given more channels, and a MIDI input. After a rescan, a host lists it under the manufacturer name Masterpiece.
 
 The plugin window is the console of the standalone program. It opens at 1280 by 760 pixels and can be resized; the host decides whether a plugin window may change size. A new instance shows **No organ loaded.** in the status line.
 
@@ -114,11 +114,11 @@ The plugin declares a MIDI input and produces no MIDI output.
 | Property | Value |
 |---|---|
 | Inputs | None |
-| Outputs | One bus named **Out**: stereo, or up to 32 channels where the host offers them |
+| Outputs | One bus named **Out**: stereo, or up to 64 channels where the host offers them |
 | Reported tail length | 5 seconds |
 | MIDI in / out | In only |
 
-The engine renders the organ to this bus. The mixer's pairs, set under **Settings > General settings > Mixer**, play on their own channels when the host gives the bus that many, and are summed to the first two otherwise.
+The engine renders the organ to this bus. The outputs set under **Organ settings > Outputs** play on their own channels when the host gives the bus that many, and are summed to the first two otherwise. With the perspectives on outputs of their own, a host can process each one apart: a surround or ambisonic encoder after the plugin places them in space.
 
 The plugin takes the sample rate and the block size from the host. A rate change in the host rebuilds the voice pool.
 
