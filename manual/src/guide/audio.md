@@ -141,13 +141,13 @@ On Debian and Ubuntu the jackd2 package writes this file as `audio.conf.disabled
 
 ## Output routing and the mixer
 
-**Settings > General settings > Mixer** assigns each rank of the loaded organ to one of up to eight pairs. The pairs are rendered separately, each with the enclosure processing of its ranks. On a device with the channels a pair names, the pair plays on them; on a stereo device, and in the plugins, the pairs are mixed together into the first two channels. No sample set declares an audio routing, so the layout is the player's, in the way a MIDI mapping is.
+**Organ settings > Outputs** assigns each rank of the loaded organ to one of up to 64 outputs. The pairs are rendered separately, each with the enclosure processing of its ranks. On a device with the channels a pair names, the pair plays on them; on a stereo device, and in the plugins, the pairs are mixed together into the first two channels. No sample set declares an audio routing, so the layout is the player's, in the way a MIDI mapping is.
 
 ![The Mixer tab](../images/general-mixer.png)
 
 | Control | What it does | Default | Takes effect |
 |---|---|---|---|
-| **Output pairs** | **1 (stereo)** and **2 pairs** to **8 pairs**. Lowering the count folds ranks that pointed at a removed pair back to **Pair 1**. | 1 | At once for notes started afterwards |
+| **Outputs** | **1 output** to **64 outputs**. Lowering the count folds ranks that pointed at a removed pair back to **Pair 1**. | 1 | At once for notes started afterwards |
 | Status line | `N rank(s), M pair(s)`; when something is wrong it adds `X unrouted, Y stale` | | |
 | Outputs line | Each pair's device channels, such as `Pair 2: 3-4`, and `the device gives N outputs: the pairs past them play on 1-2` when the device has fewer channels than the pairs name | | |
 | **Spread ranks evenly** | Assigns the ranks in rank-number order to the pairs in turn, so that the routing is audible straight away | | At once |
