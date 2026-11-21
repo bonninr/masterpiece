@@ -214,9 +214,11 @@ public:
       MP_CHECK(keysThatSound(proc) == r.samples.loaded, "and those keys sound");
       proc.releaseResources();
     }
-    // With memory to spare the whole organ loads, and nothing is said.
+    // With memory to spare the whole organ loads, and nothing is said. The
+    // cache on, whatever the machine's settings file says.
     {
       mp::MasterpieceProcessor proc;
+      proc.overrideCacheMode(mp::SampleLibrary::CacheMode::PerOrgan);
       proc.prepareToPlay(48000.0, 256);
       proc.memoryProbe = [] { return int64_t{1} << 40; };
       const auto r = proc.loadOrgan(odf, 0, false);
@@ -228,6 +230,7 @@ public:
     // sample asked for is there.
     {
       mp::MasterpieceProcessor proc;
+      proc.overrideCacheMode(mp::SampleLibrary::CacheMode::PerOrgan);
       proc.prepareToPlay(48000.0, 256);
       proc.memoryProbe = [] { return int64_t{1} << 40; };
       const auto r = proc.loadOrgan(odf, 0, false);
