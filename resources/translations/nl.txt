@@ -504,7 +504,7 @@ countries: nl be sr
 "%1 events, %2 s" = "%1 gebeurtenissen, %2 s"
 "Recording %1 - %2 s" = "Opname %1 - %2 s"
 "MIDI inputs" = "MIDI-ingangen"
-"MIDI output" = "MIDI-uitgang"
+"MIDI outputs" = "MIDI-uitgangen"
 "Keyboards" = "Toetsenborden"
 "For directing a choir: while a sustain pedal is down, the keys let go keep sounding until it is lifted. Controller 64 on any channel. A controller 64 learned for something else keeps doing that." = "Voor het dirigeren van een koor: zolang het sustainpedaal ingedrukt is, blijven de losgelaten toetsen klinken totdat het pedaal wordt losgelaten. Controller 64 op elk kanaal. Een controller 64 die voor iets anders is geleerd doet hetzelfde."
 "Manual buttons" = "Klavierknoppen"
