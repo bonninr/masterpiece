@@ -505,7 +505,7 @@ countries: pl
 "%1 events, %2 s" = "Zdarzenia: %1, %2 s"
 "Recording %1 - %2 s" = "Nagrywanie %1 - %2 s"
 "MIDI inputs" = "Wejścia MIDI"
-"MIDI output" = "Wyjście MIDI"
+"MIDI outputs" = "Wyjścia MIDI"
 "Keyboards" = "Klawiatury"
 "For directing a choir: while a sustain pedal is down, the keys let go keep sounding until it is lifted. Controller 64 on any channel. A controller 64 learned for something else keeps doing that." = "Do dyrygowania chóru: dopóki pedał sustain jest wciśnięty, puszczone klawisze brzmią dalej, dopóki nie zostanie zwolniony. Kontroler 64 na dowolnym kanale. Kontroler 64 przypisany do czegoś innego robi to samo."
 "Manual buttons" = "Przyciski manuałów"

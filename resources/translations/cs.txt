@@ -505,7 +505,7 @@ countries: cz
 "%1 events, %2 s" = "Události: %1, %2 s"
 "Recording %1 - %2 s" = "Nahrávání %1 - %2 s"
 "MIDI inputs" = "Vstupy MIDI"
-"MIDI output" = "Výstup MIDI"
+"MIDI outputs" = "Výstupy MIDI"
 "Keyboards" = "Klaviatury"
 "For directing a choir: while a sustain pedal is down, the keys let go keep sounding until it is lifted. Controller 64 on any channel. A controller 64 learned for something else keeps doing that." = "Pro řízení sboru: dokud je pedál sustain sešlápnutý, uvolněné klávesy znějí dál, dokud ho neuvolníte. Ovladač 64 na jakémkoli kanálu. Ovladač 64 naučený pro něco jiného dělá totéž."
 "Manual buttons" = "Tlačítka manuálů"
