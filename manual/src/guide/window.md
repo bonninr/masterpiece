@@ -240,7 +240,7 @@ themselves are described on [MIDI and consoles](midi.md).
 
 | Object | Menu |
 |---|---|
-| Drawstop, coupler, piston | The object's name, then its current MIDI mappings (`Note 36 ch 1 (toggles)`, `CC 20 (held)`), **MIDI window...**, **Learn** (**Learn (held while pressed)** for a momentary button), a submenu **Learn another way** with **Toggle: each press draws or cancels**, **Held while pressed**, **Draws it only** and **Cancels it only**, and **Clear mapping**. |
+| Drawstop, coupler, piston | The object's name, then its current MIDI mappings (`Note 36 ch 1 (toggle)`, `CC 20 (while held)`), **MIDI window...**, **Learn** (**Learn (while held)** for a momentary button), a submenu **Learn as** with **Toggle**, **While held**, **Draw only** and **Cancel only**, and **Clear mapping**. |
 | Swell shoe, crescendo, dial, slider; swell fader | The control's name, its mappings, **MIDI window...**, **Learn: move a pedal, knob or fader**, **Closed position: where the pedal is now**, **Open position: where the pedal is now**, **Use the pedal's whole travel** and **Clear mapping**. |
 | Key of a drawn manual | The MIDI window of that manual: which keyboard plays it and the pistons that bring it to a keyboard. |
 | Element of a panel | The MIDI window of the stop, coupler, piston or control. |

@@ -179,20 +179,20 @@ The note off goes out as a note-off message on the same channel.
 
 ### Right-click menus
 
-Right-click a drawn stop, coupler, tremulant or piston on the console. The menu's section header names the object; the next lines list its current mappings, for example `Note 36 ch 3  (toggles)`.
+Right-click a drawn stop, coupler, tremulant or piston on the console. The menu's section header names the object; the next lines list its current mappings, for example `Note 36 ch 3  (toggle)`.
 
 ![The right-click menu of a stop](../images/console-menu-stop.jpg)
 
 | Item | What it does |
 |---|---|
 | **MIDI window...** | Opens the [MIDI window](#the-midi-window-for-one-object). |
-| **Learn** | Arms a learn; the next message from a console is mapped. For a latching switch (a stop or coupler) it learns **Each press toggles**. For a switch the organ declares as a momentary button (a piston) it learns **Held while pressed**, and the item reads **Learn (held while pressed)**. |
-| **Learn another way** | **Toggle: each press draws or cancels**, **Held while pressed**, **Draws it only**, **Cancels it only**. |
+| **Learn** | Arms a learn; the next message from a console is mapped. For a latching switch (a stop or coupler) it learns **Toggle**. For a switch the organ declares as a momentary button (a piston) it learns **While held**, and the item reads **Learn (while held)**. |
+| **Learn as** | **Toggle**, **While held**, **Draw only**, **Cancel only** (see [What a stop does with each message](#what-a-stop-does-with-each-message)). |
 | **Clear mapping** | Removes every mapping of the object and saves. |
 
 Right-click a swell shoe, wheel or slider to see **MIDI window...**, **Learn: move a pedal, knob or fader**, **Closed position: where the pedal is now**, **Open position: where the pedal is now**, **Use the pedal's whole travel** and **Clear mapping**. The two position items set the ends of the pedal's travel from the pedal's last position, so move the pedal to the position first. A box reading **Move the pedal first** appears when Masterpiece has no position yet or both ends would be equal.
 
-Right-click a piston in the Combinations window (generals, divisionals, cancels, the setter and the sequencer buttons) to map it: **Learn**, **MIDI window...** and **Clear mapping**. The setter offers **Learn: held while pressed** and **Learn: toggles** in place of **Learn**. Right-clicking again while a learn is armed cancels it.
+Right-click a piston in the Combinations window (generals, divisionals, cancels, the setter and the sequencer buttons) to map it: **Learn**, **MIDI window...** and **Clear mapping**. The setter offers **Learn: while held** and **Learn: toggle** in place of **Learn**. Right-clicking again while a learn is armed cancels it.
 
 The program's own buttons have no object on the console to right-click. Use the learn buttons of the MIDI tab:
 
@@ -233,16 +233,18 @@ One message operates one object. Learning a message that another object already 
 
 ### What a stop does with each message
 
-| Behaviour | MIDI window label | Right-click label | What happens |
-|---|---|---|---|
-| Toggle | **Each press toggles** | **Toggle: each press draws or cancels** | A press flips the switch from its state at that moment. The release is ignored. After a cancel or a click has moved the stop, the next press flips it from its actual state. A piston toggled this way is pressed and released on each press. |
-| Momentary | **Held while pressed** | **Held while pressed** | The switch is on while the button is down and off on the release. This is a piston's behaviour. On a latching stop, a program change or system exclusive message (which have no release) leaves the stop drawn. |
-| Engage only | **Draws it** | **Draws it only** | The press draws the switch; the release is ignored. |
-| Disengage only | **Cancels it** | **Cancels it only** | The press cancels the switch; the release is ignored. |
+The MIDI window's **What it does** and the right-click **Learn as** use the same words.
 
-A rocker tab, or a console with separate draw and cancel buttons per stop, is two rows: one **Draws it** and one **Cancels it**. Learning **Draws it only** leaves an existing **Cancels it only** alone, and the reverse, so both can be taught in turn. Any other learn replaces what the object had.
+| Label | What happens |
+|---|---|
+| **Toggle** | A press flips the switch from its state at that moment. The release is ignored. After a cancel or a click has moved the stop, the next press flips it from its actual state. A piston toggled this way is pressed and released on each press. |
+| **While held** | The switch is on while the button is down and off on the release. This is a piston's behaviour. On a latching stop, a program change or system exclusive message (which have no release) leaves the stop drawn. |
+| **Draw only** | The press draws the switch; the release is ignored. |
+| **Cancel only** | The press cancels the switch; the release is ignored. |
 
-A new row in the MIDI window starts as **Each press toggles** for a latching switch and **Held while pressed** for a momentary one. Pistons and program buttons other than switches start as **Fires when pressed**. Learning is saved within a moment of the message arriving.
+A rocker tab, or a console with separate draw and cancel buttons per stop, is two rows: one **Draw only** and one **Cancel only**. Learning **Draw only** leaves an existing **Cancel only** alone, and the reverse, so both can be taught in turn. Any other learn replaces what the object had. The mapping lines at the top of the right-click menu end in the same word: `Note 36 ch 1 (toggle)`, `CC 20 (while held)`.
+
+A new row in the MIDI window starts as **Toggle** for a latching switch and **While held** for a momentary one. Pistons and program buttons other than switches start as **Fires when pressed**. Learning is saved within a moment of the message arriving.
 
 ### Shoes, wheels and sliders
 
@@ -274,7 +276,7 @@ One row per message that operates the object. **New event** adds a row and start
 | **Channel** | The channel of the message. | **Any** | **Any**, 1 to 16 |
 | **Event** | The message type. Shows **Listen...** until a message is set. | | **Note**, **Controller**, **Program change**, **System exclusive** |
 | **Number** | The note (shown as a name with its number), controller number (0 to 127) or program number (1 to 128). For **System exclusive** it shows **Learned message**, which only **Listen** can set. For a shoe with **Note** it offers **Any note**, which takes the velocity of every note on the channel. | | |
-| **What it does** | The behaviour (see the table above). For a stop, coupler, tremulant or switch: **Each press toggles**, **Held while pressed**, **Draws it**, **Cancels it**. For the program's pistons and cancels: **Fires when pressed**. For the setter: **Fires when pressed** and **Each press toggles**. | Follows the switch, see above | |
+| **What it does** | The behaviour (see the table above). For a stop, coupler, tremulant or switch: **Toggle**, **Press and release toggle**, **While held**, **Draw only**, **Cancel only**. For the program's pistons and cancels: **Fires when pressed**. For the setter: **Fires when pressed** and **Toggle**. | Follows the switch, see above | |
 | **Closed at**, **Open at**, **Invert** | Shoes only; see above. These replace **What it does**. | | |
 | **Listen** | Takes the next press from a console and fills the row with it. The button reads **Listening...** until a message arrives; press it again to cancel. The press is taken, not acted on, and its release is swallowed. | | |
 | **X** | Removes the row. | | |

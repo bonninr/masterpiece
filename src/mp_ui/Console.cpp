@@ -1419,11 +1419,11 @@ void showSwitchMidiMenu(MasterpieceProcessor& proc, Id switchId,
     for (const MidiBinding* b : existing) {
       juce::String what = MidiEventDialog::describeBinding(*b);
       switch (b->trigger) {
-        case MidiTrigger::Momentary: what << "  " << TRANS("(held)"); break;
-        case MidiTrigger::EngageOnly: what << "  " << TRANS("(draws)"); break;
-        case MidiTrigger::DisengageOnly: what << "  " << TRANS("(cancels)"); break;
+        case MidiTrigger::Momentary: what << "  " << TRANS("(while held)"); break;
+        case MidiTrigger::EngageOnly: what << "  " << TRANS("(draw only)"); break;
+        case MidiTrigger::DisengageOnly: what << "  " << TRANS("(cancel only)"); break;
         case MidiTrigger::Toggle:
-        case MidiTrigger::ToggleBoth: what << "  " << TRANS("(toggles)"); break;
+        case MidiTrigger::ToggleBoth: what << "  " << TRANS("(toggle)"); break;
       }
       menu.addSectionHeader(what);
     }
@@ -1438,13 +1438,14 @@ void showSwitchMidiMenu(MasterpieceProcessor& proc, Id switchId,
   // ways remain for a console that sends something else (#53).
   const auto sw = proc.organModel().switches.find(switchId);
   const bool latching = sw == proc.organModel().switches.end() || sw->second.latching;
-  menu.addItem(6, latching ? TRANS("Learn") : TRANS("Learn (held while pressed)"));
+  menu.addItem(6, latching ? TRANS("Learn") : TRANS("Learn (while held)"));
   juce::PopupMenu other;
-  other.addItem(1, TRANS("Toggle: each press draws or cancels"));
-  other.addItem(2, TRANS("Held while pressed"));
-  other.addItem(3, TRANS("Draws it only"));
-  other.addItem(4, TRANS("Cancels it only"));
-  menu.addSubMenu(TRANS("Learn another way"), other);
+  // A word or two each, the same as the MIDI window's "What it does".
+  other.addItem(1, TRANS("Toggle"));
+  other.addItem(2, TRANS("While held"));
+  other.addItem(3, TRANS("Draw only"));
+  other.addItem(4, TRANS("Cancel only"));
+  menu.addSubMenu(TRANS("Learn as"), other);
   menu.addSeparator();
   menu.addItem(5, TRANS("Clear mapping"), mapped);
 

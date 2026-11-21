@@ -1,4 +1,4 @@
-// "Held while pressed" is offered only for a message that has a release
+// "While held" is offered only for a message that has a release
 // (#565). A program change or a system exclusive message sends nothing when
 // the button comes up, so a drawstop held by one stayed drawn.
 #include "MpTest.h"

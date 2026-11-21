@@ -414,16 +414,16 @@ private:
                                                    : MidiSourceKind::None;
     action_.clear(juce::dontSendNotification);
     if (kind_ == MidiTargetKind::Switch) {
-      action_.addItem(TRANS("Each press toggles"), 1);
+      action_.addItem(TRANS("Toggle"), 1);
       action_.addItem(TRANS("Press and release toggle"), 5);
-      if (MidiEventDialog::heldOffered(kind_, source)) action_.addItem(TRANS("Held while pressed"), 2);
-      action_.addItem(TRANS("Draws it"), 3);
-      action_.addItem(TRANS("Cancels it"), 4);
+      if (MidiEventDialog::heldOffered(kind_, source)) action_.addItem(TRANS("While held"), 2);
+      action_.addItem(TRANS("Draw only"), 3);
+      action_.addItem(TRANS("Cancel only"), 4);
     } else {
       // A piston fires when pressed; the setter may also be worked by a
       // button that toggles it, as its Learn menu offers.
       action_.addItem(TRANS("Fires when pressed"), 2);
-      if (kind_ == MidiTargetKind::Setter) action_.addItem(TRANS("Each press toggles"), 1);
+      if (kind_ == MidiTargetKind::Setter) action_.addItem(TRANS("Toggle"), 1);
     }
     const int want = t == MidiTrigger::Momentary       ? 2
                      : t == MidiTrigger::EngageOnly    ? 3

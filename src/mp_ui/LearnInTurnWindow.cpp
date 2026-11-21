@@ -284,7 +284,7 @@ void LearnInTurnPanel::showState() {
   } else if (learned_ > 0) {
     prompt_.setText(TRANS("%1 tabs learned").replace("%1", juce::String(learned_)), juce::dontSendNotification);
   } else {
-    prompt_.setText(rows_.empty() ? TRANS("This organ has no tabs to learn") : TRANS("Learn tabs in turn"),
+    prompt_.setText(rows_.empty() ? TRANS("This organ has no tabs to learn") : TRANS("Learn MIDI in turn"),
                     juce::dontSendNotification);
   }
   note_.setColour(juce::Label::textColourId, refused_.isEmpty() ? kDim : kWarn);
@@ -357,7 +357,7 @@ void LearnInTurnPanel::resized() {
 }
 
 LearnInTurnWindow::LearnInTurnWindow(MasterpieceProcessor& p)
-    : juce::DocumentWindow(TRANS("Learn tabs in turn"), kBack, juce::DocumentWindow::closeButton),
+    : juce::DocumentWindow(TRANS("Learn MIDI in turn"), kBack, juce::DocumentWindow::closeButton),
       panel_(std::make_unique<LearnInTurnPanel>(p)) {
   setUsingNativeTitleBar(true);
   setResizable(true, false);

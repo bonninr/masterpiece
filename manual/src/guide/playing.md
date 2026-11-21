@@ -237,7 +237,7 @@ program closes. Switching a set writes the set being left.
 
 A right-click on **Set**, **GC**, a general, a divisional, a **0**, or any
 sequencer button opens a menu: the current mappings, **Learn** (for **Set**,
-**Learn: held while pressed** and **Learn: toggles**), **MIDI window...** and
+**Learn: while held** and **Learn: toggle**), **MIDI window...** and
 **Clear mapping**. Press the control on the console after **Learn**; a second
 right-click cancels. **Settings > General settings > MIDI** has the buttons
 **Learn sequencer +** and **Learn sequencer -**. The mappings of the sequencer,

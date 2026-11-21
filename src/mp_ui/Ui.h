@@ -266,9 +266,14 @@ public:
   // The status line lives along the bottom of the window, where it has the
   // whole width; the editor places it there.
   juce::Label& statusLabel() { return status_; }
-  // The fader at its narrowest: its 58-pixel readout and a track a hand can
-  // still set a level on.
-  static constexpr int kFaderMinWidth = 160;
+  // The fader's width before the meter beside it gives way: its 58-pixel
+  // readout and a track a hand can easily set a level on (#90).
+  static constexpr int kFaderComfortWidth = 160;
+  // The fader at its narrowest, once the meter has gone: the readout and a
+  // shorter track. Only the narrowest windows come down to it, where the six
+  // menus need the room to keep the band one row in every language; from a
+  // little wider the fader is as wide as it was.
+  static constexpr int kFaderMinWidth = 130;
   // The fader at its narrowest, with the bar's margins. Bypassing every
   // effect is set once, in Organ settings > Loading, and has no place here.
   static constexpr int kMinWidth = 8 + 6 + kFaderMinWidth;
@@ -287,7 +292,9 @@ private:
 // from the widths alone, so a test can lay it out in every language with no
 // window.
 constexpr int kTopBandHeight = 36;
-constexpr int kTuningWidth = 140;
+// The temperament button: its text is the temperament and the pitch, "Equal
+// 440", which a short name fits whole and a long one draws narrower.
+constexpr int kTuningWidth = 110;
 constexpr int kFrameWidth = 96;
 // Around a menu's name: the button's 2 px margin and the text's own inset
 // on each side, with a little air.
@@ -296,9 +303,11 @@ constexpr int kMenuPadding = 20;
 // narrower to fit, and past that shortened with an ellipsis: the row holds
 // whatever length a language gives a word.
 constexpr int kMenuMaxWidth = 88;
+// File, Organ, View, Settings, Window, Help.
+constexpr size_t kMenuCount = 6;
 
 struct TopBandLayout {
-  std::array<juce::Rectangle<int>, 5> menus;  // File, Organ, View, Settings, Help
+  std::array<juce::Rectangle<int>, kMenuCount> menus;  // File, Organ, View, Settings, Window, Help
   juce::Rectangle<int> bar;                   // the volume and the meter
   juce::Rectangle<int> setter, stepPrev, stepFrame, stepNext, tuning, save, panic;
   bool stacked = false;  // the menus and the bar took a row of their own
@@ -309,8 +318,8 @@ struct TopBandLayout {
 int textButtonTextWidth(juce::TextButton& b);
 
 // Takes the band's row, or two rows on a narrow window, from the top of
-// `area`. `menuText`: the five menu names' widths.
-TopBandLayout layoutTopBand(juce::Rectangle<int>& area, const std::array<int, 5>& menuText, bool mobile);
+// `area`. `menuText`: the menu names' widths, in the order of `menus`.
+TopBandLayout layoutTopBand(juce::Rectangle<int>& area, const std::array<int, kMenuCount>& menuText, bool mobile);
 
 // The width a page tab gives the icon that opens the page in a window of its
 // own. A finger needs a wider target than a mouse: on phones and tablets the
@@ -556,15 +565,18 @@ private:
   void refreshPopOutIcons();
   // Three menus at the left, named in words (#276): File for organs and
   // recordings, View for what the window shows, Settings for the windows that
-  // change how things work.
+  // change how things work, Window for the tool windows beside the console
+  // (the couplers, the recorder, the metronome, the tuner, the split keyboard).
   juce::TextButton fileMenu_{TRANS("File")};
   juce::TextButton organMenu_{TRANS("Organ")};
   juce::TextButton viewMenu_{TRANS("View")};
   juce::TextButton settingsButton_{TRANS("Settings")};
+  juce::TextButton windowMenu_{TRANS("Window")};
   juce::TextButton helpMenu_{TRANS("Help")};
   void showFileMenu();
   void showOrganMenu();
   void showViewMenu();
+  void showWindowMenu();
   void showHelpMenu();
   void checkForUpdatesNow();
   void showAbout();
