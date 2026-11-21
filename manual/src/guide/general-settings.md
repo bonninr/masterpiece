@@ -358,7 +358,7 @@ The global file is `settings.mpglobal` in the data folder. It holds what belongs
 | `lcd` | `<on> <display> <width> <line1> <line2> <line3> <line4> <prefix>`. The prefix is the hexadecimal bytes, separated by spaces. | The **Display** tab |
 | `defaulteq` | `<on> <gain> <band 1> ... <band 10>`. Written only while the default EQ is on or not flat. | **Save as default** on the **Voicing EQ** tab of Organ settings |
 | `library` | A folder holding a sample library (an `OrganInstallationPackages` folder beside it). Added when an organ is loaded from such a folder, and for the standard library folder of a Hauptwerk-format installation when it exists. | Opening organs |
-| `cachedir` | The cache folder. Absent for the default. | **Cache folder** on the Loading tab |
+| `cachedir` | The cache folder, which also holds `Packaged/`. Absent for the default. | **Cache folder** on the Loading tab |
 | `packagedir` | The package folder. Absent for none. | **Package folder** on the Loading tab |
 | `lastorgan` | The definition of the organ opened last. | Opening an organ |
 | `openfolder` | The folder the last organ was chosen from. | The **Open** window |

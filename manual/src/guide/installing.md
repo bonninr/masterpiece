@@ -101,7 +101,7 @@ A silent installation, as used in the project's own tests:
 masterpiece-<version>-windows-setup.exe /S /D=C:\Path\To\Masterpiece
 ```
 
-`/D=` has to be the last argument and takes no quotes. The silent uninstaller is `Uninstall.exe /S` in the install folder.
+`/D=` has to be the last argument and takes no quotes. The silent uninstaller is `Uninstall.exe /S` in the install folder; add `/REMOVEDATA` to remove the settings and caches too.
 
 ### Zip
 
@@ -326,14 +326,14 @@ The program has no update check. Install a newer release the same way as the fir
 
 ## Uninstalling
 
-The settings folder holds the saved organ settings, favourites, MIDI maps and the sample cache. The program creates it at run time; the installers and packages place no files in it, and the routes below leave it in place. Delete the folder by hand to remove that data. The sample cache is as large as the decoded samples of an organ and can fill several gigabytes; **Cache folder** on **Settings > Organ settings... > Loading** shows where it is.
+The settings folder holds the saved organ settings, favourites, MIDI maps and the sample cache. The program creates it at run time; the installers and packages place no files in it, and the routes below leave it in place, except where the table says otherwise. Elsewhere, delete the folder by hand to remove that data. The sample cache is as large as the decoded samples of an organ and can fill several gigabytes; **Cache folder** on **Settings > Organ settings... > Loading** shows where it is.
 
 | System | Procedure |
 |---|---|
-| Windows installer | **Apps & features**, or `Uninstall.exe` in the install folder. Both remove the program, the Start menu entry, the registry entries and the file-type registrations. |
+| Windows installer | **Apps & features**, or `Uninstall.exe` in the install folder. Both remove the program, the Start menu entry, the registry entries and the file-type registrations, then ask whether to also remove the settings folder: settings, logs, sample caches and unpacked organs, and the caches and unpacked organs in a **Cache folder** chosen elsewhere. The answer defaults to **No**. Installed organs and the organs folder stay. `Uninstall.exe /S` keeps the data; `Uninstall.exe /S /REMOVEDATA` removes it. |
 | Windows zip | Delete the folder. |
 | macOS | Delete `Masterpiece.app`, and any plugin bundles copied to the plug-in folders. |
 | Debian, Ubuntu, Raspberry Pi OS | `sudo apt remove masterpiece` |
-| Flatpak | `flatpak uninstall io.github.bonninr.Masterpiece` |
+| Flatpak | `flatpak uninstall io.github.bonninr.Masterpiece`; with `--delete-data`, the settings folder goes too. |
 | tar.gz | Delete the extracted folder. |
 | Android, iPhone, iPad | Remove the app in the system. Its private storage goes with it. |

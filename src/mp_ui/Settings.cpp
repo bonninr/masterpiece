@@ -6296,8 +6296,10 @@ juce::String diagnosticsReport(MasterpieceProcessor& p) {
     for (const auto& f : caches) bytes += f.getSize();
     row(0, "Cache files: " + juce::String(caches.size()) + ", " +
                juce::String(static_cast<double>(bytes) / (1024.0 * 1024.0), 0) + " MB");
-    row(0, "Organs unpacked from their archives: " +
-               juce::String(data.getChildFile("Packaged").getNumberOfChildFiles(juce::File::findDirectories)));
+    int unpacked = 0;
+    for (const auto& root : p.packagedRoots()) unpacked += root.getNumberOfChildFiles(juce::File::findDirectories);
+    row(0, "Organs unpacked from their archives: " + juce::String(unpacked) + ", in " +
+               p.packagedRoot().getFullPathName());
   }
   {
     const auto log = logFile();

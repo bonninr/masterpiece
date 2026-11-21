@@ -97,7 +97,7 @@ At the first open of a set of packages, Masterpiece reads the file lists and unp
 
 Because the samples have no file of their own, a packaged organ keeps them resident in memory. Release tails of such an organ do not stream from disk. See [Memory, loading and streaming](memory.md).
 
-The unpacked files live in `Packaged/<identity>` inside the Masterpiece folder in the user's application data (see [Files and folders](files.md)). The identity is a hash of the archives' lower-case file names and sizes, so the same packages open the same folder wherever they are kept. The folder holds:
+The unpacked files live in `Packaged/<identity>`: in the **Cache folder** chosen in **Organ settings > Loading**, or else inside the Masterpiece folder in the user's application data (see [Files and folders](files.md)). The identity is a hash of the archives' lower-case file names and sizes, so the same packages open the same folder wherever they are kept. The folder holds:
 
 | File | Purpose |
 |---|---|
