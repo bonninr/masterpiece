@@ -590,6 +590,16 @@ public:
            k == MidiTargetKind::MixLevel ||
            k == MidiTargetKind::ReverbWet || k == MidiTargetKind::MasterVolume;
   }
+  // The pistons a controller can work a value each, as a notation program
+  // sends one controller with a value per registration: value 1 the first
+  // general, value 2 the second. Fired on their own value, and on no other.
+  static bool isValuePiston(MidiTargetKind k) {
+    return k == MidiTargetKind::PlayerGeneral || k == MidiTargetKind::PlayerGeneralCancel ||
+           k == MidiTargetKind::PlayerDivisional || k == MidiTargetKind::PlayerDivisionalCancel ||
+           k == MidiTargetKind::StepperNext || k == MidiTargetKind::StepperPrev ||
+           k == MidiTargetKind::StepperFirst || k == MidiTargetKind::StepperLast ||
+           k == MidiTargetKind::StepperForward10 || k == MidiTargetKind::StepperBack10;
+  }
   // A raw controller value through a binding's window and sense, 0..127.
   static int controlValue(const MidiBinding& b, int raw) {
     const int v = b.scale(raw);

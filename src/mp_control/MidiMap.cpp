@@ -349,6 +349,27 @@ void MidiMap::bind(const MidiBinding& binding) {
     rebuildOrdered();
     return;
   }
+  // And pistons on one controller, a value each: value 1 the first general,
+  // value 2 the second, as a notation program sends them (#1214).
+  const bool byValue = binding.exactValues && isValuePiston(binding.targetKind) && existing != bySource_.end() &&
+                       existing->second.exactValues && isValuePiston(existing->second.targetKind);
+  if (byValue) {
+    auto& more = alsoDrives_[binding.source];
+    more.erase(std::remove_if(more.begin(), more.end(),
+                              [&](const MidiBinding& b) {
+                                return (b.targetKind == binding.targetKind && b.targetId == binding.targetId) ||
+                                       b.highValue == binding.highValue;
+                              }),
+               more.end());
+    // The value the first binding has is taken over, the first binding with it.
+    if (existing->second.highValue == binding.highValue) {
+      existing->second = binding;
+    } else {
+      more.push_back(binding);
+    }
+    rebuildOrdered();
+    return;
+  }
   if (shares && existing != bySource_.end() &&
       existing->second.targetKind == binding.targetKind &&
       existing->second.targetId != binding.targetId) {
@@ -371,6 +392,12 @@ void MidiMap::removeBindings(const std::function<bool(const MidiBinding&)>& pick
   for (auto it = alsoDrives_.begin(); it != alsoDrives_.end();) {
     auto& more = it->second;
     more.erase(std::remove_if(more.begin(), more.end(), pick), more.end());
+    // The first binding of a shared message gone, the next takes its place:
+    // the others it shared with are found through it.
+    if (!more.empty() && bySource_.find(it->first) == bySource_.end()) {
+      bySource_[it->first] = more.front();
+      more.erase(more.begin());
+    }
     it = more.empty() ? alsoDrives_.erase(it) : std::next(it);
   }
   rebuildOrdered();
@@ -504,6 +531,24 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
     }
   if (it == bySource_.end()) return {};
   const MidiBinding& b = it->second;
+
+  // Pistons on one controller, a value each: the piston whose value arrived
+  // fires, once, and every other value is nothing to them.
+  if (b.exactValues && isValuePiston(b.targetKind)) {
+    const MidiBinding* fired = b.highValue == value ? &b : nullptr;
+    if (fired == nullptr)
+      if (const auto more = alsoDrives_.find(it->first); more != alsoDrives_.end())
+        for (const auto& other : more->second)
+          if (other.exactValues && other.highValue == value) {
+            fired = &other;
+            break;
+          }
+    if (fired == nullptr) return {};
+    MidiAction action;
+    action.kind = fired->targetKind;
+    action.targetId = fired->targetId;
+    return action;
+  }
 
   // Contact chatter: a second press within the binding's debounce time is
   // dropped, with every switch the message works. A held switch and a shoe
