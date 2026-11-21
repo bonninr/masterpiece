@@ -1,0 +1,3 @@
+"Load only shown ranks" = "Wczytaj tylko wyświetlone szeregi"
+"Load the ranks in the list as it is filtered now, and leave out every other rank" = "Wczytaj szeregi z listy w obecnie przefiltrowanym widoku i pomiń wszystkie pozostałe"
+"Load every rank in the list as it is filtered now, as well as the ranks already chosen" = "Wczytaj wszystkie szeregi z listy w obecnie przefiltrowanym widoku, oprócz już wybranych"

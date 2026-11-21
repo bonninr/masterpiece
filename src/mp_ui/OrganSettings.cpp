@@ -53,9 +53,12 @@ StopsLoadPanel::StopsLoadPanel(MasterpieceProcessor& p, std::function<void()> re
   filter_.setTextToShowWhenEmpty(TRANS("Filter, for example: Rear, tremmed, Pedal"), kTextDim);
   filter_.setTooltip(TRANS("Shows only the perspectives, stops and ranks whose name holds this text"));
   filter_.onTextChange = [this] { applyFilter(); };
-  for (auto* b : {&loadShown_, &leaveShown_}) addAndMakeVisible(*b);
+  for (auto* b : {&onlyShown_, &loadShown_, &leaveShown_}) addAndMakeVisible(*b);
+  onlyShown_.onClick = [this] { setShownRanks(true, true); };
   loadShown_.onClick = [this] { setShownRanks(true); };
   leaveShown_.onClick = [this] { setShownRanks(false); };
+  onlyShown_.setTooltip(TRANS("Load the ranks in the list as it is filtered now, and leave out every other rank"));
+  loadShown_.setTooltip(TRANS("Load every rank in the list as it is filtered now, as well as the ranks already chosen"));
   leaveShown_.setTooltip(TRANS("Leave out every rank in the list as it is filtered now"));
 
   addAndMakeVisible(viewport_);
@@ -308,17 +311,20 @@ void StopsLoadPanel::applyFilter() {
   for (auto& h : headings_) h.label->setVisible(!filtering);
   if (perspectivesHeading_ != nullptr) perspectivesHeading_->setVisible(!filtering);
   if (ranksHeading_ != nullptr) ranksHeading_->setVisible(anyRank);
+  // Only, unfiltered, would be every rank: the same as Load shown.
+  onlyShown_.setEnabled(anyRank && filtering);
   loadShown_.setEnabled(anyRank);
   leaveShown_.setEnabled(anyRank);
   resized();
 }
 
-void StopsLoadPanel::setShownRanks(bool load) {
+void StopsLoadPanel::setShownRanks(bool load, bool onlyThese) {
   std::set<Id> out = ranksOut();
   for (auto& r : ranks_) {
-    if (!r.toggle->isVisible()) continue;
-    r.own = load;
-    if (load) out.erase(r.rankId);
+    const bool shownNow = r.toggle->isVisible();
+    if (!shownNow && !onlyThese) continue;
+    r.own = shownNow ? load : false;
+    if (r.own) out.erase(r.rankId);
     else out.insert(r.rankId);
   }
   proc_.setExcludedRanks(std::move(out));
@@ -614,6 +620,8 @@ void StopsLoadPanel::resized() {
   leaveShown_.setBounds(find.removeFromRight(170).reduced(0, 2));
   find.removeFromRight(6);
   loadShown_.setBounds(find.removeFromRight(140).reduced(0, 2));
+  find.removeFromRight(6);
+  onlyShown_.setBounds(find.removeFromRight(170).reduced(0, 2));
   find.removeFromRight(6);
   filter_.setBounds(find.reduced(0, 2));
   r.removeFromTop(8);

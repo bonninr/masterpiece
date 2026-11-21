@@ -1,0 +1,3 @@
+"Load only shown ranks" = "Carica solo le file mostrate"
+"Load the ranks in the list as it is filtered now, and leave out every other rank" = "Carica le file dell'elenco così come è filtrato ora, ed escludi tutte le altre"
+"Load every rank in the list as it is filtered now, as well as the ranks already chosen" = "Carica tutte le file dell'elenco così come è filtrato ora, oltre a quelle già scelte"

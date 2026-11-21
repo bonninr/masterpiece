@@ -142,7 +142,8 @@ Each row has a tick box and, at the right, the memory it takes. A stop whose ran
 | **No stops** | Unticks every drawn stop. Effects and noises keep their state. | | At once |
 | **Only the stops drawn now** | Loads only the stops drawn on the console at this moment. Effects and noises keep their state. | | At once |
 | Filter box | Shows only the perspectives, stops and ranks whose name holds the text. The placeholder reads **Filter, for example: Rear, tremmed, Pedal**. Division headings are hidden while a filter is active. | Empty | At once |
-| **Load shown ranks** | Ticks every rank in the filtered list. | | At once |
+| **Load only shown ranks** | Ticks every rank in the filtered list and unticks every other rank: filter for `middle`, then this button, to load one perspective. Available while a filter is active. | | At once |
+| **Load shown ranks** | Ticks every rank in the filtered list; the other ranks keep their state. | | At once |
 | **Leave out shown ranks** | Unticks every rank in the filtered list. | | At once |
 | **Load the organ again** | Loads the organ again with the choice. Highlighted when the choice differs from what is loaded. Closes the window. | | At once |
 | Total line | **About N for this choice**, with **(the limit is N)** appended; red when the figure exceeds the limit. Reads **Estimating the memory each stop takes...** until the sample files have been measured. The figures are estimates at the settings of the Loading tab. | | Updated twice a second |
