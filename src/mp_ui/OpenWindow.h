@@ -60,7 +60,7 @@ private:
   juce::Label status_;
   juce::TextButton addCurrent_{TRANS("Add the organ now loaded")};
   juce::TextButton another_{TRANS("Open an organ file...")};
-  juce::TextButton install_{TRANS("Install organ...")};
+  juce::TextButton install_{TRANS("Install organ package...")};
   juce::TextButton uninstall_{TRANS("Uninstall organ...")};
 };
 
