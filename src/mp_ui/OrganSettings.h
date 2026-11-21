@@ -96,7 +96,9 @@ private:
   // The filter: rows whose name holds the text stay, the rest are hidden.
   bool shown(const juce::String& name) const;
   void applyFilter();
-  void setShownRanks(bool load);
+  // The ranks in the filtered list are loaded or left out; with onlyThese,
+  // every rank the filter hides is left out as well (#1207).
+  void setShownRanks(bool load, bool onlyThese = false);
   std::set<Id> ranksOut() const;
   void refreshFigures();
   void startEstimate();
@@ -117,7 +119,8 @@ private:
   std::vector<RankRow> ranks_;
   std::unique_ptr<juce::Label> ranksHeading_;
   juce::TextEditor filter_;
-  juce::TextButton loadShown_{TRANS("Load shown ranks")}, leaveShown_{TRANS("Leave out shown ranks")};
+  juce::TextButton onlyShown_{TRANS("Load only shown ranks")}, loadShown_{TRANS("Load shown ranks")},
+      leaveShown_{TRANS("Leave out shown ranks")};
   std::set<std::string> perspectivesOut() const;
 
   // About stops only: perspectives and ranks keep their own choices (#53).
