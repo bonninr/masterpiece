@@ -22565,6 +22565,66 @@ public:
 };
 static PathsOutsideAsciiTest g_pathsOutsideAscii;
 
+// Organs opened from their archives are unpacked beside the sample caches
+// when the player chose a folder for them, so the program's large files go
+// to one drive of the player's choice (#1166). A set unpacked before the
+// choice stays where it is, and is not unpacked a second time.
+class PackagedOnCacheDriveTest final : public mp::test::Test {
+public:
+  PackagedOnCacheDriveTest() : Test("functional.archive.packaged-on-cache-drive", Category::Functional) {}
+
+  void run() override {
+    const auto base =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-packaged-on-cache-drive");
+    base.deleteRecursively();
+    const auto data = base.getChildFile("data"), cache = base.getChildFile("cache");
+    data.createDirectory();
+    struct Restore {
+      juce::File previous, base;
+      ~Restore() {
+        mp::setDataFolder(previous);
+        base.deleteRecursively();
+      }
+    } restore{mp::dataFolder(), base};
+    mp::setDataFolder(data);
+
+    const juce::File minimal(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    const auto archive = base.getChildFile("Test.Organ.CompPkg.Hauptwerk.rar");
+    {
+      const auto bytes = SolidRar4Test::rar4(
+          {{"OrganDefinitions\\Test.Organ_Hauptwerk_xml", minimal.loadFileAsString().toStdString()}}, false);
+      archive.replaceWithData(bytes.data(), bytes.size());
+    }
+    auto openIn = [&](const juce::File& chosen) {
+      mp::MasterpieceProcessor proc;
+      proc.setCacheDirectory(chosen);
+      juce::String error;
+      const auto definitions = proc.openPackagedOrgan(archive, error);
+      MP_CHECK(definitions.size() == 1, "the package opens: " + error.toStdString());
+      return definitions.isEmpty() ? juce::File() : definitions[0];
+    };
+
+    const auto first = openIn({});
+    MP_CHECK(first.isAChildOf(data.getChildFile("Packaged")),
+             "with no folder chosen, unpacked in the program's folder: " + first.getFullPathName().toStdString());
+
+    const auto again = openIn(cache);
+    MP_CHECK(again == first, "a folder chosen later leaves the set where it was: " +
+                                 again.getFullPathName().toStdString());
+
+    data.getChildFile("Packaged").deleteRecursively();
+    const auto moved = openIn(cache);
+    MP_CHECK(moved.isAChildOf(cache.getChildFile("Packaged")),
+             "a set unpacked now goes beside the caches: " + moved.getFullPathName().toStdString());
+
+    mp::MasterpieceProcessor proc;
+    proc.setCacheDirectory(cache);
+    MP_CHECK(proc.packagedRoots().size() == 2 && proc.packagedRoots()[0] == cache.getChildFile("Packaged"),
+             "both places are counted, the chosen one first");
+  }
+};
+static PackagedOnCacheDriveTest g_packagedOnCacheDrive;
+
 // A GrandOrgue definition kept in a Hauptwerk package's sample folder
 // (Norrfjarden, #637): its root is that folder, two below the one the package
 // was unpacked into, and it names its samples from there. Opened from the

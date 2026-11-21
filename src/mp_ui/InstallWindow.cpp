@@ -143,6 +143,8 @@ void InstallPanel::analyse() {
   auto fraction = fraction_;
   const std::string path = package_.getFullPathName().toStdString();
   const juce::File data = mp::dataFolder();
+  // Taken here, on the message thread: the worker reads no settings.
+  const auto packagedRoots = proc_.packagedRoots();
   const std::string organsRoot = root().getFullPathName().toStdString();
   std::vector<std::string> others;
   for (const auto& lib : proc_.sampleLibraries())
@@ -157,9 +159,14 @@ void InstallPanel::analyse() {
     if (ok) {
       // A package opened before has its list and its definitions already
       // unpacked: a solid archive is not walked a second time.
-      const juce::File packaged = data.getChildFile("Packaged").getChildFile(juce::String(archive->identity()));
-      const bool known = !readArchiveMarker(packaged.getFullPathName().toStdString()).empty() &&
-                         archive->loadIndexFor(packaged.getChildFile("archive-index.txt").getFullPathName().toStdString());
+      juce::File packaged;
+      bool known = false;
+      for (const auto& packagedRoot : packagedRoots) {
+        packaged = packagedRoot.getChildFile(juce::String(archive->identity()));
+        known = !readArchiveMarker(packaged.getFullPathName().toStdString()).empty() &&
+                archive->loadIndexFor(packaged.getChildFile("archive-index.txt").getFullPathName().toStdString());
+        if (known) break;
+      }
       if (known) {
         small = packaged;
       } else {
