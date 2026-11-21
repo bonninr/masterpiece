@@ -315,6 +315,7 @@ void PlayerCombinations::reset(std::vector<Element> elements,
   divisions_ = std::move(divisions);
   const Registration blank{false, std::vector<char>(elements_.size(), 0)};
   generals_.assign(kMaxGenerals + 1, blank);
+  generalNames_.assign(kMaxGenerals + 1, std::string());
   frames_.assign(kMaxFrames + 1, blank);
   divisionals_.assign(divisions_.size() * (kMaxDivisionals + 1), blank);
   litDivisional_.assign(divisions_.size(), 0);
@@ -329,8 +330,26 @@ void PlayerCombinations::clearAll() {
       r.set = false;
       std::fill(r.drawn.begin(), r.drawn.end(), 0);
     }
+  for (auto& name : generalNames_) name.clear();
   frame_ = 0;
   unlight();
+}
+
+const std::string& PlayerCombinations::generalName(int n) const {
+  static const std::string none;
+  return n >= 1 && n <= kMaxGenerals && static_cast<size_t>(n) < generalNames_.size()
+             ? generalNames_[static_cast<size_t>(n)]
+             : none;
+}
+
+void PlayerCombinations::setGeneralName(int n, std::string name) {
+  if (n < 1 || n > kMaxGenerals || static_cast<size_t>(n) >= generalNames_.size()) return;
+  // One line in the file: no line ends, and no space at either end.
+  for (auto& c : name)
+    if (c == '\n' || c == '\r' || c == '\t') c = ' ';
+  const auto first = name.find_first_not_of(' ');
+  const auto last = name.find_last_not_of(' ');
+  generalNames_[static_cast<size_t>(n)] = first == std::string::npos ? std::string() : name.substr(first, last - first + 1);
 }
 
 void PlayerCombinations::setGeneralCount(int n) {
@@ -565,6 +584,7 @@ bool PlayerCombinations::deleteFrame() {
 //   general <n> [key...]
 //   divisional <division> <n> [key...]
 //   frame <n> [key...]
+//   generalname <n> <name to the end of the line>
 //
 // Keys are s<stop> and w<switch>, so a file survives an organ update that
 // adds or reorders stops. A piston captured empty is written with no keys,
@@ -595,6 +615,8 @@ std::string PlayerCombinations::toText() const {
       out << "frame " << n;
       keys(frames_[static_cast<size_t>(n)]);
     }
+  for (int n = 1; n <= kMaxGenerals; ++n)
+    if (!generalName(n).empty()) out << "generalname " << n << ' ' << generalName(n) << '\n';
   return out.str();
 }
 
@@ -645,6 +667,12 @@ bool PlayerCombinations::fromText(const std::string& text) {
       int n = 0;
       if (!(ls >> n) || n < 1 || n > kMaxFrames) { ok = false; continue; }
       readKeys(ls, frames_[static_cast<size_t>(n)]);
+    } else if (what == "generalname") {
+      int n = 0;
+      if (!(ls >> n) || n < 1 || n > kMaxGenerals) { ok = false; continue; }
+      std::string name;
+      std::getline(ls, name);
+      setGeneralName(n, name);
     } else {
       ok = false;
     }

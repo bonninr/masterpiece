@@ -244,6 +244,14 @@ right-click cancels. **Settings > General settings > MIDI** has the buttons
 generals, setter and the page and tuning buttons are kept for every organ in
 `midi/console.mpmidi`. See [MIDI and consoles](midi.md).
 
+### Names for generals
+
+A general's right-click menu also has **Name...**: a name shown on the piston in
+place of its number, such as Tutti, Plenum or a piece's Adagio. The number stays
+in the tooltip, **General 3: Tutti**. An empty name shows the number again. Names
+are kept in the combination set with its registrations, so a set made for a piece
+keeps its own names; the control API gives a named general as `3 Tutti`.
+
 ## Crescendo and swell boxes
 
 ### Swell boxes
