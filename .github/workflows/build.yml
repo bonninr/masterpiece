@@ -763,7 +763,10 @@ jobs:
         with:
           manifest-path: packaging/flatpak/io.github.bonninr.Masterpiece.yml
           bundle: masterpiece-linux-x86_64.flatpak
-          cache-key: flatpak-builder-${{ hashFiles('packaging/flatpak/*.yml') }}
+          # The version in the key starts a new cache when the restored one
+          # holds a runtime Flathub has since updated: updating it in place
+          # fails with "Invalid cross-device link" and the build crashes.
+          cache-key: flatpak-builder-sdk2-${{ hashFiles('packaging/flatpak/*.yml') }}
           # Uploaded below, under the name the release looks for.
           upload-artifact: false
 
