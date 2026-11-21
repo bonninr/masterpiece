@@ -3958,12 +3958,18 @@ private:
   // they shared carried one bus's signal into the next one's block, heard as
   // distortion with the box closed (#1007). One bus uses the first alone.
   static constexpr int kEnclosureFilterSlots = RankEq::kMaxPairs;
-  std::unordered_map<Id, std::vector<dsp::EnclosureFilter>> enclosureFilters_;
   // Bus layout, fixed at prepareToPlay: one bus per enclosure in a stable
-  // order, then one final bus for everything unenclosed.
-  std::vector<Id> busEnclosures_;
-  std::unordered_map<Id, int> enclosureBusIndex_;
+  // order, then one per set of boxes a pipe stands in together (their levels
+  // multiply: a division box and a perspective master), then one final bus
+  // for everything unenclosed. Each bus lists its boxes, and keeps a filter
+  // per box and per slot: a box in two buses filters each with its own memory.
+  std::vector<std::vector<Id>> busEnclosures_;
+  std::vector<std::vector<std::vector<dsp::EnclosureFilter>>> busFilters_;  // [bus][box][slot]
+  std::unordered_map<Id, int> enclosureBusIndex_;  // a box alone
+  std::unordered_map<Id, int> pipeStackBus_;       // a pipe in several boxes
   int unenclosedBus_ = 0;
+  // A bus's boxes, in the order a block goes through them.
+  void applyEnclosures(int bus, size_t slot, juce::dsp::AudioBlock<float>& block);
   // Scratch for one bus. Preallocated: the audio thread must not allocate.
   juce::AudioBuffer<float> busScratch_;
   // Every enclosure bus of a block side by side, numCh channels each, for

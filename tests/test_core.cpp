@@ -14424,6 +14424,134 @@ public:
 static DspFastPathTest g_dspFastPath;
 static EnclosureResponseTest g_encResponse;
 static GrandOrgueSwellLawTest g_grandOrgueSwellLaw;
+#ifdef MP_TEST_HAS_AUDIO
+// A GrandOrgue windchest group under two enclosures: a division's level and
+// a master level, as Alessandria's Sample set settings has one per
+// perspective. GrandOrgue multiplies them. Masterpiece kept the first box
+// and dropped the second, so the masters did nothing (#1214). A pipe under
+// one box sounds exactly as before.
+class StackedEnclosuresTest final : public mp::test::Test {
+public:
+  StackedEnclosuresTest() : Test("functional.dsp.stacked-enclosures", Category::Functional) {}
+
+  static double levelDb(mp::MasterpieceProcessor& proc, int channel, int note) {
+    juce::AudioBuffer<float> buf(2, 256);
+    juce::MidiBuffer on, off, none;
+    on.addEvent(juce::MidiMessage::noteOn(channel, note, 0.8f), 0);
+    off.addEvent(juce::MidiMessage::noteOff(channel, note), 0);
+    buf.clear();
+    proc.processBlock(buf, on);
+    double sum = 0.0;
+    long n = 0;
+    // Half a second for the shades' smoothing to settle, then a second measured.
+    for (int b = 0; b < 300; ++b) {
+      buf.clear();
+      proc.processBlock(buf, none);
+      if (b < 100) continue;
+      for (int c = 0; c < 2; ++c)
+        for (int i = 0; i < 256; ++i) {
+          const double s = buf.getSample(c, i);
+          sum += s * s;
+          ++n;
+        }
+    }
+    buf.clear();
+    proc.processBlock(buf, off);
+    for (int b = 0; b < 400; ++b) {
+      buf.clear();
+      proc.processBlock(buf, none);
+    }
+    return 10.0 * std::log10(sum / std::max(1L, n) + 1e-30);
+  }
+
+  void run() override {
+    juce::MessageManager::getInstance();
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-stacked-enclosures");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    for (const char* name : {"060", "062"})
+      SampleLibraryTest::writeWav(dir.getChildFile("G").getChildFile(juce::String(name) + ".wav"), 48000, 1, 48000.0,
+                                  0, 48000);
+    const auto organ = dir.getChildFile("stacked.organ");
+    organ.replaceWithText(
+        "[Organ]\r\nChurchName=Stacked\r\nHasPedals=N\r\nNumberOfManuals=1\r\nNumberOfEnclosures=3\r\n"
+        "NumberOfWindchestGroups=2\r\nNumberOfTremulants=0\r\nNumberOfGenerals=0\r\n"
+        "[Enclosure001]\r\nName=Division\r\nAmpMinimumLevel=1\r\n"
+        "[Enclosure002]\r\nName=Master\r\nAmpMinimumLevel=1\r\n"
+        "[Enclosure003]\r\nName=Swell\r\nAmpMinimumLevel=1\r\n"
+        "[WindchestGroup001]\r\nName=Stacked\r\nNumberOfEnclosures=2\r\nEnclosure001=1\r\nEnclosure002=2\r\n"
+        "NumberOfTremulants=0\r\n"
+        "[WindchestGroup002]\r\nName=Alone\r\nNumberOfEnclosures=1\r\nEnclosure001=3\r\nNumberOfTremulants=0\r\n"
+        "[Manual001]\r\nName=Great\r\nNumberOfLogicalKeys=4\r\nFirstAccessibleKeyMIDINoteNumber=60\r\n"
+        "NumberOfAccessibleKeys=4\r\nNumberOfStops=2\r\nStop001=1\r\nStop002=2\r\n"
+        "[Stop001]\r\nName=Stacked\r\nNumberOfLogicalPipes=1\r\nNumberOfAccessiblePipes=1\r\n"
+        "FirstAccessiblePipeLogicalKeyNumber=1\r\nWindchestGroup=1\r\nPipe001=G\\060.wav\r\n"
+        "[Stop002]\r\nName=Alone\r\nNumberOfLogicalPipes=1\r\nNumberOfAccessiblePipes=1\r\n"
+        "FirstAccessiblePipeLogicalKeyNumber=3\r\nWindchestGroup=2\r\nPipe001=G\\062.wav\r\n");
+
+    mp::MasterpieceProcessor proc;
+    proc.overrideCacheMode(mp::SampleLibrary::CacheMode::Off);
+    proc.prepareToPlay(48000.0, 256);
+    const auto r = proc.loadOrgan(organ, 0, false);
+    MP_CHECK(r.ok && r.samples.loaded == 2, "the organ loads with both pipes (" + std::to_string(r.samples.loaded) + ")");
+    const auto& m = proc.organModel();
+    MP_CHECK(m.pipeExtraEnclosures.size() == 1, "one pipe stands in a second box, got " +
+                                                    std::to_string(m.pipeExtraEnclosures.size()));
+
+    mp::Id stacked = 0, alone = 0;
+    for (const auto& s : proc.stopList()) {
+      if (s.name == "Stacked") stacked = s.stopId;
+      if (s.name == "Alone") alone = s.stopId;
+    }
+    MP_CHECK(stacked != 0 && alone != 0, "both stops are there");
+    const int channel = proc.playableKeyboards().empty() ? 1 : proc.channelForKeyboard(proc.playableKeyboards().front());
+    // The GrandOrgue import gives box n the control 700 + n.
+    auto boxes = [&](int division, int master, int swell) {
+      proc.setControlValue(701, division);
+      proc.setControlValue(702, master);
+      proc.setControlValue(703, swell);
+    };
+    auto stackedAt = [&](int division, int master) {
+      boxes(division, master, 127);
+      proc.setStopEngaged(alone, false);
+      proc.setStopEngaged(stacked, true);
+      return levelDb(proc, channel, 60);
+    };
+    auto aloneAt = [&](int division, int master, int swell) {
+      boxes(division, master, swell);
+      proc.setStopEngaged(stacked, false);
+      proc.setStopEngaged(alone, true);
+      return levelDb(proc, channel, 62);
+    };
+    // GrandOrgue's law: the level moves evenly in amplitude, from 1 % shut.
+    auto law = [](int v) { return 20.0 * std::log10(0.01 + 0.99 * v / 127.0); };
+    auto near = [](double got, double want, double tol) { return std::fabs(got - want) < tol; };
+
+    const double open = stackedAt(127, 127);
+    MP_CHECK(open > -60.0, "the stacked pipe sounds: " + std::to_string(open) + " dB");
+    for (const int v : {96, 64, 32, 0}) {
+      const double master = stackedAt(127, v) - open;
+      MP_CHECK(near(master, law(v), 0.5), "the master at " + std::to_string(v) + ": " + std::to_string(master) +
+                                              " dB, GrandOrgue " + std::to_string(law(v)));
+      const double division = stackedAt(v, 127) - open;
+      MP_CHECK(near(division, law(v), 0.5), "the division at " + std::to_string(v) + ": " +
+                                                std::to_string(division) + " dB, GrandOrgue " +
+                                                std::to_string(law(v)));
+    }
+    const double both = stackedAt(64, 64) - open;
+    MP_CHECK(near(both, 2.0 * law(64), 0.7), "both at 64 multiply: " + std::to_string(both) + " dB, GrandOrgue " +
+                                                 std::to_string(2.0 * law(64)));
+
+    // The pipe under one box: the others leave it alone, its own still works.
+    const double aloneOpen = aloneAt(127, 127, 127);
+    MP_CHECK(aloneOpen > -60.0, "the other pipe sounds");
+    MP_CHECK(near(aloneAt(0, 0, 127), aloneOpen, 0.1), "the stacked boxes do not touch the other pipe");
+    MP_CHECK(near(aloneAt(127, 127, 0) - aloneOpen, law(0), 0.5), "its own box still shuts it");
+    dir.deleteRecursively();
+  }
+};
+static StackedEnclosuresTest g_stackedEnclosures;
+#endif
 static GrandOrgueTremulantPitchSwellToneTest g_grandOrgueTremulantPitchSwellTone;
 static EnclosureModulationTest g_encModulation;
 static TremulantRampTest g_tremRamp;

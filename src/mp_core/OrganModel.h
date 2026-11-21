@@ -1112,6 +1112,11 @@ struct OrganModel {
   // flat pipe->enclosure map rather than a list per enclosure because the
   // lookup that matters happens at note-on, once per sounding pipe.
   std::unordered_map<Id, Id> pipeEnclosure;
+  // Further boxes a pipe stands in, sorted: GrandOrgue puts a windchest group
+  // under several enclosures, a division's level and a master level per
+  // perspective (Alessandria's Sample set settings), and their levels
+  // multiply. The box in pipeEnclosure comes first.
+  std::unordered_map<Id, std::vector<Id>> pipeExtraEnclosures;
   std::unordered_map<Id, OrganTemperament> temperaments; // M2.2
   Id defaultTemperamentId = 0;                           // 0 = equal
   std::unordered_map<Id, ContinuousControl> continuousControls; // M2.4

@@ -1844,16 +1844,17 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       ++it->second.numShades;
       const Id pipeId = fieldInt(row, "PipeID", "b", 0);
       if (pipeId != 0) {
-        // A pipe named by two boxes is an authoring error; first wins and the
-        // conflict is reported rather than silently resolved.
+        // A pipe in two boxes stands in both, their levels multiplied: a
+        // GrandOrgue windchest group under a division box and a perspective
+        // master. The first box keeps the pipe's place; the others follow.
         const auto existing = outModel.pipeEnclosure.find(pipeId);
-        if (existing != outModel.pipeEnclosure.end() && existing->second != encId)
-          outDiag.warnings.emplace_back(
-              "Pipe " + std::to_string(pipeId) + " is enclosed by both " +
-              std::to_string(existing->second) + " and " + std::to_string(encId) +
-              "; keeping the first");
-        else
+        if (existing == outModel.pipeEnclosure.end()) {
           outModel.pipeEnclosure[pipeId] = encId;
+        } else if (existing->second != encId) {
+          auto& extra = outModel.pipeExtraEnclosures[pipeId];
+          const auto at = std::lower_bound(extra.begin(), extra.end(), encId);
+          if (at == extra.end() || *at != encId) extra.insert(at, encId);
+        }
       }
       // A compact row leaves out whatever holds the format's default filter.
       const bool compact = isCompact(row);
