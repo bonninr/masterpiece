@@ -143,6 +143,10 @@ juce::Rectangle<int> reopenedDialogSize(juce::Rectangle<int> saved, juce::Rectan
 // screen. Any other place -- a screen unplugged, the resolution lowered --
 // opens centred.
 bool dialogPlaceUsable(juce::Rectangle<int> place, const juce::Array<juce::Rectangle<int>>& screens);
+// `place` moved whole onto the screen it overlaps most, with room above it
+// for the title bar: a place kept at 100 % text size and reopened at 150 %
+// ran off the right and the bottom.
+juce::Rectangle<int> keptOnScreen(juce::Rectangle<int> place, const juce::Array<juce::Rectangle<int>>& screens);
 // The main window, set by it: dialogs open in its middle, wherever the
 // Recorder or another window of the program is.
 void setDialogCentre(juce::Component* main);

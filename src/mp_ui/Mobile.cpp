@@ -684,6 +684,24 @@ bool dialogPlaceUsable(juce::Rectangle<int> place, const juce::Array<juce::Recta
   return false;
 }
 
+juce::Rectangle<int> keptOnScreen(juce::Rectangle<int> place, const juce::Array<juce::Rectangle<int>>& screens) {
+  const juce::Rectangle<int>* best = nullptr;
+  juce::int64 bestArea = -1;
+  for (const auto& screen : screens) {
+    const auto shown = screen.getIntersection(place);
+    const auto area = static_cast<juce::int64>(shown.getWidth()) * shown.getHeight();
+    if (area > bestArea) {
+      bestArea = area;
+      best = &screen;
+    }
+  }
+  if (best == nullptr) return place;
+  // The bounds are the dialog's content; the window manager puts its title
+  // bar above them. The top strip, as in dialogPlaceUsable, is kept for it.
+  const auto room = best->withTrimmedTop(juce::jmin(32, juce::jmax(0, best->getHeight() - place.getHeight())));
+  return place.constrainedWithin(room);
+}
+
 juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options, bool modal) {
   if (kMobile) {
     options.useNativeTitleBar = false;
@@ -722,7 +740,7 @@ juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options, boo
       const auto size = reopenedDialogSize(saved, dialog->getBounds(), area);
       const auto place = saved.withSize(size.getWidth(), size.getHeight());
       if (placed && rememberWindowPlaces() && dialogPlaceUsable(place, screens))
-        dialog->setBounds(place);
+        dialog->setBounds(keptOnScreen(place, screens));
       else
         dialog->centreAroundComponent(options.componentToCentreAround, size.getWidth(), size.getHeight());
     }
