@@ -157,6 +157,13 @@ void FaderLook::drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, 
   const float length = static_cast<float>(capLength(s));
   const float across = vertical ? juce::jmin(static_cast<float>(kCapWidth), area.getWidth() - 2.0f)
                                 : juce::jmin(static_cast<float>(kCapWidth), area.getHeight() - 2.0f);
+  // The cap on whole screen pixels. At a fraction of one its edges and ribs
+  // blurred differently at each value, the count of ribs either side of the
+  // line changed as it moved, and the cap shimmered while dragged.
+  const float px = juce::jmax(1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
+  const auto snap = [px](float v) { return std::round(v * px) / px; };
+  sliderPos = snap(sliderPos);
+  const float crossStart = snap((vertical ? area.getCentreX() : area.getCentreY()) - across / 2.0f);
 
   // The slot: a narrow cut in the panel, dark inside, lit on its lower lip.
   const float slotW = 4.0f;
@@ -236,8 +243,8 @@ void FaderLook::drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, 
   if (!props.contains("longCap")) {
     const float thick = static_cast<float>(kPlainCapLength) - 2.0f;
     const juce::Rectangle<float> bar =
-        vertical ? juce::Rectangle<float>(area.getCentreX() - across / 2.0f, sliderPos - thick / 2.0f, across, thick)
-                 : juce::Rectangle<float>(sliderPos - thick / 2.0f, area.getCentreY() - across / 2.0f, thick, across);
+        vertical ? juce::Rectangle<float>(crossStart, snap(sliderPos - thick / 2.0f), across, thick)
+                 : juce::Rectangle<float>(snap(sliderPos - thick / 2.0f), crossStart, thick, across);
     g.setColour(s.findColour(juce::Slider::thumbColourId).withMultipliedAlpha(alpha));
     g.fillRoundedRectangle(bar, 1.5f);
     return;
@@ -245,8 +252,8 @@ void FaderLook::drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, 
 
   // The cap, centred on the value.
   const juce::Rectangle<float> cap =
-      vertical ? juce::Rectangle<float>(area.getCentreX() - across / 2.0f, sliderPos - length / 2.0f, across, length)
-               : juce::Rectangle<float>(sliderPos - length / 2.0f, area.getCentreY() - across / 2.0f, length, across);
+      vertical ? juce::Rectangle<float>(crossStart, snap(sliderPos - length / 2.0f), across, length)
+               : juce::Rectangle<float>(snap(sliderPos - length / 2.0f), crossStart, length, across);
 
   // Its shadow on the panel below it.
   g.setColour(juce::Colours::black.withAlpha(0.5f * alpha));
