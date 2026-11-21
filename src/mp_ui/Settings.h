@@ -435,10 +435,14 @@ private:
   // The device each one comes from, or any device (#942).
   std::array<juce::ComboBox, kDefaultRoles> defaultRoleDevices_;
   void showDefaultChannels();
-  // The MIDI outputs: a menu of the ports, each ticked on or off (#942).
-  juce::TextButton output_;
-  void showOutputMenu();
+  // The MIDI outputs, a tick box each beside the inputs (#942, #1020): the
+  // ports plugged in, then those chosen before and not plugged in now.
+  std::vector<std::unique_ptr<juce::ToggleButton>> outputs_;
+  juce::Label noOutputs_;
   void showOutputs();
+  // The x of the outputs' column beside the inputs, or -1 when they go below.
+  static constexpr int kPortColumn = 330;
+  int outputColumnX() const;
   juce::ToggleButton feedback_{TRANS("Send stop changes on the MIDI output")};
   // The values the echo sends, lit and dark (#1185): a pad grid's colours.
   juce::Label echoLitLabel_, echoDarkLabel_;

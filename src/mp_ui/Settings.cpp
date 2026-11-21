@@ -2095,7 +2095,10 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
   addAndMakeVisible(inputsLabel_);
   styleLabel(inputsLabel_, TRANS("MIDI inputs"));
   addAndMakeVisible(outputsLabel_);
-  styleLabel(outputsLabel_, TRANS("MIDI output"));
+  styleLabel(outputsLabel_, TRANS("MIDI outputs"));
+  addChildComponent(noOutputs_);
+  styleLabel(noOutputs_, TRANS("None"));
+  noOutputs_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
   addAndMakeVisible(sharedNote_);
   sharedNote_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
   addAndMakeVisible(useAsDefault_);
@@ -2144,9 +2147,6 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
   showDefaultChannels();
   addAndMakeVisible(keyboardsLabel_);
   styleLabel(keyboardsLabel_, TRANS("Keyboards"));
-
-  addAndMakeVisible(output_);
-  output_.onClick = [this] { showOutputMenu(); };
 
   addAndMakeVisible(feedback_);
   feedback_.setToggleState(proc_.midiFeedbackEnabled(), juce::dontSendNotification);
@@ -2410,7 +2410,7 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
 }
 
 void MidiPanel::applyPart() {
-  std::vector<juce::Component*> console{&inputsLabel_, &outputsLabel_, &output_, &feedback_, &echoLitLabel_,
+  std::vector<juce::Component*> console{&inputsLabel_, &outputsLabel_, &feedback_, &echoLitLabel_,
                                         &echoLit_, &echoDarkLabel_, &echoDark_, &holdEcho_, &cancelResets_,
                                         &leaveHeld_, &sustain_, &noiseFilter_, &archive_, &archiveSilence_,
                                         &archiveSize_, &archiveAge_};
@@ -2426,6 +2426,9 @@ void MidiPanel::applyPart() {
       &learnScoreBack_, &learnScoreForward_, &scoreSendsLabel_, &scoreKind_, &scoreChannel_,
       &scoreForward_, &scoreBack_};
   for (auto& b : inputs_) console.push_back(b.get());
+  for (auto& b : outputs_) console.push_back(b.get());
+  if (outputs_.empty()) console.push_back(&noOutputs_);
+  else noOutputs_.setVisible(false);
   console.push_back(&defaultChannelsLabel_);
   for (auto& c : defaultRoleLabels_) console.push_back(&c);
   for (auto& c : defaultRoleChannels_) console.push_back(&c);
@@ -2890,36 +2893,34 @@ juce::StringArray MidiPanel::pistonRows() const {
 }
 
 void MidiPanel::showOutputs() {
-  const auto& names = proc_.midiOutputNames();
-  output_.setButtonText(names.isEmpty() ? TRANS("None") : names.joinIntoString(", "));
-}
-
-void MidiPanel::showOutputMenu() {
   // The ports plugged in, then those chosen before and not plugged in now:
-  // the choice is kept, and shown as it is.
-  // Two ports of one name are two rows, each with its own label (#980).
+  // the choice is kept, and shown as it is. Two ports of one name are two
+  // rows, each with its own label (#980).
   auto ports = midiPortLabels(juce::MidiOutput::getAvailableDevices());
   for (const auto& name : proc_.midiOutputNames()) ports.addIfNotAlreadyThere(name);
-  const auto& chosen = proc_.midiOutputNames();
-  juce::PopupMenu menu;
-  menu.addItem(1, TRANS("None"), true, chosen.isEmpty());
-  menu.addSeparator();
-  for (int i = 0; i < ports.size(); ++i) menu.addItem(i + 2, ports[i], true, chosen.contains(ports[i]));
-  juce::Component::SafePointer<MidiPanel> safe(this);
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&output_), [safe, ports](int result) {
-    if (safe == nullptr || result == 0) return;
-    // The processor holds the ports and keeps the choice: the console's lamps
-    // and displays follow it after this window closes, and at the next start.
-    juce::StringArray next;
-    if (result > 1) {
-      next = safe->proc_.midiOutputNames();
-      const juce::String port = ports[result - 2];
-      if (next.contains(port)) next.removeString(port);
-      else next.add(port);
-    }
-    safe->proc_.openMidiOutputs(next);
-    safe->showOutputs();
-  });
+  outputs_.clear();
+  for (const auto& port : ports) {
+    auto b = std::make_unique<juce::ToggleButton>(port);
+    b->setToggleState(proc_.midiOutputNames().contains(port), juce::dontSendNotification);
+    auto* raw = b.get();
+    b->onClick = [this, port, raw] {
+      // The processor holds the ports and keeps the choice: the console's
+      // lamps and displays follow it, and at the next start.
+      auto next = proc_.midiOutputNames();
+      if (raw->getToggleState()) next.addIfNotAlreadyThere(port);
+      else next.removeString(port);
+      proc_.openMidiOutputs(next);
+    };
+    addChildComponent(*b);
+    outputs_.push_back(std::move(b));
+  }
+}
+
+int MidiPanel::outputColumnX() const {
+  // Beside the inputs when both columns fit, as the inputs and outputs of a
+  // MIDI setup are read side by side; under them on a narrow window.
+  const int width = getWidth() - 24;
+  return width >= 2 * kPortColumn ? 12 + width / 2 : -1;
 }
 
 void MidiPanel::timerCallback() {
@@ -2966,15 +2967,27 @@ void MidiPanel::resized() {
   auto r = getLocalBounds().reduced(12).withHeight(1 << 20);
   juce::Rectangle<int> row;
   if (part_ == Part::Console) {
-    inputsLabel_.setBounds(r.removeFromTop(kRow));
+    const int columnX = outputColumnX();
+    auto ins = columnX < 0 ? r : r.withRight(columnX - 12);
+    const int top = ins.getY();
+    inputsLabel_.setBounds(ins.removeFromTop(kRow));
     for (auto& b : inputs_) {
-      b->setBounds(r.removeFromTop(kRow).reduced(12, 0));
-      r.removeFromTop(2);
+      b->setBounds(ins.removeFromTop(kRow).reduced(12, 0));
+      ins.removeFromTop(2);
     }
     if (inputs_.empty()) {
-      r.removeFromTop(kRow); // leaves room for the "none found" case
+      ins.removeFromTop(kRow); // leaves room for the "none found" case
     }
-    if (bluetooth_.isVisible()) bluetooth_.setBounds(r.removeFromTop(kRow).reduced(12, 0).withWidth(180));
+    if (bluetooth_.isVisible()) bluetooth_.setBounds(ins.removeFromTop(kRow).reduced(12, 0).withWidth(180));
+    // The outputs: their own column beside the inputs, or under them.
+    auto outs = columnX < 0 ? ins.withTrimmedTop(kGap) : r.withLeft(columnX).withY(top);
+    outputsLabel_.setBounds(outs.removeFromTop(kRow));
+    for (auto& b : outputs_) {
+      b->setBounds(outs.removeFromTop(kRow).reduced(12, 0));
+      outs.removeFromTop(2);
+    }
+    if (outputs_.empty()) noOutputs_.setBounds(outs.removeFromTop(kRow).reduced(12, 0));
+    r.setTop(juce::jmax(ins.getY(), outs.getY()));
     // The default channels, each with its device, as many to a row as fit.
     r.removeFromTop(4);
     defaultChannelsLabel_.setBounds(r.removeFromTop(kRow));
@@ -3030,10 +3043,6 @@ void MidiPanel::resized() {
 
   if (part_ == Part::Console) {
     r.removeFromTop(kGap);
-    row = r.removeFromTop(kRow);
-    outputsLabel_.setBounds(row.removeFromLeft(120));
-    output_.setBounds(row.removeFromLeft(300));
-    r.removeFromTop(4);
     row = r.removeFromTop(kRow);
     feedback_.setBounds(row.removeFromLeft(320));
     echoLitLabel_.setBounds(row.removeFromLeft(44));

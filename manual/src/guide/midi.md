@@ -69,7 +69,7 @@ Masterpiece opens a JACK client named `Masterpiece MIDI` with one input port, `m
 
 | Name | What it does | Default | Options | Takes effect |
 |---|---|---|---|---|
-| **MIDI output** | The port Masterpiece sends to: lamp and fader messages, key echo to a sound module, and text displays. | **None** | **None** and every output the system reports. | At once; kept as `midioutput <name>` in `settings.mpglobal`. |
+| **MIDI outputs** | A tick box per port Masterpiece sends to, beside **MIDI inputs**: lamp and fader messages, key echo to a sound module, and text displays. A port ticked before and not plugged in now stays in the list. | None ticked | Every output the system reports | At once; kept as `midioutput <name>` in `settings.mpglobal`, a line per port. |
 
 The processor holds the output port, so lamps, motorised faders, key echo and console displays work with any window open or none. The choice is kept in the general settings and the port opens again at the next start. A port that is not plugged in keeps its name and the box shows that name; the log records `midi: the output <name> is not connected; choose it again in Settings, MIDI once it is`.
 
@@ -328,7 +328,7 @@ A stored key operates organ switches (stops, couplers, tremulants and the organ'
 
 ## Sending to a console
 
-Three things send to the MIDI output: the rows of the **Send** tabs (lamps, faders, key echo), the echo option of the MIDI tab, and the text displays. All of them need a **MIDI output**.
+Three things send to the MIDI output: the rows of the **Send** tabs (lamps, faders, key echo), the echo option of the MIDI tab, and the text displays. All of them need a port ticked under **MIDI outputs**.
 
 ### Console displays
 
@@ -350,13 +350,13 @@ Each message is `F0 <prefix> <display number> <line number> <text> F7`: the pref
 
 `7D` is the manufacturer id that the MIDI specification reserves for non-commercial use; it is the default because a console's own prefix is not known. Only lines whose text changed are sent, checked four times a second. Letters with accents are written with the accent removed (`ä` as `ae`, `ß` as `ss`, `Kraków` as `Krakow`), because system exclusive carries seven bits per byte and a byte above 7F would end the message. Characters with no Latin equivalent become `?`.
 
-Changes in this tab take effect at once. The setup is kept in `settings.mpglobal` as `lcd <on> <display> <width> <line1> <line2> <line3> <line4> <prefix>` and is read again at the next start. The main window sends the display four times a second whether or not the tab is open, so the display follows the organ with any window open or none; the **MIDI output** must be chosen. The **Transpose** line shows the transposition as `+2`, `0` or `-3`, and the **Combination set** line shows the name of the combination set in use (`(default)` for the default set).
+Changes in this tab take effect at once. The setup is kept in `settings.mpglobal` as `lcd <on> <display> <width> <line1> <line2> <line3> <line4> <prefix>` and is read again at the next start. The main window sends the display four times a second whether or not the tab is open, so the display follows the organ with any window open or none; a port must be ticked under **MIDI outputs**. The **Transpose** line shows the transposition as `+2`, `0` or `-3`, and the **Combination set** line shows the name of the combination set in use (`(default)` for the default set).
 
 ### A console with no screen
 
 The MIDI tab has three things for a console that is turned on and played without a monitor.
 
-- **Ready lamp**: a note or a controller, on a channel, sent to the **MIDI output**. The lamp is lit (note on at velocity 127, or the controller at 127) once an organ is loaded and playable, blinks once a second while an organ loads, blinks four times a second while a quit or power-off button is held, and is dark with no organ (note off, or the controller at 0). Kept in `settings.mpglobal` as `readylamp <note|cc> <channel> <number>`.
+- **Ready lamp**: a note or a controller, on a channel, sent to the ports ticked under **MIDI outputs**. The lamp is lit (note on at velocity 127, or the controller at 127) once an organ is loaded and playable, blinks once a second while an organ loads, blinks four times a second while a quit or power-off button is held, and is dark with no organ (note off, or the controller at 0). Kept in `settings.mpglobal` as `readylamp <note|cc> <channel> <number>`.
 - **Learn quit** and **Learn power off**: buttons that save and quit Masterpiece, or save, quit and shut the computer down. So that a noisy input learned for one cannot turn a console off at every start, a button is obeyed only once Masterpiece has run two minutes, and only when it is held three seconds; letting go sooner does nothing. A button whose message has no release (a program change or a system exclusive message) is pressed twice within two seconds. A press before the two minutes is written to the log with the time left. The power-off button also needs **Allow quitting Masterpiece and shutting the computer down** on the Remote tab, as the control API's power-off does; without it the hold is written to the log and nothing happens. Quitting needs no permission.
 - **Temperament** with **Learn**: a button for one temperament of the list.
 
