@@ -1033,7 +1033,36 @@ ArchiveKind inspectArchive(const std::string& path) {
   // A self-extracting archive has a program in front; look a little way in.
   static const unsigned char mark[] = {'R', 'a', 'r', '!', 0x1a, 0x07};
   const auto at = std::search(b.begin(), b.end(), std::begin(mark), std::end(mark));
-  if (at == b.end()) return k;
+  if (at == b.end()) {
+    // Two kinds of download that went wrong, told apart for the message: a
+    // link that led to a sign-in, a redirect or an error saves that text
+    // (a web page, a message) under the package's name, and a download that
+    // reserved its space and never wrote leaves zeros.
+    k.zeroFilled = !b.empty() && std::all_of(b.begin(), b.end(), [](unsigned char c) { return c == 0; });
+    if (!b.empty() && !k.zeroFilled) {
+      size_t printable = 0;
+      bool nul = false;
+      for (unsigned char c : b) {
+        nul = nul || c == 0;
+        // Text, a tab or a line end; bytes from 0x80 are UTF-8 letters.
+        if (c >= 0x20 || c == '\t' || c == '\r' || c == '\n') ++printable;
+      }
+      k.textFile = !nul && printable * 100 >= b.size() * 95;
+      // An organ definition is text too, and a file in its own right: a
+      // Hauptwerk definition is XML with a Hauptwerk root, a GrandOrgue one
+      // an INI file with an [Organ] section.
+      if (k.textFile) {
+        std::string text(b.begin(), b.end());
+        std::string lower(text);
+        std::transform(lower.begin(), lower.end(), lower.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        k.organDefinition = lower.find("<hauptwerk") != std::string::npos ||
+                            lower.find("\n[organ]") != std::string::npos || lower.rfind("[organ]", 0) == 0 ||
+                            lower.find("\xef\xbb\xbf[organ]") == 0;
+      }
+    }
+    return k;
+  }
   size_t i = static_cast<size_t>(at - b.begin()) + 6;
   if (i >= b.size()) return k;
   if (b[i] == 0x00) {
@@ -1558,7 +1587,15 @@ bool OrganArchive::inspect(std::string& error) {
       return false;
     }
     if (kind.format == ArchiveKind::Format::Unknown) {
-      error ="\"" + name + "\" is not a RAR or ZIP archive that Masterpiece can read.";
+      error = kind.organDefinition
+                  ? "\"" + name + "\" is an organ definition, not a package: open it with File > Open organ..."
+              : kind.textFile
+                  ? "\"" + name + "\" is text saved under the package's name, not the package: the "
+                    "download link led to a web page or a message, such as a sign-in, a redirect or "
+                    "an error, instead of the file. Download it again from the sample set's site."
+              : kind.zeroFilled
+                  ? "\"" + name + "\" holds only zeros: its download did not finish. Download it again."
+                  : "\"" + name + "\" is not a RAR or ZIP archive that Masterpiece can read.";
       return false;
     }
     if (kind.encryptedHeaders || kind.encryptedFiles) {

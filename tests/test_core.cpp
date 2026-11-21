@@ -15616,7 +15616,10 @@ public:
                  why("Split.part1.rar").find("7-Zip") != std::string::npos,
              "a solid RAR 4 split into volumes is refused, with what to do instead");
     MP_CHECK(why("locked.rar").find("password") != std::string::npos, "a password is named");
-    MP_CHECK(why("junk.rar").find("not a RAR") != std::string::npos, "junk is called junk");
+    // Text in place of an archive, as a download that saved a page: named as
+    // such (#1166); binary junk keeps "not a RAR" (download-reasons).
+    MP_CHECK(why("junk.rar").find("text saved under the package's name") != std::string::npos,
+             "junk text is called text");
     MP_CHECK(why("plain.rar") == "(opened)", "and a readable one passes");
 
     // --- volume sets, from their names ---
