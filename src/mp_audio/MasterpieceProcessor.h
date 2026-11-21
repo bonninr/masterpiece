@@ -3964,7 +3964,7 @@ private:
   // for everything unenclosed. Each bus lists its boxes, and keeps a filter
   // per box and per slot: a box in two buses filters each with its own memory.
   std::vector<std::vector<Id>> busEnclosures_;
-  std::vector<std::vector<std::vector<dsp::EnclosureFilter>>> busFilters_;  // [bus][box][slot]
+  std::vector<std::vector<std::vector<dsp::EnclosureFilter>>> enclosureFilters_;  // [bus][box][slot]
   std::unordered_map<Id, int> enclosureBusIndex_;  // a box alone
   std::unordered_map<Id, int> pipeStackBus_;       // a pipe in several boxes
   int unenclosedBus_ = 0;

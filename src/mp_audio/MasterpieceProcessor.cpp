@@ -397,7 +397,7 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
       static_cast<juce::uint32>(juce::jmax(1, getTotalNumOutputChannels()))};
 
   busEnclosures_.clear();
-  busFilters_.clear();
+  enclosureFilters_.clear();
   enclosureBusIndex_.clear();
   pipeStackBus_.clear();
   // Stable bus order: enclosure ids ascending, so a reload of the same organ
@@ -434,9 +434,9 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
       if (model_.enclosures.count(id) != 0) set.push_back(id);
     if (const auto it = stacks.find(set); it != stacks.end()) pipeStackBus_[pipeId] = it->second;
   }
-  busFilters_.resize(busEnclosures_.size());
+  enclosureFilters_.resize(busEnclosures_.size());
   for (size_t bus = 0; bus < busEnclosures_.size(); ++bus) {
-    auto& perBox = busFilters_[bus];
+    auto& perBox = enclosureFilters_[bus];
     perBox.resize(busEnclosures_[bus].size());
     for (size_t m = 0; m < perBox.size(); ++m) {
       perBox[m].resize(static_cast<size_t>(kEnclosureFilterSlots));
@@ -1159,7 +1159,7 @@ int MasterpieceProcessor::mixBusForPipe(Id rankId, int midiNote) {
 void MasterpieceProcessor::applyEnclosures(int bus, size_t slot, juce::dsp::AudioBlock<float>& block) {
   if (bus < 0 || bus >= static_cast<int>(busEnclosures_.size())) return;
   const auto& boxes = busEnclosures_[static_cast<size_t>(bus)];
-  auto& filters = busFilters_[static_cast<size_t>(bus)];
+  auto& filters = enclosureFilters_[static_cast<size_t>(bus)];
   for (size_t m = 0; m < boxes.size(); ++m) {
     const auto encIt = model_.enclosures.find(boxes[m]);
     if (encIt == model_.enclosures.end() || slot >= filters[m].size()) continue;
