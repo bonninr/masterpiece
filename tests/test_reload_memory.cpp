@@ -120,7 +120,9 @@ public:
     const juce::File minimal(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
     {
       mp::MasterpieceProcessor proc;
-      proc.setCacheMode(mp::SampleLibrary::CacheMode::Off);
+      // For this run only: setCacheMode keeps the choice in the global file,
+      // and turned the cache off for every later run on the machine.
+      proc.overrideCacheMode(mp::SampleLibrary::CacheMode::Off);
       proc.setSampleStorage(mp::SampleStorage::Int24);
       proc.setCodeSamples(false);
       proc.setLoadMono(false);
