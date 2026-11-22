@@ -206,12 +206,21 @@ if(MP_FETCH_LIBARCHIVE)
   # The regex library only serves the command-line tools; searching for one
   # stops the configure on Windows.
   set(POSIX_REGEX_LIB "NONE" CACHE STRING "" FORCE)
+  # 3.8.10 reports every file after an empty last RAR5 block as damaged; the
+  # upstream fix, applied as the source is fetched (#1204).
+  set(_mp_libarchive_patch)
+  if(MP_LIBARCHIVE_TAG STREQUAL "v3.8.10")
+    list(APPEND _mp_libarchive_patch PATCH_COMMAND
+      "${CMAKE_COMMAND}" "-DSOURCE_DIR=<SOURCE_DIR>"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/LibarchiveRar5.cmake")
+  endif()
   FetchContent_Declare(
     libarchive
     GIT_REPOSITORY https://github.com/libarchive/libarchive.git
     GIT_TAG ${MP_LIBARCHIVE_TAG}
     GIT_SHALLOW TRUE
     GIT_PROGRESS TRUE
+    ${_mp_libarchive_patch}
   )
   FetchContent_MakeAvailable(libarchive)
   # Linked statically; the headers come with the target only from the
