@@ -6,6 +6,8 @@
 #include "Settings.h"
 #include "OrganSettings.h"
 #include "../mp_archive/OrganArchive.h"
+#include "../mp_audio/DataFolder.h"
+#include "../mp_jorgan/JOrganImport.h"
 #include "../mp_audio/SystemMemory.h"
 
 #include "LoadingDialog.h"
@@ -1209,7 +1211,7 @@ void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
       kMobile ? TRANS("Choose an organ package") : TRANS("Choose an organ definition file"), start,
       kMobile ? "*.rar;*.orgue"
               : "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.Organ.Hauptwerk.xml;"
-                "*.CustomOrgan.Hauptwerk.xml;*.organ;*.rar;*.orgue");
+                "*.CustomOrgan.Hauptwerk.xml;*.organ;*.disposition;*.rar;*.orgue");
   auto flags = juce::FileBrowserComponent::openMode |
                juce::FileBrowserComponent::canSelectFiles;
  #if JUCE_MAC
@@ -1623,6 +1625,31 @@ void MasterpieceEditor::loadOrgan(const juce::File& requested, bool graphicsOnly
       odf = copy;
     }
   if (loading_) return;  // one load at a time; the dialog is the interlock
+
+  // jOrgan module (src/mp_jorgan): a disposition is converted, on a thread,
+  // to the GrandOrgue organ it becomes, and that organ is opened.
+  if (mp::isJOrganDisposition(odf.getFullPathName().toStdString())) {
+    loading_ = true;
+    top_.setStatus(TRANS("Opening %1...").replace("%1", odf.getFileName()));
+    juce::Component::SafePointer<MasterpieceEditor> self(this);
+    // Its files go to the data folder's jOrgan folder.
+    const std::string work = mp::jorganWorkFolder(
+        odf.getFullPathName().toStdString(), mp::dataFolder().getChildFile("jOrgan").getFullPathName().toStdString());
+    juce::Thread::launch([self, odf, graphicsOnly, work] {
+      const mp::JOrganImportReport j = mp::convertJOrgan(odf.getFullPathName().toStdString(), work);
+      juce::MessageManager::callAsync([self, odf, graphicsOnly, j] {
+        if (self == nullptr) return;
+        self->loading_ = false;
+        for (const auto& n : j.notes) juce::Logger::writeToLog("load: jOrgan import: " + juce::String::fromUTF8(n.c_str()));
+        if (!j.ok) {
+          showWithLog(TRANS("Could not open %1").replace("%1", odf.getFileName()), juce::String::fromUTF8(j.error.c_str()));
+          return;
+        }
+        self->loadOrgan(juce::File(juce::String::fromUTF8(j.organFile.c_str())), graphicsOnly);
+      });
+    });
+    return;
+  }
 
   // Reading the file list and extracting the definition/artwork can both
   // take time. Show the same dialog used later for loading its samples.

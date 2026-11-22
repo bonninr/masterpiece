@@ -18,7 +18,7 @@ figures.
 
 | | |
 |---|---|
-| Sample set formats | Hauptwerk-format organs (full, compact and composite definitions), GrandOrgue organs (`.organ` definitions and `.orgue` packages) |
+| Sample set formats | Hauptwerk-format organs (full, compact and composite definitions), GrandOrgue organs (`.organ` definitions and `.orgue` packages), jOrgan organs (`.disposition` with SoundFonts) |
 | Packages | Installed folders, or straight from `.rar` packages, including solid, multi-part and multi-volume sets; a solid RAR 4 set split into volumes is the exception |
 | Samples | WAV and WavPack, at any sample rate |
 | Systems | Windows, macOS (Apple silicon and Intel), Linux (x86-64, Flatpak, Debian packages), Raspberry Pi (64-bit and 32-bit), Android, iPhone and iPad |

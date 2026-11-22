@@ -10,6 +10,7 @@ Masterpiece is one engine and two front ends: the standalone app (`apps/Masterpi
 |---|---|---|---|
 | `mp_core` | `src/mp_core` | none | The organ model (`OrganModel.h`), the loader for Hauptwerk-format definitions (`OdfLoader`), the compiler for compact definitions (`CodmCompiler`), the GrandOrgue importer (`GrandOrgueImport`), temperaments and pitch (`Temperament`), perspectives (`Perspectives`), case-insensitive path lookup (`PathCase`), UTF-8 path helpers (`Utf8Path.h`), keyboard geometry (`KeyboardLayout.h`), load progress (`LoadProgress.h`) |
 | `mp_archive` | `src/mp_archive` | none | `OrganArchive`: RAR packages and GrandOrgue `.orgue` packages read in place |
+| `mp_jorgan` | `src/mp_jorgan` | `mp_core` | jOrgan organs: `SoundFont2` reads SoundFont files, `JOrganDisposition` reads dispositions and evaluates their MIDI messages, `JOrganImport` converts both into a GrandOrgue organ and its WAV samples. Only the editor's open path calls it, so removing it removes jOrgan support and nothing else |
 | `mp_sampler` | `src/mp_sampler` | none | `VoiceEngine` (voices, stealing, interpolation, release streaming, worker threads), `SimdRun` (vector inner loops), attack and release selection (`StreamingEngine`) |
 | `mp_control` | `src/mp_control` | none | `SwitchNetwork`, key flow (`Control`), `CombinationSystem`, `PlayerCombinations`, `StageSwitchBank`, `WindSolver`, `MidiMap`, `MidiDeviceMap`, `LcdPanel`, `Registration` |
 | `mp_split` | `src/mp_split` | none | The split keyboard: `SplitKeyboard` (the engine) and `SplitText` (its files) |

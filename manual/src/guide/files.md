@@ -39,6 +39,7 @@ Masterpiece/
   Packaged/<id>/               organs unpacked from their archives
   Portable/                    copies that keep an organ playable without its files
   Standard noises/             generated stand-ins for a set's standard noises
+  jOrgan/<name>-<hash>/        jOrgan organs converted: organ.organ and their samples
   Organs/                      packages copied into the app (Android)
   Linked/                      packages read where they are (Android)
 ```
