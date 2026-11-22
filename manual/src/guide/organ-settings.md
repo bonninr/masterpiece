@@ -228,7 +228,7 @@ The organ file is `organs/<organ key>.mporgan` in the data folder (see [General 
 | `root` | A folder, written only when set | **Organ folder** |
 | `simple`, `wind`, `tremulant`, `enclosure`, `voicing`, `originalpitch` | `1` or `0` | The six engine switches |
 | `gain` | The master gain (linear) | The volume slider in the top bar |
-| `buses`, `busir`, `groups` | The mixer's pairs, per-pair rooms and groups | The **Mixer** tab |
+| `buses`, `busir`, `groups` | Not kept here: the outputs, their rooms and the speaker groups are the machine's, in the [global file](general-settings.md#the-global-file). An organ file from an earlier version that holds them gives them to the global file once, when it has none. | |
 | `route <rank> bus <n>` | The pair of one rank | The **Mixer** tab |
 | `voicingadj`, `voicingslot` | The voicing sets A and B and the live slot | The **Voicing** tab |
 | `attack` | The attack's emphasis in dB and its length in ms, as `attack 4.0 60`; absent while it is off | Any write of the organ file after it is set |

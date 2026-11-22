@@ -175,8 +175,10 @@ The two speakers and the subwoofer then add up to what the pair carried alone. A
 
 | Part | Where | Scope |
 |---|---|---|
-| The pairs (`buses`) | The organ's `.mporgan` file; also the defaults file when **Save as default** is pressed in **Organ settings > Loading** | Read for every organ that has none of its own |
+| The outputs: channels, names, sends, rooms, EQ, crossovers, speaker groups (`buses`, `busname`, `busir`, `buseq`, `busfilt`, `groups`) | `settings.mpglobal` | Every organ: the outputs are the machine's audio hardware |
 | Which rank uses which pair (`route`) | The organ's `.mporgan` file | Per organ |
+
+An organ file from an earlier version that still holds outputs gives them to the global file once, when the global file has none; after that the organ file's outputs are left alone.
 
 Changes on this tab are written when **Save for this organ** is pressed, or by any later save of the organ's settings, which writes the live state of everything.
 
