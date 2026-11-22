@@ -10,7 +10,7 @@ Masterpiece is one engine and two front ends: the standalone app (`apps/Masterpi
 |---|---|---|---|
 | `mp_core` | `src/mp_core` | none | The organ model (`OrganModel.h`), the loader for Hauptwerk-format definitions (`OdfLoader`), the compiler for compact definitions (`CodmCompiler`), the GrandOrgue importer (`GrandOrgueImport`), temperaments and pitch (`Temperament`), perspectives (`Perspectives`), case-insensitive path lookup (`PathCase`), UTF-8 path helpers (`Utf8Path.h`), keyboard geometry (`KeyboardLayout.h`), load progress (`LoadProgress.h`) |
 | `mp_archive` | `src/mp_archive` | none | `OrganArchive`: RAR packages and GrandOrgue `.orgue` packages read in place |
-| `mp_jorgan` | `src/mp_jorgan` | `mp_core` | jOrgan organs: `SoundFont2` reads SoundFont files, `JOrganDisposition` reads dispositions and evaluates their MIDI messages, `JOrganImport` converts both into a GrandOrgue organ and its WAV samples. Only the editor's open path calls it, so removing it removes jOrgan support and nothing else |
+| `mp_jorgan` | `src/mp_jorgan` | none | jOrgan organs: `SoundFont2` reads SoundFont files, `JOrganDisposition` reads dispositions and evaluates their MIDI messages, `JOrganImport` translates both into a Hauptwerk definition in memory (`JOrganOrgan`, written out by `JOrganHauptwerk`) and writes the samples as WAV files. Called from `OdfLoader::load` and `deriveOrganRoot`, beside the GrandOrgue importer |
 | `mp_sampler` | `src/mp_sampler` | none | `VoiceEngine` (voices, stealing, interpolation, release streaming, worker threads), `SimdRun` (vector inner loops), attack and release selection (`StreamingEngine`) |
 | `mp_control` | `src/mp_control` | none | `SwitchNetwork`, key flow (`Control`), `CombinationSystem`, `PlayerCombinations`, `StageSwitchBank`, `WindSolver`, `MidiMap`, `MidiDeviceMap`, `LcdPanel`, `Registration` |
 | `mp_split` | `src/mp_split` | none | The split keyboard: `SplitKeyboard` (the engine) and `SplitText` (its files) |
@@ -33,6 +33,7 @@ The dependency direction is `mp_core` at the bottom; `mp_control`, `mp_sampler`,
 - Full definitions (`.Organ_Hauptwerk_xml`).
 - Compact definitions (`.CustomOrgan_Hauptwerk_xml`), which `CodmCompiler` completes with the fixed defaults a full definition would carry.
 - GrandOrgue definitions (`.organ`). `convertGrandOrgue()` translates the INI-style file into an equivalent full definition as an XML string in memory, never written to disk, and the loader parses that. Nothing after this step knows the organ came from a `.organ` file. Where the two formats differ, the importer follows GrandOrgue's semantics and records what it approximated or left out as notes, which the loader reports as warnings starting with `GrandOrgue import:`.
+- jOrgan dispositions (`.disposition`). `convertJOrgan()` (`src/mp_jorgan`) translates the disposition and its SoundFonts the same way, into a definition in memory. The samples become WAV files in the organ's folder under `jOrgan` in the settings folder, which is its root. Warnings start with `jOrgan import:`.
 
 The parse uses pugixml and loads the whole document into memory.
 

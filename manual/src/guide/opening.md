@@ -14,7 +14,7 @@ Settings that decide how much memory an organ takes, and whether release tails s
 | Composite organ | A Hauptwerk-format definition whose samples come from several sample sets | See [Composite organs](#composite-organs). |
 | GrandOrgue organ definition | `.organ` | Converted in memory as it loads, console included. The converted definition is never written to disk. |
 | GrandOrgue package | `.orgue` | Read in place. Packages that depend on other packages need those beside them. |
-| jOrgan disposition | `.disposition` | Converted to a GrandOrgue organ when opened, its SoundFont samples written as WAV files. See [jOrgan organs](#jorgan-organs). |
+| jOrgan disposition | `.disposition` | Converted in memory as it loads, as GrandOrgue organs are; its SoundFont samples written as WAV files. See [jOrgan organs](#jorgan-organs). |
 | Hauptwerk-format package | `.rar`, for example `Name.CompPkg.Hauptwerk.rar` | Read in place. See [Playing from packages](#playing-from-packages). |
 
 GrandOrgue files may be encoded in UTF-8 or in the Western code page of their author; Masterpiece detects which. A GrandOrgue organ has no organ id, so Masterpiece derives one from a hash of the file: the same file is always the same organ and keeps its own settings.
@@ -212,10 +212,10 @@ A GrandOrgue organ opens from its `.organ` file in a folder or from an `.orgue` 
 A jOrgan organ opens from its `.disposition` file.
 
 - SoundFonts (`.sf2`): at the path the disposition gives, relative to its folder; otherwise a file of the same name beside the disposition (for paths such as `C:\Sounds\Organ.sf2`)
-- Conversion on opening: each SoundFont sample a rank uses to a WAV file with its loop and release tail; the disposition to a GrandOrgue definition, `organ.organ`, beside them
+- Conversion on opening, as for GrandOrgue organs: the disposition to a definition in memory; each SoundFont sample a rank uses to a WAV file with its loop and release tail
 - Location: a folder per organ in the `jOrgan` folder of the [settings folder](files.md#the-settings-folder)
 - Conversion again only when the disposition or a SoundFont changes
-- Favourites, recent organs and settings: under the converted `organ.organ`
+- Favourites, recent organs and settings: under the disposition
 - Formats read: jOrgan 3.0 to 3.21
 
 | In the disposition | In Masterpiece |
@@ -226,8 +226,8 @@ A jOrgan organ opens from its `.disposition` file.
 | Coupler | Coupler to the keyboard holding its stops, with transposition. Keyboard's own inverse coupler at unison: unison off |
 | Stops no keyboard names | Keyboard of the unison coupler reaching them (theatre dispositions) |
 | Continuous filter | Volume or expression, moved by an input: swell shoe, closed level from the value 0. Not moved: fixed rank level. Pitch bend: fixed rank tuning |
-| Switch filter | Program change to other samples: wave tremulant. Same samples with LFOs: level tremulant at the LFO's rate and depth. Modulation controller: level tremulant at 8.2 Hz |
-| Console | Organ name. GrandOrgue-style console, stops in two jambs; knob labels from each element's `stop=` line |
+| Switch filter | Program change to other samples: wave tremulant. Same samples with LFOs: tremulant at the LFO's rate, level and pitch depth. Modulation controller: vibrato at 8.2 Hz, 50 cents at full |
+| Console | Organ name. Stock drawstops, keys and shoes; stops in two jambs; knob labels from each element's `stop=` line |
 
 Left out, each named in the log: combinations, memories, activators, captors, keyers, incrementers, regulators, sequences, the recorder, sounds without a SoundFont (LinuxSampler, generic MIDI), NRPN tone filters, SoundFont filters, extra layers, skins.
 
