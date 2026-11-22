@@ -1,0 +1,44 @@
+name: close-issues-on-dev
+
+# GitHub closes the issues a pull request names with "Closes #n", "Fixes #n"
+# or "Resolves #n" only when it merges into the default branch, main. Work
+# merges into dev, and the fix reaches testers in the next dev build, so the
+# issue closes then, with a note on where the fix is.
+#
+# pull_request_target runs this file as it stands on the base branch, dev,
+# with a token that may close issues. It reads the pull request's description
+# from the event and checks out no code of the pull request.
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [dev]
+
+permissions:
+  issues: write
+
+jobs:
+  close:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close the issues the pull request names
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          BODY: ${{ github.event.pull_request.body }}
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          numbers=$(printf '%s\n%s\n' "$TITLE" "$BODY" |
+            grep -oiE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]+#[0-9]+' |
+            grep -oE '[0-9]+$' | sort -un)
+          for n in $numbers; do
+            state=$(gh issue view "$n" --repo "$REPO" --json state -q .state 2>/dev/null || true)
+            if [ "$state" != "OPEN" ]; then
+              echo "#$n: not an open issue, left as it is"
+              continue
+            fi
+            gh issue close "$n" --repo "$REPO" --reason completed \
+              --comment "Fixed on dev in #$PR. The fix is in the next dev build, the dev prerelease on the Releases page, a few hours after this message, and in the next release."
+            echo "#$n closed"
+          done
