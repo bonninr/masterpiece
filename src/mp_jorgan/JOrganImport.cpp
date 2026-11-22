@@ -1,9 +1,10 @@
 #include "JOrganImport.h"
 
 #include "JOrganDisposition.h"
+#include "JOrganHauptwerk.h"
+#include "JOrganOrgan.h"
 #include "SoundFont2.h"
 
-#include "mp_core/PathCase.h"
 #include "mp_core/Utf8Path.h"
 
 #include <algorithm>
@@ -23,7 +24,7 @@ namespace {
 
 // Bumped whenever the conversion changes what it writes, so a work folder
 // from an earlier version is made again.
-constexpr int kImporterVersion = 9;
+constexpr int kImporterVersion = 10;
 
 std::string lower(std::string s) {
   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -64,6 +65,28 @@ std::string fileSafe(const std::string& s) {
   std::string out;
   for (unsigned char c : s) out += std::isalnum(c) || c == '-' || c == '.' ? static_cast<char>(c) : '_';
   return out.empty() ? std::string("x") : out;
+}
+
+// A path as it is on disk, each part matched without regard to case:
+// dispositions are written on Windows, where "Basic.SF2" and "basic.sf2" are
+// the same file.
+std::filesystem::path resolvePathIgnoringCase(const std::filesystem::path& wanted) {
+  std::error_code ec;
+  if (std::filesystem::exists(wanted, ec)) return wanted;
+  std::filesystem::path found = wanted.root_path();
+  for (const auto& part : wanted.relative_path()) {
+    std::filesystem::path next = found / part;
+    if (!std::filesystem::exists(next, ec)) {
+      const std::string want = lower(utf8Of(part));
+      for (const auto& entry : std::filesystem::directory_iterator(found.empty() ? "." : found, ec))
+        if (lower(utf8Of(entry.path().filename())) == want) {
+          next = found / entry.path().filename();
+          break;
+        }
+    }
+    found = next;
+  }
+  return found;
 }
 
 // A sound's SoundFont on this machine: the path the disposition gives,
@@ -109,12 +132,6 @@ std::string labelOf(const std::string& name, const std::string& description) {
   return name;
 }
 
-// A text for one line of a GrandOrgue definition.
-std::string oneLine(std::string s) {
-  for (char& c : s)
-    if (c == '\r' || c == '\n') c = ' ';
-  return s;
-}
 
 // The cents a SoundFont's initialAttenuation stands for, as FluidSynth --
 // jOrgan's player -- applies it: 0.4 of the value, as the hardware the format
@@ -147,7 +164,7 @@ struct TremulantKind {
   // The other preset plays the same samples, swung by its LFOs: a level
   // tremulant at their rate and depth.
   bool lfo = false;
-  double periodMs = 122.0, ampDepthPct = 6.0;
+  double periodMs = 122.0, ampDepthPct = 6.0, pitchCents = 0.0;
 };
 
 // The level a controller value stands for in FluidSynth's default
@@ -251,7 +268,12 @@ struct Converter {
         k.wave = true;
         k.programDelta = b[1] - program;
       }
-      if ((b[0] & 0xf0) == 0xb0 && b.size() >= 3 && b[1] == 1) k.synth = true;
+      // The modulation wheel: FluidSynth's vibrato, 50 cents at full, 8.2 Hz.
+      if ((b[0] & 0xf0) == 0xb0 && b.size() >= 3 && b[1] == 1 && b[2] > 0) {
+        k.synth = true;
+        k.pitchCents = 50.0 * b[2] / 127.0;
+        k.ampDepthPct = 1.0;
+      }
     }
     return k;
   }
@@ -385,8 +407,8 @@ bool isJOrganDisposition(const std::string& path) {
 std::string jorganWorkFolder(const std::string& dispositionPath, const std::string& baseFolder) {
   std::filesystem::path base = pathOf(baseFolder);
   if (baseFolder.empty()) {
-    // No folder given: the user's data folder, not a cache, as favourites
-    // and settings name the converted organ.
+    // No folder given: the jOrgan folder of Masterpiece's settings folder,
+    // where the program keeps its other per-organ files.
     auto env = [](const char* name) {
       const char* v = std::getenv(name);
       return v && *v ? std::string(v) : std::string();
@@ -395,11 +417,10 @@ std::string jorganWorkFolder(const std::string& dispositionPath, const std::stri
     const std::string appData = env("APPDATA");
     base = (appData.empty() ? std::filesystem::temp_directory_path() : pathOf(appData) / "Masterpiece") / "jOrgan";
 #elif defined(__APPLE__)
-    base = pathOf(env("HOME")) / "Library" / "Application Support" / "Masterpiece" / "jOrgan";
+    base = pathOf(env("HOME")) / "Library" / "Masterpiece" / "jOrgan";
 #else
-    const std::string xdg = env("XDG_DATA_HOME");
-    base = (xdg.empty() ? pathOf(env("HOME")) / ".local" / "share" / "Masterpiece" : pathOf(xdg) / "Masterpiece") /
-           "jOrgan";
+    const std::string xdg = env("XDG_CONFIG_HOME");
+    base = (xdg.empty() ? pathOf(env("HOME")) / ".config" / "Masterpiece" : pathOf(xdg) / "Masterpiece") / "jOrgan";
 #endif
   }
   std::error_code ec;
@@ -409,7 +430,7 @@ std::string jorganWorkFolder(const std::string& dispositionPath, const std::stri
 }
 
 JOrganImportReport convertJOrganText(const std::string& text, const std::string& dispositionDir,
-                                     const std::string& workFolder) {
+                                     const std::string& workFolder, const std::string& fallbackName) {
   JOrganImportReport rep;
   rep.workFolder = workFolder;
   JOrganDisposition d;
@@ -502,9 +523,6 @@ JOrganImportReport convertJOrganText(const std::string& text, const std::string&
     for (size_t i = 1; i < manuals.size(); ++i) manuals[i].pedal = false;
     c.note("only the first pedal keyboard is the pedal; the others are manuals");
   }
-  const bool hasPedals = manuals.front().pedal;
-  // GrandOrgue numbers: the pedal 0, the manuals from 1.
-  auto goManual = [&](size_t index) { return static_cast<int>(index) + (hasPedals ? 0 : 1); };
   // Which manual each stop belongs to. A keyboard that names the stop
   // itself holds it. A theatre disposition reaches most stops through
   // couplers instead -- a keyboard's own "unison" coupler, played while it is
@@ -647,46 +665,51 @@ JOrganImportReport convertJOrganText(const std::string& text, const std::string&
       k.wave = false;
       k.lfo = true;
       k.periodMs = 1000.0 / std::clamp(hz, 1.0, 20.0);
-      // The level swing it states; or, for a pitch swing alone, the level
-      // swing GrandOrgue pairs with it (15% to 8.4 cents).
-      k.ampDepthPct = l.modLfoToVolumeCb != 0.0
-                          ? 100.0 * (1.0 - std::pow(10.0, -std::abs(l.modLfoToVolumeCb) / 200.0))
-                          : cents / 0.56;
-      k.ampDepthPct = std::clamp(k.ampDepthPct, 1.0, 50.0);
-      c.note("a tremulant preset that swings the same samples with its LFOs is a level tremulant at their rate");
+      // The level and pitch swings it states.
+      k.ampDepthPct = std::clamp(100.0 * (1.0 - std::pow(10.0, -std::abs(l.modLfoToVolumeCb) / 200.0)), 1.0, 50.0);
+      k.pitchCents = cents;
+      c.note("a tremulant preset that swings the same samples with its LFOs is a tremulant at their rate and depth");
       break;
     }
   }
 
+  // ---- the organ -------------------------------------------------------------
+  JOrganOrgan organ;
+  for (const JOrganElement& e : d.elements)
+    if (e.type == "console" && !e.name.empty()) {
+      organ.name = e.name;
+      break;
+    }
+  if (organ.name.empty()) organ.name = fallbackName.empty() ? std::string("jOrgan organ") : fallbackName;
+  organ.id = 1000000000ll + static_cast<long long>(fnv(text) % 1000000000ull);
+  for (const Manual& m : manuals) organ.manuals.push_back({m.name, m.pedal, m.firstMidi, m.keys});
+
   // Windchest groups: one per set of filters.
   std::map<std::pair<std::vector<int>, std::vector<int>>, int> chestOf;
-  std::vector<std::pair<std::vector<int>, std::vector<int>>> chests;
   auto chestFor = [&](const RankSound& rs) {
     std::vector<int> enc, trem;
     for (int f : rs.enclosures)
-      if (enclosureNo.count(f)) enc.push_back(enclosureNo[f]);
+      if (enclosureNo.count(f)) enc.push_back(enclosureNo[f] - 1);
     for (int f : rs.tremulants)
-      if (tremulantNo.count(f)) trem.push_back(tremulantNo[f]);
+      if (tremulantNo.count(f)) trem.push_back(tremulantNo[f] - 1);
     std::sort(enc.begin(), enc.end());
     std::sort(trem.begin(), trem.end());
     const auto key = std::make_pair(enc, trem);
     const auto it = chestOf.find(key);
     if (it != chestOf.end()) return it->second;
-    chests.push_back(key);
-    return chestOf[key] = static_cast<int>(chests.size());
+    organ.chests.push_back({enc, trem});
+    return chestOf[key] = static_cast<int>(organ.chests.size()) - 1;
   };
 
-  // ---- the definition --------------------------------------------------------
-  std::ostringstream ranksText, stopsText, couplersText;
-  std::map<std::pair<int, int>, int> goRankOf;  // (rank id, constant pitch or -1) -> GO rank
-  int rankCount = 0;
+  // A rank of 128 pipes, MIDI notes 0 to 127, each the region for its key.
+  std::map<std::pair<int, int>, int> rankOf;  // (rank id, constant pitch or -1) -> index + 1
   auto buildRank = [&](int rankId, int constantPitch) -> int {
     const auto key = std::make_pair(rankId, constantPitch);
-    const auto found = goRankOf.find(key);
-    if (found != goRankOf.end()) return found->second;
+    const auto found = rankOf.find(key);
+    if (found != rankOf.end()) return found->second;
     const JOrganElement* re = d.find(rankId);
     const RankSound& rs = rankSound[rankId];
-    if (!re) return goRankOf[key] = 0;
+    if (!re) return rankOf[key] = 0;
     // A rank whose SoundFont or preset is missing stays, silent: its stops
     // are on the console all the same.
     const auto font = c.fonts.find(rs.sound);
@@ -707,79 +730,57 @@ JOrganImportReport convertJOrganText(const std::string& text, const std::string&
         break;
       }
     }
-    const int number = ++rankCount;
-    goRankOf[key] = number;
-    const double velocityDb = 40.0 * std::log10(std::max(1, rs.velocity) / 127.0);
-    std::ostringstream& o = ranksText;
-    o << "\n[Rank" << n3(number) << "]\n";
-    o << "Name=" << oneLine(re->name.empty() ? "Rank " + std::to_string(rankId) : re->name)
-      << (constantPitch >= 0 ? " (" + std::to_string(constantPitch) + ")" : "") << "\n";
-    o << "FirstMidiNoteNumber=0\nNumberOfLogicalPipes=128\n";
-    o << "WindchestGroup=" << chestFor(rs) << "\n";
-    o << "AmplitudeLevel=100\n";
+    JOrganOrgan::Rank rank;
+    rank.name = (re->name.empty() ? "Rank " + std::to_string(rankId) : re->name) +
+                (constantPitch >= 0 ? " (" + std::to_string(constantPitch) + ")" : "");
+    rank.chest = chestFor(rs);
     double fixedDb = 0.0, tuningCents = 0.0;
     for (int f : rs.enclosures) {
       if (!filterLevelOf.count(f)) continue;
       if (!enclosureNo.count(f)) fixedDb += filterLevelOf[f].fixedDb;
       tuningCents += filterLevelOf[f].bendCents;
     }
-    o << "PitchTuning=" << tuningCents << "\n";
-    o << "Gain=" << (velocityDb + c.soundGainDb[rs.sound] + fixedDb) << "\n";
+    rank.db = 40.0 * std::log10(std::max(1, rs.velocity) / 127.0) + c.soundGainDb[rs.sound] + fixedDb;
     int sounding = 0;
     for (int k = 0; k < 128; ++k) {
-      const std::string pk = "Pipe" + n3(k + 1);
       const int playKey = constantPitch >= 0 ? constantPitch : k;
       const Sf2Region *r = nullptr, *right = nullptr;
       std::string file;
       if (sf && c.regionFor(*sf, regions, playKey, rs.velocity, r, right)) file = c.wavFor(*sf, rs.sound, *r, right);
-      if (file.empty()) {
-        o << pk << "=DUMMY\n";
-        continue;
-      }
+      if (file.empty()) continue;
       ++sounding;
-      const double cents = (playKey - r->rootKey) * static_cast<double>(r->scaleTuning) + r->tuneCents;
-      const double db = -r->attenuationCb * kAttenuationFactor / 10.0 -
-                        (r->decaySec <= 0.2 ? r->sustainCb / 10.0 : 0.0);
-      o << pk << "=" << file << "\n";
-      if (cents != 0.0) o << pk << "PitchTuning=" << cents << "\n";
-      if (db != 0.0) o << pk << "Gain=" << db << "\n";
-      const bool looped = r->loopMode == 1 || r->loopMode == 3;
-      if (!looped) o << pk << "Percussive=Y\n";
+      JOrganOrgan::Pipe p;
+      p.midi = k;
+      p.file = file;
+      p.cents = (playKey - r->rootKey) * static_cast<double>(r->scaleTuning) + r->tuneCents + tuningCents;
+      p.db = -r->attenuationCb * kAttenuationFactor / 10.0 - (r->decaySec <= 0.2 ? r->sustainCb / 10.0 : 0.0);
+      p.percussive = !(r->loopMode == 1 || r->loopMode == 3);
       if (r->filterFcCents < 13500.0) c.note("a SoundFont region's low-pass filter is left out");
-      // The tremulant take, with the same retuning from its own root.
+      // The tremulant take, played at the pipe's tuning.
       const Sf2Region *tr = nullptr, *tright = nullptr;
       if (!tremRegions.empty() && c.regionFor(*sf, tremRegions, playKey, rs.velocity, tr, tright)) {
-        const std::string tf = c.wavFor(*sf, rs.sound, *tr, tright);
-        if (!tf.empty()) {
-          o << pk << "IsTremulant=0\n";
-          o << pk << "AttackCount=1\n";
-          o << pk << "Attack001=" << tf << "\n";
-          o << pk << "Attack001IsTremulant=1\n";
-          const double tc = (playKey - tr->rootKey) * static_cast<double>(tr->scaleTuning) + tr->tuneCents;
-          if (tc != cents) c.note("a tremulant take tuned apart from its pipe plays at the pipe's tuning");
-        }
+        p.tremulantFile = c.wavFor(*sf, rs.sound, *tr, tright);
+        const double tc = (playKey - tr->rootKey) * static_cast<double>(tr->scaleTuning) + tr->tuneCents;
+        if (tc + tuningCents != p.cents) c.note("a tremulant take tuned apart from its pipe plays at the pipe's tuning");
       }
+      rank.pipes.push_back(p);
     }
     if (sounding == 0 && !regions.empty()) c.note("rank \"" + re->name + "\": its preset sounds no key");
     if (re->num("delay", 0) > 0) c.note("rank delays are left out");
-    return number;
+    organ.ranks.push_back(std::move(rank));
+    return rankOf[key] = static_cast<int>(organ.ranks.size());
   };
 
-  // A drawstop's place, written once the grid's size is known: every
-  // control counted, they fill it row by row across both jambs.
-  auto place = [](int index) {
-    return "DispDrawstopCol=\x01" "C" + std::to_string(index) + "\x01\nDispDrawstopRow=\x01" "R" +
-           std::to_string(index) + "\x01\n";
+  auto drawstopOf = [&](const JOrganElement& e, const std::string& name) {
+    organ.drawstops.push_back({name, labelOf(name, e.description), e.prop("active") == "true"});
+    return static_cast<int>(organ.drawstops.size()) - 1;
   };
 
-  // Stops, by GrandOrgue number, each on its manual.
-  int stopCount = 0, couplerCount = 0;
-  std::map<size_t, std::vector<int>> stopsOfManual, couplersOfManual;  // GO numbers
-  int drawstop = 0;
-  std::ostringstream switchesText;
-  std::map<int, int> switchOf;  // shared stop -> its GrandOrgue switch
+  // Stops, on each keyboard that holds them; one drawstop for a stop several
+  // keyboards name.
+  std::map<int, int> sharedDrawstop;
   for (size_t mi = 0; mi < manuals.size(); ++mi) {
-    Manual& m = manuals[mi];
+    const Manual& m = manuals[mi];
     std::vector<int> here = stopsOwned[mi];
     for (const auto& [sid, others] : alsoOn)
       if (std::find(others.begin(), others.end(), mi) != others.end()) here.push_back(sid);
@@ -801,57 +802,31 @@ JOrganImportReport convertJOrganText(const std::string& text, const std::string&
         const JOrganElement* t = d.find(r.id);
         if (t && t->type == "rank") {
           const int gr = buildRank(t->id, constantPitch);
-          if (gr) ranks.push_back(gr);
+          if (gr) ranks.push_back(gr - 1);
         }
       }
       if (ranks.empty()) continue;
-      const int number = ++stopCount;
-      stopsOfManual[mi].push_back(number);
-      std::ostringstream& o = stopsText;
-      o << "\n[Stop" << n3(number) << "]\n";
-      o << "Name=" << oneLine(st.name.empty() ? "Stop " + std::to_string(sid) : st.name) << "\n";
-      o << "DispLabelText=" << oneLine(labelOf(st.name.empty() ? "Stop " + std::to_string(sid) : st.name, st.description)) << "\n";
+      JOrganOrgan::Stop stop;
+      stop.name = st.name.empty() ? "Stop " + std::to_string(sid) : st.name;
+      stop.manual = static_cast<int>(mi);
       if (alsoOn.count(sid)) {
-        // On several keyboards: worked by the switch they share.
-        int& sw = switchOf[sid];
-        if (sw == 0) {
-          sw = static_cast<int>(switchOf.size());
-          switchesText << "\n[Switch" << n3(sw) << "]\n";
-          switchesText << "Name=" << oneLine(st.name.empty() ? "Stop " + std::to_string(sid) : st.name) << "\n";
-          switchesText << "DispLabelText=" << oneLine(labelOf(st.name.empty() ? "Stop " + std::to_string(sid) : st.name, st.description)) << "\n";
-          switchesText << "Displayed=Y\nDefaultToEngaged=" << (st.prop("active") == "true" ? "Y" : "N") << "\n";
-          switchesText << place(drawstop);
-          ++drawstop;
-        }
-        o << "Displayed=N\nFunction=And\nSwitchCount=1\nSwitch001=" << sw << "\n";
+        const auto it = sharedDrawstop.find(sid);
+        stop.drawstop = it != sharedDrawstop.end() ? it->second : (sharedDrawstop[sid] = drawstopOf(st, stop.name));
       } else {
-        o << "Displayed=Y\nDefaultToEngaged=" << (st.prop("active") == "true" ? "Y" : "N") << "\n";
-        o << place(drawstop);
-        ++drawstop;
+        stop.drawstop = drawstopOf(st, stop.name);
       }
-      o << "FirstAccessiblePipeLogicalKeyNumber=1\nFirstAccessiblePipeLogicalPipeNumber=1\n";
-      o << "NumberOfAccessiblePipes=" << m.keys << "\n";
-      o << "NumberOfRanks=" << ranks.size() << "\n";
-      // The stop's key range and its transposition.
-      // Its key range applies to the shifted pitch.
-      const int lo = std::max(m.firstMidi, st.num("from", 0) - m.transpose);
-      const int hi = std::min(m.firstMidi + m.keys - 1, st.num("to", 127) - m.transpose);
-      for (size_t r = 0; r < ranks.size(); ++r) {
-        const std::string rk = "Rank" + n3(static_cast<int>(r) + 1);
-        int keyLo = lo, keyHi = hi;
-        // Rank pipes are MIDI notes 0..127, pipe numbers from 1.
-        keyLo = std::max(keyLo, -transpose);
-        keyHi = std::min(keyHi, 127 - transpose);
-        if (keyHi < keyLo) keyHi = keyLo - 1;
-        o << rk << "=" << ranks[r] << "\n";
-        o << rk << "FirstAccessibleKeyNumber=" << (keyLo - m.firstMidi + 1) << "\n";
-        o << rk << "FirstPipeNumber=" << (keyLo + transpose + 1) << "\n";
-        o << rk << "PipeCount=" << std::max(0, keyHi - keyLo + 1) << "\n";
-      }
+      // Its key range applies to the shifted pitch; the rank's notes run
+      // from 0 to 127.
+      int keyLo = std::max(m.firstMidi, st.num("from", 0) - m.transpose);
+      int keyHi = std::min(m.firstMidi + m.keys - 1, st.num("to", 127) - m.transpose);
+      keyLo = std::max(keyLo, -transpose);
+      keyHi = std::min(keyHi, 127 - transpose);
+      for (int r : ranks) stop.ranks.push_back({r, keyLo, std::max(0, keyHi - keyLo + 1), transpose});
+      organ.stops.push_back(std::move(stop));
     }
   }
 
-  // Couplers: to the manual that holds the stops they reach.
+  // Couplers: to the keyboard that holds the stops they reach.
   for (size_t mi = 0; mi < manuals.size(); ++mi) {
     for (int cid : manuals[mi].couplers) {
       if (ownerOfCoupler[cid] != mi) continue;
@@ -867,6 +842,7 @@ JOrganImportReport convertJOrganText(const std::string& text, const std::string&
       if (chained) c.note("a coupler that reaches other couplers couples their keyboard's stops only");
       if (reached.empty()) continue;
       if (reached.size() > 1) c.note("a coupler reaching stops on several keyboards is a coupler to each");
+      int drawstop = -1;
       for (const auto& [dest, count] : reached) {
         if (count < static_cast<int>(stopsOwned[dest].size()))
           c.note("a coupler that reaches some of a keyboard's stops couples all of them");
@@ -878,130 +854,45 @@ JOrganImportReport convertJOrganText(const std::string& text, const std::string&
         if (dest == mi && transpose == 0 && !unisonOff) continue;
         if (cp.num("action", 0) == 6 && !unisonOff)
           c.note("a coupler played while off (inverse action) to another keyboard plays while on");
-        const int number = ++couplerCount;
-        couplersOfManual[mi].push_back(number);
-        std::ostringstream& o = couplersText;
-        o << "\n[Coupler" << n3(number) << "]\n";
-        std::string name = cp.name.empty() ? "Coupler " + std::to_string(cid) : cp.name;
-        if (reached.size() > 1) name += " (" + manuals[dest].name + ")";
-        o << "Name=" << oneLine(name) << "\n";
-        o << "DispLabelText=" << oneLine(labelOf(cp.name.empty() ? "Coupler " + std::to_string(cid) : cp.name, cp.description)) << "\n";
-        o << "Displayed=Y\nDefaultToEngaged=" << (cp.prop("active") == "true" ? "Y" : "N") << "\n";
-        o << place(drawstop);
-        ++drawstop;
-        o << "UnisonOff=" << (unisonOff ? "Y" : "N") << "\nCouplerType=Normal\n";
+        JOrganOrgan::Coupler coupler;
+        coupler.name = cp.name.empty() ? "Coupler " + std::to_string(cid) : cp.name;
+        if (drawstop < 0) drawstop = drawstopOf(cp, coupler.name);
+        coupler.drawstop = drawstop;
+        coupler.manual = static_cast<int>(mi);
+        coupler.dest = static_cast<int>(dest);
         // jOrgan hands the other keyboard's stops this keyboard's shifted
         // pitch plus the coupler's transposition, past that keyboard's own
-        // shift; here the coupler presses that keyboard's keys, which shift.
-        const int keyshift = transpose + manuals[mi].transpose - manuals[dest].transpose;
-        o << "DestinationManual=" << goManual(dest) << "\nDestinationKeyshift=" << keyshift << "\n";
-        o << "CoupleToSubsequentUnisonIntermanualCouplers=N\n";
-        o << "CoupleToSubsequentUpwardIntermanualCouplers=N\nCoupleToSubsequentDownwardIntermanualCouplers=N\n";
-        o << "CoupleToSubsequentUpwardIntramanualCouplers=N\nCoupleToSubsequentDownwardIntramanualCouplers=N\n";
+        // shift; here the coupler reaches that keyboard's division, whose
+        // stops carry its shift.
+        coupler.shift = transpose + manuals[mi].transpose - manuals[dest].transpose;
+        coupler.unisonOff = unisonOff;
+        organ.couplers.push_back(coupler);
       }
     }
   }
 
-  std::ostringstream o;
-  std::string organName;
-  for (const JOrganElement& e : d.elements)
-    if (e.type == "console" && !e.name.empty()) {
-      organName = e.name;
-      break;
-    }
-  if (organName.empty()) organName = utf8Of(pathOf(workFolder).filename());
-  // The drawstop grid: two jambs, up to six columns each, as GrandOrgue
-  // draws them, about as many rows as columns; the screen as wide as both
-  // jambs and the manuals between them, and as tall as the jambs.
-  const int controls = drawstop + static_cast<int>(tremulantEls.size());
-  const int drawstopCols =
-      std::clamp(2 * static_cast<int>(std::ceil(std::sqrt(std::max(1, controls) / 2.0))), 2, 12);
-  const int drawstopRows = std::max(1, (controls + drawstopCols - 1) / drawstopCols);
-  const int screenW = std::max(800, drawstopCols * 78 + 61 * 12 + 160);
-  const int screenH = std::max({500, (drawstopRows + 1) * 69 + 100,
-                                static_cast<int>(manuals.size()) * 70 + 260});
-  o << "; Made by Masterpiece from a jOrgan disposition (version " << d.version << ")\n";
-  o << "[Organ]\nChurchName=" << oneLine(organName) << "\nChurchAddress=\nOrganBuilder=\nOrganBuildDate=\n";
-  o << "OrganComments=Converted from a jOrgan disposition\n";
-  o << "HasPedals=" << (hasPedals ? "Y" : "N") << "\n";
-  o << "NumberOfManuals=" << (manuals.size() - (hasPedals ? 1 : 0)) << "\n";
-  o << "NumberOfEnclosures=" << enclosureEls.size() << "\n";
-  o << "NumberOfTremulants=" << tremulantEls.size() << "\n";
-  o << "NumberOfWindchestGroups=" << std::max<size_t>(1, chests.size()) << "\n";
-  o << "NumberOfReversiblePistons=0\nNumberOfGenerals=0\nNumberOfDivisionalCouplers=0\n";
-  o << "NumberOfSwitches=" << switchOf.size() << "\n";
-  o << "NumberOfRanks=" << rankCount << "\nNumberOfPanels=0\n";
-  o << "AmplitudeLevel=100\nPitchTuning=0\n";
-  o << "DispScreenSizeHoriz=" << screenW << "\n";
-  o << "DispScreenSizeVert=" << screenH << "\n";
-  o << "DispDrawstopCols=" << drawstopCols << "\nDispDrawstopRows=" << drawstopRows << "\n";
-  o << "DispDrawstopColsOffset=N\nDispPairDrawstopCols=N\nDispExtraDrawstopRows=0\nDispExtraDrawstopCols=0\n";
-  o << "DispButtonCols=10\nDispExtraButtonRows=0\nDispButtonsAboveManuals=N\n";
-  o << "DispTrimAboveManuals=Y\nDispTrimBelowManuals=Y\nDispTrimAboveExtraRows=N\n";
-  o << "DispExtraPedalButtonRow=N\nDispExtraPedalButtonRowOffset=N\nDispExtraDrawstopRowsAboveExtraButtonRows=N\n";
-  o << "DispDrawstopBackgroundImageNum=1\nDispConsoleBackgroundImageNum=1\nDispKeyHorizBackgroundImageNum=1\n";
-  o << "DispKeyVertBackgroundImageNum=1\nDispDrawstopInsetBackgroundImageNum=1\n";
-
-  for (size_t mi = 0; mi < manuals.size(); ++mi) {
-    const Manual& m = manuals[mi];
-    o << "\n[Manual" << n3(goManual(mi)) << "]\n";
-    o << "Name=" << oneLine(m.name) << "\n";
-    o << "NumberOfLogicalKeys=" << m.keys << "\nFirstAccessibleKeyLogicalKeyNumber=1\n";
-    o << "FirstAccessibleKeyMIDINoteNumber=" << m.firstMidi << "\nNumberOfAccessibleKeys=" << m.keys << "\n";
-    o << "MIDIInputNumber=" << (goManual(mi) + 1) << "\nDisplayed=Y\n";
-    const auto& ss = stopsOfManual[mi];
-    o << "NumberOfStops=" << ss.size() << "\n";
-    for (size_t i = 0; i < ss.size(); ++i) o << "Stop" << n3(static_cast<int>(i) + 1) << "=" << ss[i] << "\n";
-    const auto& cs = couplersOfManual[mi];
-    o << "NumberOfCouplers=" << cs.size() << "\n";
-    for (size_t i = 0; i < cs.size(); ++i) o << "Coupler" << n3(static_cast<int>(i) + 1) << "=" << cs[i] << "\n";
-    o << "NumberOfDivisionals=0\nNumberOfTremulants=0\n";
-  }
-  for (size_t i = 0; i < enclosureEls.size(); ++i) {
-    const JOrganElement& e = *enclosureEls[i];
-    const FilterLevel& f = filterLevelOf[e.id];
-    for (const std::string& m : e.messagesOf("continuousFilter-engaging")) {
+  for (const JOrganElement* e : enclosureEls) {
+    const FilterLevel& f = filterLevelOf[e->id];
+    for (const std::string& m : e->messagesOf("continuousFilter-engaging")) {
       const std::vector<int> b = mplBytes(m, {{"value", 0.0}});
       if (b.size() >= 3 && (b[0] & 0xf0) == 0xb0 && (b[1] == 99 || b[1] == 6))
         c.note("a swell filter's tone filter (sent as NRPN) is left out; the level follows the shoe");
     }
-    const double pct = f.open > 0 ? std::clamp(100.0 * f.closed / f.open, 0.1, 100.0) : 1.0;
-    o << "\n[Enclosure" << n3(static_cast<int>(i) + 1) << "]\n";
-    o << "Name=" << oneLine(e.name.empty() ? "Swell" : e.name) << "\n";
-    o << "AmpMinimumLevel=" << pct << "\nMIDIInputNumber=" << (i + 1) << "\nDisplayed=Y\n";
+    organ.enclosures.push_back({e->name.empty() ? std::string("Swell") : e->name,
+                                f.open > 0 ? std::clamp(100.0 * f.closed / f.open, 0.1, 100.0) : 1.0});
   }
-  for (size_t i = 0; i < tremulantEls.size(); ++i) {
-    const JOrganElement& e = *tremulantEls[i];
-    const TremulantKind& k = tremKindOf[e.id];
-    o << "\n[Tremulant" << n3(static_cast<int>(i) + 1) << "]\n";
-    o << "Name=" << oneLine(e.name.empty() ? "Tremulant" : e.name) << "\n";
-    o << "DispLabelText=" << oneLine(labelOf(e.name.empty() ? "Tremulant" : e.name, e.description)) << "\n";
-    o << "Displayed=Y\nDefaultToEngaged=" << (e.prop("active") == "true" ? "Y" : "N") << "\n";
-    o << place(drawstop);
-    ++drawstop;
-    if (k.wave) {
-      o << "TremulantType=Wave\n";
-    } else if (k.lfo) {
-      o << "TremulantType=Synth\nPeriod=" << k.periodMs << "\nStartRate=10\nStopRate=10\nAmpModDepth="
-        << k.ampDepthPct << "\n";
-    } else {
-      // FluidSynth's modulation wheel: its vibrato LFO, 8.2 Hz by default.
-      o << "TremulantType=Synth\nPeriod=122\nStartRate=10\nStopRate=10\nAmpModDepth=6\n";
-      c.note("a tremulant sent as the modulation controller is a level tremulant at 8.2 Hz");
-    }
+  for (const JOrganElement* e : tremulantEls) {
+    const TremulantKind& k = tremKindOf[e->id];
+    JOrganOrgan::Tremulant t;
+    t.name = e->name.empty() ? std::string("Tremulant") : e->name;
+    t.drawstop = drawstopOf(*e, t.name);
+    t.wave = k.wave;
+    t.periodMs = k.periodMs;
+    t.ampPct = k.ampDepthPct;
+    t.pitchCents = k.pitchCents;
+    organ.tremulants.push_back(t);
   }
-  if (chests.empty()) chests.push_back({});
-  for (size_t i = 0; i < chests.size(); ++i) {
-    o << "\n[WindchestGroup" << n3(static_cast<int>(i) + 1) << "]\n";
-    o << "Name=Windchest " << (i + 1) << "\n";
-    o << "NumberOfEnclosures=" << chests[i].first.size() << "\n";
-    for (size_t e = 0; e < chests[i].first.size(); ++e)
-      o << "Enclosure" << n3(static_cast<int>(e) + 1) << "=" << chests[i].first[e] << "\n";
-    o << "NumberOfTremulants=" << chests[i].second.size() << "\n";
-    for (size_t t = 0; t < chests[i].second.size(); ++t)
-      o << "Tremulant" << n3(static_cast<int>(t) + 1) << "=" << chests[i].second[t] << "\n";
-  }
-  o << switchesText.str() << stopsText.str() << couplersText.str() << ranksText.str();
+  if (organ.chests.empty()) organ.chests.push_back({});
 
   // What the disposition has that this leaves out.
   std::map<std::string, int> others;
@@ -1012,36 +903,37 @@ JOrganImportReport convertJOrganText(const std::string& text, const std::string&
   for (const auto& [type, n] : others)
     c.note(std::to_string(n) + " " + type + " element(s) are left out");
 
-  rep.organText = o.str();
-  // The drawstop places, now that the grid's size is known: "=\x01C12\x01"
-  // is column, "=\x01R12\x01" row, of control 12.
-  const std::string kPlace = "=\x01";
-  for (size_t at = rep.organText.find(kPlace); at != std::string::npos; at = rep.organText.find(kPlace, at)) {
-    const size_t end = rep.organText.find('\x01', at + 3);
-    if (end == std::string::npos) break;
-    const bool col = rep.organText[at + 2] == 'C';
-    const int index = std::atoi(rep.organText.c_str() + at + 3);
-    const int value = col ? index % drawstopCols + 1 : index / drawstopCols + 1;
-    rep.organText.replace(at + 1, end - at, std::to_string(value));
-  }
-  rep.organFile = utf8Of(pathOf(workFolder) / "organ.organ");
-  {
-    std::ofstream f(pathOf(rep.organFile), std::ios::binary | std::ios::trunc);
-    if (!f || !f.write(rep.organText.data(), static_cast<std::streamsize>(rep.organText.size()))) {
-      rep.error = "cannot write " + rep.organFile;
-      return rep;
-    }
-  }
+  rep.name = organ.name;
+  rep.id = organ.id;
+  rep.xml = jorganHauptwerkXml(organ);
   rep.ok = true;
   return rep;
 }
 
 namespace {
-JOrganImportReport convertJOrganUnguarded(const std::string& path, const std::string& workFolder) {
+
+std::string stemOf(const std::string& path) { return utf8Of(pathOf(path).stem()); }
+
+JOrganImportReport convertJOrganUnguarded(const std::string& path, const std::string& workFolder, bool headerOnly) {
   JOrganImportReport rep;
   std::string text;
   if (!readFile(path, text)) {
     rep.error = "cannot open " + path;
+    return rep;
+  }
+  // The name and id alone: a look at the organ, no conversion.
+  if (headerOnly) {
+    JOrganDisposition d;
+    if (!readJOrganDisposition(text, d, rep.error)) return rep;
+    rep.name = stemOf(path);
+    for (const JOrganElement& e : d.elements)
+      if (e.type == "console" && !e.name.empty()) {
+        rep.name = e.name;
+        break;
+      }
+    rep.id = 1000000000ll + static_cast<long long>(fnv(text) % 1000000000ull);
+    rep.xml = jorganHauptwerkHeader(rep.name, rep.id);
+    rep.ok = true;
     return rep;
   }
   const std::string work = workFolder.empty() ? jorganWorkFolder(path) : workFolder;
@@ -1067,11 +959,10 @@ JOrganImportReport convertJOrganUnguarded(const std::string& path, const std::st
       }
   }
   const std::filesystem::path stampFile = pathOf(work) / "import.stamp";
-  std::string old, organText;
-  if (readFile(utf8Of(stampFile), old) && old == stamp &&
-      readFile(utf8Of(pathOf(work) / "organ.organ"), organText)) {
-    rep.organText = organText;
-    rep.organFile = utf8Of(pathOf(work) / "organ.organ");
+  const std::filesystem::path xmlFile = pathOf(work) / "organ.xml";
+  std::string old, xml;
+  if (readFile(utf8Of(stampFile), old) && old == stamp && readFile(utf8Of(xmlFile), xml)) {
+    rep.xml = xml;
     std::string notes;
     if (readFile(utf8Of(pathOf(work) / "import.notes"), notes)) {
       std::istringstream lines(notes);
@@ -1084,8 +975,11 @@ JOrganImportReport convertJOrganUnguarded(const std::string& path, const std::st
   }
   std::error_code ec;
   std::filesystem::remove_all(pathOf(work) / "samples", ec);
-  rep = convertJOrganText(text, utf8Of(dir), work);
+  rep = convertJOrganText(text, utf8Of(dir), work, stemOf(path));
   if (rep.ok) {
+    // Kept beside the samples: the next load reads it and converts nothing.
+    std::ofstream x(xmlFile, std::ios::binary | std::ios::trunc);
+    x << rep.xml;
     std::ofstream n(pathOf(work) / "import.notes", std::ios::binary | std::ios::trunc);
     for (const auto& line : rep.notes) n << line << '\n';
     std::ofstream f(stampFile, std::ios::binary | std::ios::trunc);
@@ -1096,12 +990,12 @@ JOrganImportReport convertJOrganUnguarded(const std::string& path, const std::st
 
 }  // namespace
 
-// The conversion runs on a thread of its own, where an exception would end
-// the program: whatever throws -- memory refused, a file system error -- is
-// a disposition that did not open.
-JOrganImportReport convertJOrgan(const std::string& path, const std::string& workFolder) {
+// The conversion runs where an exception would end the program: whatever
+// throws -- memory refused, a file system error -- is a disposition that did
+// not open.
+JOrganImportReport convertJOrgan(const std::string& path, const std::string& workFolder, bool headerOnly) {
   try {
-    return convertJOrganUnguarded(path, workFolder);
+    return convertJOrganUnguarded(path, workFolder, headerOnly);
   } catch (const std::exception& e) {
     JOrganImportReport rep;
     rep.error = std::string("the conversion failed: ") + e.what();

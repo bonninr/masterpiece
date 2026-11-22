@@ -1,27 +1,27 @@
-// jOrgan organs, converted to GrandOrgue organs.
+// jOrgan organs, read by converting them, as GrandOrgue organs are.
 //
 // A jOrgan organ is a disposition (*.disposition, see JOrganDisposition.h)
 // and the SoundFonts its sounds name (see SoundFont2.h). jOrgan plays the
 // SoundFonts through FluidSynth: a rank selects a preset with bank and
-// program change messages and sends its notes there, swell filters send
-// volume controllers, and tremulant filters change the program or send
-// controllers. This module translates that into an organ Masterpiece already
-// plays, and touches nothing else in the program:
+// program change messages, swell filters send volume controllers, and
+// tremulant filters change the program or send controllers.
 //
-//   * each SoundFont sample a rank uses becomes a WAV file, with the
-//     sample's loop and, after a release marker, the tail FluidSynth's
-//     release envelope would play;
-//   * the disposition becomes a GrandOrgue definition (organ.organ) beside
-//     those files: keyboards are manuals, ranks are ranks of 128 pipes --
-//     each pipe the preset's region for its key, retuned from the region's
-//     root -- stops are stops on the keyboard that holds them, couplers
-//     couple to the keyboard that holds the stops they reach, swell filters
-//     are enclosures, and a tremulant filter that switches its ranks to
-//     another preset is a wave tremulant.
+// The loader reads none of that. The disposition is translated into the
+// Hauptwerk definition the loader already reads -- in memory, never written
+// as a file the program opens -- through a plain description of the organ
+// (JOrganOrgan.h, written out by JOrganHauptwerk.h):
 //
-// The program then opens organ.organ as any GrandOrgue organ. The files go
-// to a folder of the organ's own (jorganWorkFolder), and are made again only
-// when the disposition or one of its SoundFonts changes.
+//   * keyboards are keyboards and divisions; stops, couplers, swells and
+//     tremulants keep their own switches;
+//   * a rank is 128 pipes, each the preset's region for its key, retuned
+//     from the region's root;
+//   * the SoundFont samples the ranks use are written once as WAV files,
+//     each with its loop and, after a release marker, the tail of the
+//     SoundFont's release envelope, in a folder of the organ's own: the
+//     organ's root, where its samples are found.
+//
+// The folder and the translated definition stay until the disposition or
+// one of its SoundFonts changes.
 #pragma once
 
 #include <string>
@@ -32,27 +32,31 @@ namespace mp {
 // True for a jOrgan disposition (*.disposition), by name.
 bool isJOrganDisposition(const std::string& path);
 
-// Where a disposition's converted organ goes: a folder of its own in
-// `baseFolder` (empty: a jOrgan folder in the user's data folder), named
-// after the disposition and its place on disk.
+// The folder for a disposition's samples: a folder of its own in
+// `baseFolder` (empty: the jOrgan folder of Masterpiece's settings folder),
+// named after the disposition and its place on disk.
 std::string jorganWorkFolder(const std::string& dispositionPath, const std::string& baseFolder = "");
 
 struct JOrganImportReport {
-  std::string organText;           // the GrandOrgue definition made
-  std::string organFile;           // where it is: <workFolder>/organ.organ
-  std::string workFolder;
+  std::string xml;                 // the Hauptwerk definition, when ok
+  std::string name;                // the organ's name
+  long long id = 0;                // its id, from the disposition's bytes
+  std::string workFolder;          // where its samples are: the organ root
   std::string error;               // why not, when not ok
   std::vector<std::string> notes;  // what was approximated or left out
   bool ok = false;
-  bool reused = false;             // the work folder was current; nothing was written
+  bool reused = false;             // the folder was current; nothing was written
 };
 
 // Convert the disposition at `path`. `workFolder` empty: jorganWorkFolder(path).
-JOrganImportReport convertJOrgan(const std::string& path, const std::string& workFolder = "");
+// `headerOnly`: the name and id alone, no conversion.
+JOrganImportReport convertJOrgan(const std::string& path, const std::string& workFolder = "",
+                                 bool headerOnly = false);
 
 // The same from the disposition's text: `dispositionDir` is where its
-// SoundFont paths are relative to. Always writes the work folder.
+// SoundFont paths are relative to; `fallbackName` names an organ whose
+// console has no name. Always writes the samples.
 JOrganImportReport convertJOrganText(const std::string& text, const std::string& dispositionDir,
-                                     const std::string& workFolder);
+                                     const std::string& workFolder, const std::string& fallbackName = "");
 
 }  // namespace mp

@@ -209,32 +209,29 @@ A GrandOrgue organ opens from its `.organ` file in a folder or from an `.orgue` 
 
 ## jOrgan organs
 
-A jOrgan organ opens from its `.disposition` file. The disposition and the SoundFonts (`.sf2`) it names must be on this computer. Masterpiece looks for each SoundFont at the path the disposition gives, relative to the disposition's folder, and, when that path does not exist, for a file of the same name beside the disposition. A disposition shared between players often names a SoundFont by another computer's path, such as `C:\Sounds\Organ.sf2`.
+A jOrgan organ opens from its `.disposition` file.
 
-On opening, Masterpiece converts the organ into a GrandOrgue organ and opens that:
-
-- Each SoundFont sample a rank uses becomes a WAV file with the sample's loop. After a release marker, the WAV file holds the tail that the SoundFont's release envelope plays.
-- The disposition becomes a GrandOrgue definition, `organ.organ`, beside those files.
-
-The files go to a folder of the organ's own inside the `jOrgan` folder of the [settings folder](files.md#the-settings-folder). The conversion runs once. It runs again only when the disposition or one of its SoundFonts changes. Favourites and recent organs name the converted `organ.organ`, and its settings are kept under the organ's name like any other organ's.
-
-The conversion reads dispositions from jOrgan 3.0 onwards. It translates:
+- SoundFonts (`.sf2`): at the path the disposition gives, relative to its folder; otherwise a file of the same name beside the disposition (for paths such as `C:\Sounds\Organ.sf2`)
+- Conversion on opening: each SoundFont sample a rank uses to a WAV file with its loop and release tail; the disposition to a GrandOrgue definition, `organ.organ`, beside them
+- Location: a folder per organ in the `jOrgan` folder of the [settings folder](files.md#the-settings-folder)
+- Conversion again only when the disposition or a SoundFont changes
+- Favourites, recent organs and settings: under the converted `organ.organ`
+- Formats read: jOrgan 3.0 to 3.21
 
 | In the disposition | In Masterpiece |
 |---|---|
-| Keyboard | A manual. A keyboard named with "ped" is the pedal. A key range in the keyboard's MIDI message sets its keys; otherwise a manual has 61 keys from C2 and the pedal 32. A pitch shift in that message (`sub 12`) shifts every stop and coupler on the keyboard. |
-| Rank | A rank of 128 pipes. Each pipe plays the SoundFont region for its key, retuned from the region's root note with its fine tune, coarse tune and the sample's pitch correction. The rank's preset is the one its bank select and program change messages choose. |
-| Stop | A stop on the keyboard that names it, with its transposition and key range. A stop named by several keyboards is one drawstop working a stop on each. A stop with constant pitch, as theatre organs use for drums, plays the one note it is set to from every key. |
-| Coupler | A coupler to the keyboard that holds the stops it reaches, with its transposition. A keyboard's own coupler at unison that plays while off is its unison off. |
-| Stops no keyboard names | A theatre disposition reaches most stops through couplers. Such a stop belongs to the keyboard whose unison coupler reaches it, else to the keyboard whose coupler reaches it at unison. |
-| Continuous filter sending volume or expression | A swell shoe, when a message moves it; its closed level is what the filter sends at 0. When nothing moves it, it is a fixed level on its ranks. |
-| Switch filter changing the program | A wave tremulant: the ranks play the tremulant preset while it is on. |
-| Switch filter sending the modulation controller | A tremulant at 8.2 Hz that moves the level, like FluidSynth's vibrato. |
-| Console | The organ's name. The console itself is drawn in GrandOrgue's style, with the stops in two jambs beside the manuals; the knobs show the `stop=` line of each element's description, as jOrgan's skins do. |
+| Keyboard | Manual; "ped" in the name: pedal. Keys and pitch shift (`sub 12`) from its MIDI message; default 61 keys from C2, pedal 32 |
+| Rank | 128 pipes; each key the SoundFont region for it, retuned from the region's root (coarse and fine tune, pitch correction, modulation envelope). Preset from bank select and program change |
+| Stop | Stop on its keyboard: transposition, key range. Shared by several keyboards: one drawstop. Constant pitch (theatre drums): one note from every key |
+| Coupler | Coupler to the keyboard holding its stops, with transposition. Keyboard's own inverse coupler at unison: unison off |
+| Stops no keyboard names | Keyboard of the unison coupler reaching them (theatre dispositions) |
+| Continuous filter | Volume or expression, moved by an input: swell shoe, closed level from the value 0. Not moved: fixed rank level. Pitch bend: fixed rank tuning |
+| Switch filter | Program change to other samples: wave tremulant. Same samples with LFOs: level tremulant at the LFO's rate and depth. Modulation controller: level tremulant at 8.2 Hz |
+| Console | Organ name. GrandOrgue-style console, stops in two jambs; knob labels from each element's `stop=` line |
 
-These are left out, and the log names each: combinations and memories, activators, captors, keyers, incrementers, regulators, sequences, the recorder, sounds without a SoundFont (LinuxSampler, generic MIDI), the swell's tone filter sent as NRPN, a SoundFont region's own filter and its layers beyond the one made for the fewest keys, and jOrgan's skins.
+Left out, each named in the log: combinations, memories, activators, captors, keyers, incrementers, regulators, sequences, the recorder, sounds without a SoundFont (LinuxSampler, generic MIDI), NRPN tone filters, SoundFont filters, extra layers, skins.
 
-The log lists what each conversion approximated, as lines starting with `load: jOrgan import:`.
+Approximations and omissions in the log: lines starting with `load: jOrgan import:`.
 
 ## Demo sets
 

@@ -8,7 +8,7 @@
 // program as the Freedom theatre organ's do.
 #include "MpTest.h"
 
-#include "../src/mp_core/GrandOrgueImport.h"
+
 #include "../src/mp_core/OdfLoader.h"
 #include "../src/mp_jorgan/JOrganDisposition.h"
 #include "../src/mp_jorgan/JOrganImport.h"
@@ -175,6 +175,12 @@ stop=  Flute   Harmonic</description>
       <messages/>
       <action>0</action><from>0</from><to>127</to><transpose>24</transpose><velocity>0</velocity>
     </stop>
+    <stop id="25">
+      <name>Gedeckt</name>
+      <references><reference id="12"/></references>
+      <messages/>
+      <action>0</action><from>0</from><to>127</to><transpose>0</transpose><velocity>0</velocity>
+    </stop>
     <coupler id="31">
       <name>Great Unison Off</name>
       <references><reference id="24"/></references>
@@ -190,7 +196,7 @@ stop=  Flute   Harmonic</description>
     </coupler>
     <keyboard id="40">
       <name>Great</name>
-      <references><reference id="20"/><reference id="21"/><reference id="31"/></references>
+      <references><reference id="20"/><reference id="21"/><reference id="25"/><reference id="31"/></references>
       <messages>
         <keyboard-pressKey>equal 145, get pitch, greater 0 | get velocity</keyboard-pressKey>
         <keyboard-releaseKey>equal 129, get pitch, </keyboard-releaseKey>
@@ -311,50 +317,108 @@ public:
     const mp::JOrganImportReport rep = mp::convertJOrgan((dir / "Test.disposition").string(), work.string());
     MP_CHECK(rep.ok, "the disposition converts: " + rep.error);
     if (!rep.ok) return;
-    const std::string& t = rep.organText;
-    auto has = [&](const std::string& s) { return t.find(s) != std::string::npos; };
-    MP_CHECK(has("ChurchName=Test Organ"), "the console names the organ");
-    MP_CHECK(has("HasPedals=Y") && has("NumberOfManuals=1"), "a pedal and one manual");
-    MP_CHECK(has("[Manual000]\nName=Pedal") && has("[Manual001]\nName=Great"), "the pedal is manual 0");
-    MP_CHECK(has("TremulantType=Wave"), "the program-switching filter is a wave tremulant");
-    MP_CHECK(has("Name=Tremulant Gedeckt\nDispLabelText=Tremulant Gedeckt\nDisplayed=Y\nDefaultToEngaged=N\n") &&
-                 has("TremulantType=Synth\nPeriod=169.") && has("AmpModDepth=29.2"),
-             "a tremulant preset on the same samples is a level tremulant at its LFO: 5.9 Hz, 3 dB");
-    MP_CHECK(has("AmpMinimumLevel=25"), "the swell closes to the expression it sends at 0: 64 of 127, squared");
-    // Key 61 of the flute (MIDI 60) plays the low sample, rooted at 48.
-    MP_CHECK(has("Pipe061PitchTuning=1200"), "a key an octave above its region's root is retuned an octave");
-    MP_CHECK(has("Pipe073PitchTuning=-5"), "the high region at its root: its fine tune and correction");
-    MP_CHECK(has("Pipe073Gain=-1.2"), "30 cB of attenuation, as FluidSynth scales it, is 1.2 dB");
-    MP_CHECK(has("Pipe061Attack001IsTremulant=1"), "each flute pipe has its tremulant take");
-    MP_CHECK(has("Rank001FirstPipeNumber=49"), "the 4' stop reaches its rank an octave up");
-    MP_CHECK(has("Percussive=Y"), "the drum, without a loop, is percussive");
-    MP_CHECK(has("Name=Drum (41)"), "the constant-pitch drum is a rank of its own at 60 - 19");
-    MP_CHECK(has("Name=Drum (41)\nFirstMidiNoteNumber=0\nNumberOfLogicalPipes=128\nWindchestGroup=2\n"
-                 "AmplitudeLevel=100\nPitchTuning=0\nGain=-5.0"),
-             "a level filter nothing moves is its rank's level: volume 95 of 127, squared, is -5 dB");
-    MP_CHECK(has("NumberOfEnclosures=1"), "and no swell shoe");
-    MP_CHECK(has("Name=Flute\nFirstMidiNoteNumber=0\nNumberOfLogicalPipes=128\nWindchestGroup=1\n"
-                 "AmplitudeLevel=100\nPitchTuning=18.75\n"),
-             "a tuning knob tunes its ranks by the pitch bend it holds: 70 of 128, two semitones' range");
-    MP_CHECK(has("DestinationManual=1\nDestinationKeyshift=-12\n"),
-             "the coupler on the pedal reaches the great, with the pedal's octave down");
-    MP_CHECK(has("Rank001FirstPipeNumber=13\n"), "the pedal's 16' an octave under it again: key 36 plays MIDI note 12");
-    MP_CHECK(has("Name=M2.Flute 8'\nDispLabelText=Flute Harmonic\n"),
-             "a knob shows the description's stop= line, as jOrgan's skins do");
-    MP_CHECK(has("Name=Flute 4'\nDispLabelText=Flute 4'\n"), "else the stop's name");
-    MP_CHECK(has("Name=Great Unison Off\nDispLabelText=Great Unison Off\nDisplayed=Y\nDefaultToEngaged=N") &&
-                 has("UnisonOff=Y"),
-             "the great's coupler played while off is its unison off");
-    MP_CHECK(has("[Manual001]\nName=Great") && has("NumberOfStops=3"),
-             "the stop only that coupler reaches is the great's");
+    auto has = [&](const std::string& s) { return rep.xml.find(s) != std::string::npos; };
     bool leftOut = false;
     for (const auto& n : rep.notes) leftOut = leftOut || n.find("combination") != std::string::npos;
     MP_CHECK(leftOut, "the combination is reported as left out");
+    MP_CHECK(has("<Text>Flute Harmonic</Text>"), "a knob shows the description's stop= line, as jOrgan's skins do");
+    MP_CHECK(has("<Text>Flute 4'</Text>"), "else the stop's name");
+    MP_CHECK(has("<FiltParamWhenClsd_OverallAttnDb>11.9"),
+             "the swell closes to the expression it sends at 0: 64 of 127, squared, 11.9 dB down");
+    MP_CHECK(has("<MasterpiecePercussive>Y</MasterpiecePercussive>"), "the drum, without a loop, is percussive");
+
+    // It loads as an organ.
+    mp::OdfLoader loader;
+    mp::OrganModel m;
+    mp::OdfDiagnostics diag;
+    mp::OdfLoader::Options opts;
+    MP_CHECK(loader.loadFromXmlString(rep.xml, (dir / "Test.disposition").string(), opts, m, diag),
+             "the translated organ loads");
+    MP_CHECK(m.organName == "Test Organ", "the console names the organ: " + m.organName);
+    MP_CHECK(m.keyboards.size() == 2, "two keyboards, got " + std::to_string(m.keyboards.size()));
+    const mp::Keyboard* pedal = nullptr;
+    const mp::Keyboard* great = nullptr;
+    for (const auto& [id, k] : m.keyboards) (k.name == "Pedal" ? pedal : great) = &k;
+    MP_CHECK(pedal && great && pedal->keyboardId == 1 && great->name == "Great", "the pedal first, then the great");
+    auto rankNamed = [&](const std::string& name) -> const mp::Rank* {
+      for (const auto& [id, r] : m.ranks)
+        if (r.name == name) return &r;
+      return nullptr;
+    };
+    auto pipeAt = [](const mp::Rank* r, int midi) -> const mp::Pipe* {
+      if (!r) return nullptr;
+      for (const auto& p : r->pipes)
+        if (p.midiNote == midi) return &p;
+      return nullptr;
+    };
+    auto stopNamed = [&](const std::string& name) -> const mp::Stop* {
+      for (const auto& [id, s] : m.stops)
+        if (s.name == name) return &s;
+      return nullptr;
+    };
+    const mp::Rank* flute = rankNamed("Flute");
+    const mp::Pipe* c4 = pipeAt(flute, 60);
+    const mp::Pipe* c5 = pipeAt(flute, 72);
+    MP_CHECK(c4 && std::abs(c4->baseTuningDeviationCents - 1218.75) < 0.01,
+             "a key an octave above its region's root is retuned an octave, plus the tuning knob's 18.75 cents "
+             "(70 of 128 in a two-semitone bend)");
+    MP_CHECK(c5 && std::abs(c5->baseTuningDeviationCents - 13.75) < 0.01,
+             "the high region at its root: its fine tune and correction, -5 cents, and the knob");
+    MP_CHECK(c5 && !c5->layers.empty() && std::abs(c5->layers[0].gainDb + 1.2) < 0.01,
+             "30 cB of attenuation, as FluidSynth scales it, is 1.2 dB");
+    MP_CHECK(c4 && !c4->layers.empty() && !c4->layers[0].attacks.empty() &&
+                 c4->layers[0].attacks[0].sample.fileName.find("low") != std::string::npos,
+             "the low region's sample, written as a WAV file");
+    MP_CHECK(rankNamed("Flute (tremulant)") != nullptr, "the flute has its tremulant takes");
+    const mp::Stop* flute4 = stopNamed("Flute 4'");
+    MP_CHECK(flute4 && flute4->ranks.size() == 1 && flute4->ranks[0].midiIncrement == 12 &&
+                 flute4->ranks[0].firstMappedDivisionNote == 36,
+             "the 4' stop reaches its rank an octave up");
+    MP_CHECK(flute4 && flute4->ranks[0].alternateRankId != 0 && flute4->ranks[0].retriggerOnAlternate,
+             "and the wave tremulant swaps in the tremulant takes");
+    const mp::Stop* flute16 = stopNamed("Flute 16'");
+    MP_CHECK(flute16 && flute16->ranks[0].midiIncrement == -24,
+             "the pedal's 16' an octave below its key, and the pedal's own octave down again");
+    const mp::Rank* drum = rankNamed("Drum (41)");
+    const mp::Pipe* drumPipe = pipeAt(drum, 50);
+    MP_CHECK(drumPipe && std::abs(drumPipe->baseTuningDeviationCents + 1900.0) < 0.01,
+             "the constant-pitch drum plays note 41 (60 - 19) from every key");
+    MP_CHECK(drumPipe && std::abs(drumPipe->layers[0].gainDb + 5.04) < 0.05,
+             "a level filter nothing moves is its rank's level: volume 95 of 127, squared, is -5 dB");
+    MP_CHECK(m.enclosures.size() == 1, "one swell shoe");
+    MP_CHECK(m.tremulants.size() == 2, "two tremulants");
+    const mp::Tremulant* lfo = nullptr;
+    for (const auto& [id, t] : m.tremulants)
+      if (t.name == "Tremulant Gedeckt") lfo = &t;
+    MP_CHECK(lfo && std::abs(lfo->engagedHz - 5.9) < 0.05, "the LFO tremulant at its LFO's 5.9 Hz");
+    const mp::Pipe* gedeckt = pipeAt(rankNamed("Gedeckt"), 60);
+    const auto mod = gedeckt ? m.tremulantPipes.find(gedeckt->pipeId) : m.tremulantPipes.end();
+    MP_CHECK(mod != m.tremulantPipes.end() && std::abs(mod->second.ampDepthDb - 5.79) < 0.05,
+             "its 3 dB swing: 29% of level, 5.8 dB over the waveform's 15%");
+    bool coupled = false, unisonOff = false;
+    for (const auto& ka : m.keyActions) {
+      if (ka.conditionSwitchId != 0 && ka.conditionWhenEngaged && ka.midiIncrement == -12) coupled = true;
+      if (ka.conditionSwitchId != 0 && !ka.conditionWhenEngaged) unisonOff = true;
+    }
+    MP_CHECK(coupled, "the coupler on the pedal reaches the great, with the pedal's octave down");
+    MP_CHECK(unisonOff, "the great's coupler played while off is its unison off");
+    MP_CHECK(stopNamed("Flute 2'") && stopNamed("Flute 2'")->divisionId == great->keyboardId,
+             "the stop only that coupler reaches is the great's");
+    size_t sounding = 0;
+    for (const auto& [id, s] : m.stops) sounding += s.ranks.empty() ? 0 : 1;
+    MP_CHECK(sounding == 6, "six stops that sound, got " + std::to_string(sounding));
+    MP_CHECK(!m.displayPages.empty(), "a console page");
+    MP_CHECK(m.samples.size() > 0 && std::all_of(m.samples.begin(), m.samples.end(), [&](const auto& s) {
+               return fs::exists(work / fs::path(s.second.fileName));
+             }), "every sample it names was written in the work folder");
+    MP_CHECK(mp::deriveOrganRoot((dir / "Test.disposition").string()) ==
+                 mp::jorganWorkFolder((dir / "Test.disposition").string()),
+             "the organ root of a disposition is its work folder");
 
     // The looped sample: its loop, then the release tail, marked by a cue.
     bool checkedWav = false;
     for (const auto& entry : fs::recursive_directory_iterator(work / "samples")) {
-      if (entry.path().filename().string().find("low") == std::string::npos) continue;
+      if (entry.path().filename().string().find("low.wav") == std::string::npos) continue;
       const std::string wav = fileBytes(entry.path());
       const size_t smpl = chunkAt(wav, "smpl"), cue = chunkAt(wav, "cue "), data = chunkAt(wav, "data");
       MP_CHECK(smpl && cue && data, "the WAV has its data, smpl and cue chunks");
@@ -370,34 +434,16 @@ public:
     }
     MP_CHECK(checkedWav, "the low sample was written");
 
-    // The organ file is there, and the GrandOrgue import reads it as an organ.
-    MP_CHECK(fs::exists(fs::path(rep.organFile)) && fileBytes(fs::path(rep.organFile)) == rep.organText,
-             "organ.organ holds the definition");
-    const mp::GrandOrgueImportReport go = mp::convertGrandOrgue(rep.organFile);
-    MP_CHECK(go.ok, "the GrandOrgue import reads it: " + go.error);
-    mp::OdfLoader loader;
-    mp::OrganModel m;
-    mp::OdfDiagnostics diag;
-    mp::OdfLoader::Options opts;
-    MP_CHECK(loader.loadFromXmlString(go.xml, rep.organFile, opts, m, diag), "the converted organ loads");
-    MP_CHECK(m.keyboards.size() == 2, "two keyboards, got " + std::to_string(m.keyboards.size()));
-    // The coupler is a listed control too, with no ranks of its own.
-    size_t sounding = 0;
-    for (const auto& [id, s] : m.stops) sounding += s.ranks.empty() ? 0 : 1;
-    MP_CHECK(sounding == 5, "five stops that sound, got " + std::to_string(sounding));
-    MP_CHECK(m.enclosures.size() == 1, "one swell");
-    MP_CHECK(m.tremulants.size() == 2, "two tremulants");
-    MP_CHECK(mp::deriveOrganRoot(rep.organFile) == work.string(),
-             "its samples are found beside it, in the work folder");
-    MP_CHECK(m.samples.size() > 0 && std::all_of(m.samples.begin(), m.samples.end(), [&](const auto& s) {
-               return fs::exists(work / fs::path(s.second.fileName));
-             }), "every sample it names was written");
-
-    // A second conversion finds the work folder current.
+    // A second conversion finds the work folder current; a header-only one
+    // converts nothing.
     const mp::JOrganImportReport again = mp::convertJOrgan((dir / "Test.disposition").string(), work.string());
     MP_CHECK(again.ok && again.reused, "a second load reuses the converted samples");
-    MP_CHECK(again.organText == rep.organText && again.organFile == rep.organFile, "and gives the same definition");
+    MP_CHECK(again.xml == rep.xml, "and gives the same definition");
     MP_CHECK(again.notes == rep.notes, "and the same notes");
+    const mp::JOrganImportReport header =
+        mp::convertJOrgan((dir / "Test.disposition").string(), (dir / "w4").string(), true);
+    MP_CHECK(header.ok && header.name == "Test Organ" && header.id == rep.id && !fs::exists(dir / "w4"),
+             "a header-only load names the organ and writes nothing");
 
     // Damaged files fail to open; they never take the program down.
     {

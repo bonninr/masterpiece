@@ -21,6 +21,7 @@
 
 #include "CodmCompiler.h"
 #include "GrandOrgueImport.h"
+#include "mp_jorgan/JOrganImport.h"
 #include "Temperament.h"
 
 #include <pugixml.hpp>
@@ -396,6 +397,18 @@ OdfType OdfLoader::detectType(const std::string& xmlHead, const std::string& fil
 bool OdfLoader::load(const std::string& odfPath, const Options& opts,
                      OrganModel& outModel, OdfDiagnostics& outDiag, ProgressFn progress) {
   (void)progress;
+  // A jOrgan disposition likewise, by the jOrgan module (src/mp_jorgan).
+  if (isJOrganDisposition(odfPath)) {
+    const JOrganImportReport j = convertJOrgan(odfPath, "", opts.headerOnly);
+    if (!j.ok) {
+      outDiag.errors.emplace_back(j.error);
+      return false;
+    }
+    for (const auto& n : j.notes) outDiag.warnings.emplace_back("jOrgan import: " + n);
+    const bool ok = loadFromXmlString(j.xml, odfPath, opts, outModel, outDiag);
+    outModel.everyKeyboardPlayable = true;
+    return ok;
+  }
   // A GrandOrgue definition is converted to the equivalent definition in
   // memory and loaded as that; nothing past this point knows the difference.
   if (isGrandOrgueDefinition(odfPath)) {
@@ -2901,6 +2914,8 @@ std::string deriveOrganRoot(const std::string& odfPath) {
   const std::filesystem::path odf = pathOf(odfPath);
   // A GrandOrgue set's paths are relative to the .organ file's own folder.
   if (isGrandOrgueDefinition(odfPath)) return utf8Of(odf.parent_path());
+  // A jOrgan organ's samples are the WAV files its translation wrote.
+  if (isJOrganDisposition(odfPath)) return jorganWorkFolder(odfPath);
   const std::filesystem::path logicalRoot = organRootFrom(odf);
   if (hasInstallationPackages(logicalRoot)) return utf8Of(logicalRoot);
 
