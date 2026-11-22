@@ -356,9 +356,9 @@ public:
         if (s.name == name) return &s;
       return nullptr;
     };
-    const mp::Rank* flute = rankNamed("Flute");
-    const mp::Pipe* c4 = pipeAt(flute, 60);
-    const mp::Pipe* c5 = pipeAt(flute, 72);
+    const mp::Rank* fluteRank = rankNamed("Flute");
+    const mp::Pipe* c4 = pipeAt(fluteRank, 60);
+    const mp::Pipe* c5 = pipeAt(fluteRank, 72);
     MP_CHECK(c4 && std::abs(c4->baseTuningDeviationCents - 1218.75) < 0.01,
              "a key an octave above its region's root is retuned an octave, plus the tuning knob's 18.75 cents "
              "(70 of 128 in a two-semitone bend)");
@@ -379,8 +379,8 @@ public:
     const mp::Stop* flute16 = stopNamed("Flute 16'");
     MP_CHECK(flute16 && flute16->ranks[0].midiIncrement == -24,
              "the pedal's 16' an octave below its key, and the pedal's own octave down again");
-    const mp::Rank* drum = rankNamed("Drum (41)");
-    const mp::Pipe* drumPipe = pipeAt(drum, 50);
+    const mp::Rank* drumRank = rankNamed("Drum (41)");
+    const mp::Pipe* drumPipe = pipeAt(drumRank, 50);
     MP_CHECK(drumPipe && std::abs(drumPipe->baseTuningDeviationCents + 1900.0) < 0.01,
              "the constant-pitch drum plays note 41 (60 - 19) from every key");
     MP_CHECK(drumPipe && std::abs(drumPipe->layers[0].gainDb + 5.04) < 0.05,
@@ -391,8 +391,8 @@ public:
     for (const auto& [id, t] : m.tremulants)
       if (t.name == "Tremulant Gedeckt") lfo = &t;
     MP_CHECK(lfo && std::abs(lfo->engagedHz - 5.9) < 0.05, "the LFO tremulant at its LFO's 5.9 Hz");
-    const mp::Pipe* gedeckt = pipeAt(rankNamed("Gedeckt"), 60);
-    const auto mod = gedeckt ? m.tremulantPipes.find(gedeckt->pipeId) : m.tremulantPipes.end();
+    const mp::Pipe* gedecktPipe = pipeAt(rankNamed("Gedeckt"), 60);
+    const auto mod = gedecktPipe ? m.tremulantPipes.find(gedecktPipe->pipeId) : m.tremulantPipes.end();
     MP_CHECK(mod != m.tremulantPipes.end() && std::abs(mod->second.ampDepthDb - 5.79) < 0.05,
              "its 3 dB swing: 29% of level, 5.8 dB over the waveform's 15%");
     bool coupled = false, unisonOff = false;
