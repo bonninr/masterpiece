@@ -60,6 +60,8 @@ A request that changes something is sent with `Content-Type: application/json`, 
 
 A microcontroller on Wi-Fi, such as an ESP32, sends these requests directly. It should keep the Wi-Fi power saving off, which otherwise delays each request by up to a tenth of a second. Notes are played over MIDI as before.
 
+The folder `skills/` of the [repository](https://github.com/bonninr/masterpiece/tree/dev/skills) holds instructions for AI agents that operate Masterpiece through this API, the command line and the settings files: builds, voicing, output routing, MIDI mapping, recordings. Masterpiece itself calls no AI; the player's agent reads the instructions and sends the requests above.
+
 ### Over MIDI and OSC
 
 The same objects, with the same types and indexes, can be read and changed without HTTP:
