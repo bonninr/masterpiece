@@ -90,7 +90,8 @@ A text file, one `key value` per line, lines starting with `#` ignored. It holds
 | `packagedir` | Package folder where composites look for the organs they play. | **Package folder** |
 | `openfolder`, `dialogfolder <kind> <path>` | Where the file dialogs opened last. | Automatic |
 | `favourite <kind> <slot> <name> \| <target>` | The favourites of organs, temperaments and combination sets. | **File > Open...**, the favourites window |
-| `storage`, `mono`, `releases`, `releaselength`, `releasecutoff`, `rate`, `cache`, `stream`, `streamhead`, `streamheadpct`, `preload`, `simple`, `wind`, `tremulant`, `enclosure`, `voicing`, `originalpitch`, `buses`, `groups` and others | The defaults that an organ without its own settings starts with. | **Save as default** in **Organ settings > Loading** |
+| `storage`, `mono`, `releases`, `releaselength`, `releasecutoff`, `rate`, `cache`, `stream`, `streamhead`, `streamheadpct`, `preload`, `simple`, `wind`, `tremulant`, `enclosure`, `voicing`, `originalpitch` and others | The defaults that an organ without its own settings starts with. | **Save as default** in **Organ settings > Loading** |
+| `buses`, `busname`, `defaultroute`, `busir`, `buseq`, `busfilt`, `livepair`, `groups` | The outputs, the same for every organ: their device channels and sends, names, the default destination, rooms, EQ, crossovers, faders and speaker groups. | **Organ settings > Outputs**, at once |
 
 The standalone program rewrites the file at once when most of these change. The plugins read it at each organ load.
 
