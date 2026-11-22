@@ -14469,7 +14469,8 @@ public:
     const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-stacked-enclosures");
     dir.deleteRecursively();
     dir.createDirectory();
-    for (const char* name : {"060", "062"})
+    // Two pipes a stop: GrandOrgue takes a stop of one pipe for an effect.
+    for (const char* name : {"060", "061", "062", "063"})
       SampleLibraryTest::writeWav(dir.getChildFile("G").getChildFile(juce::String(name) + ".wav"), 48000, 1, 48000.0,
                                   0, 48000);
     const auto organ = dir.getChildFile("stacked.organ");
@@ -14484,18 +14485,18 @@ public:
         "[WindchestGroup002]\r\nName=Alone\r\nNumberOfEnclosures=1\r\nEnclosure001=3\r\nNumberOfTremulants=0\r\n"
         "[Manual001]\r\nName=Great\r\nNumberOfLogicalKeys=4\r\nFirstAccessibleKeyMIDINoteNumber=60\r\n"
         "NumberOfAccessibleKeys=4\r\nNumberOfStops=2\r\nStop001=1\r\nStop002=2\r\n"
-        "[Stop001]\r\nName=Stacked\r\nNumberOfLogicalPipes=1\r\nNumberOfAccessiblePipes=1\r\n"
-        "FirstAccessiblePipeLogicalKeyNumber=1\r\nWindchestGroup=1\r\nPipe001=G\\060.wav\r\n"
-        "[Stop002]\r\nName=Alone\r\nNumberOfLogicalPipes=1\r\nNumberOfAccessiblePipes=1\r\n"
-        "FirstAccessiblePipeLogicalKeyNumber=3\r\nWindchestGroup=2\r\nPipe001=G\\062.wav\r\n");
+        "[Stop001]\r\nName=Stacked\r\nNumberOfLogicalPipes=2\r\nNumberOfAccessiblePipes=2\r\n"
+        "FirstAccessiblePipeLogicalKeyNumber=1\r\nWindchestGroup=1\r\nPipe001=G\\060.wav\r\nPipe002=G\\061.wav\r\n"
+        "[Stop002]\r\nName=Alone\r\nNumberOfLogicalPipes=2\r\nNumberOfAccessiblePipes=2\r\n"
+        "FirstAccessiblePipeLogicalKeyNumber=3\r\nWindchestGroup=2\r\nPipe001=G\\062.wav\r\nPipe002=G\\063.wav\r\n");
 
     mp::MasterpieceProcessor proc;
     proc.overrideCacheMode(mp::SampleLibrary::CacheMode::Off);
     proc.prepareToPlay(48000.0, 256);
     const auto r = proc.loadOrgan(organ, 0, false);
-    MP_CHECK(r.ok && r.samples.loaded == 2, "the organ loads with both pipes (" + std::to_string(r.samples.loaded) + ")");
+    MP_CHECK(r.ok && r.samples.loaded == 4, "the organ loads with its four pipes (" + std::to_string(r.samples.loaded) + ")");
     const auto& m = proc.organModel();
-    MP_CHECK(m.pipeExtraEnclosures.size() == 1, "one pipe stands in a second box, got " +
+    MP_CHECK(m.pipeExtraEnclosures.size() == 2, "the stacked stop's two pipes stand in a second box, got " +
                                                     std::to_string(m.pipeExtraEnclosures.size()));
 
     mp::Id stacked = 0, alone = 0;
