@@ -1,0 +1,4 @@
+"Some samples are missing" = "Některé vzorky chybí"
+"1 sample file named by the organ was not found, so the pipes it belongs to are silent. A stop with none of its samples does not respond." = "1 soubor vzorku, který varhany uvádějí, nebyl nalezen, takže píšťaly, k nimž patří, jsou tiché. Rejstřík bez jediného vzorku nereaguje."
+"%1 sample files named by the organ were not found, so the pipes they belong to are silent. A stop with none of its samples does not respond." = "%1 souborů vzorků, které varhany uvádějí, nebylo nalezeno, takže píšťaly, k nimž patří, jsou tiché. Rejstřík bez jediného vzorku nereaguje."
+"The organ was installed in part, or a package it needs is missing. Installing the organ again, with every package it needs, usually puts it right." = "Varhany byly nainstalovány jen zčásti, nebo chybí balíček, který potřebují. Nová instalace varhan se všemi potřebnými balíčky to obvykle napraví."

@@ -52,6 +52,7 @@ enum class LoopSelection {
 struct SampleLoadReport {
   int loaded = 0;
   int missing = 0;    // referenced but not on disk
+  int missingFileCount = 0;  // the files behind `missing`: one file can serve several samples
   int encrypted = 0;  // .hbw/.hbx — ADR-003, we do not decode these
   int wanted = 0;     // what the pipework asked for, of which `loaded` arrived
   int licensed = 0;   // left out: the publisher's licence is not confirmed

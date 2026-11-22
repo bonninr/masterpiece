@@ -1406,6 +1406,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
           }
         }
         report.missing += readsFor(refIt->first);
+        ++report.missingFileCount;
         if (report.missingFiles.size() < 50)
           report.missingFiles.push_back(ref.fileName);
         continue;
