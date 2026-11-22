@@ -23,7 +23,7 @@ namespace {
 
 // Bumped whenever the conversion changes what it writes, so a work folder
 // from an earlier version is made again.
-constexpr int kImporterVersion = 8;
+constexpr int kImporterVersion = 9;
 
 std::string lower(std::string s) {
   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -144,6 +144,10 @@ struct TremulantKind {
   bool wave = false;      // switches the rank to another program
   int programDelta = 0;   // ... this far from its own
   bool synth = false;     // sends the modulation controller
+  // The other preset plays the same samples, swung by its LFOs: a level
+  // tremulant at their rate and depth.
+  bool lfo = false;
+  double periodMs = 122.0, ampDepthPct = 6.0;
 };
 
 // The level a controller value stands for in FluidSynth's default
@@ -609,6 +613,51 @@ JOrganImportReport convertJOrganText(const std::string& text, const std::string&
     tremulantEls.push_back(&e);
   }
 
+  // A preset switch whose tremulant preset plays the same samples as the
+  // ranks' own, and swings them with its LFOs, records no tremulant: it is
+  // a level tremulant at the LFOs' rate and depth. Judged on the first rank
+  // that uses it, at keys across the compass.
+  for (auto& [f, k] : tremKindOf) {
+    if (!k.wave) continue;
+    for (const auto& [rid, rs] : rankSound) {
+      if (std::find(rs.tremulants.begin(), rs.tremulants.end(), f) == rs.tremulants.end()) continue;
+      const auto font = c.fonts.find(rs.sound);
+      if (font == c.fonts.end()) continue;
+      const SoundFont2& sf = *font->second;
+      const int main = c.presetOf(sf, rs.bank, rs.bankLsb, rs.program);
+      const int trem = c.presetOf(sf, rs.bank, rs.bankLsb, rs.program + k.programDelta);
+      if (main < 0 || trem < 0) continue;
+      const auto mainRegions = sf.regions(main), tremRegions = sf.regions(trem);
+      int compared = 0, same = 0;
+      const Sf2Region* lfoRegion = nullptr;
+      for (int key = 36; key <= 96; key += 4) {
+        const Sf2Region *a = nullptr, *ar = nullptr, *b = nullptr, *br = nullptr;
+        if (!c.regionFor(sf, mainRegions, key, rs.velocity, a, ar) ||
+            !c.regionFor(sf, tremRegions, key, rs.velocity, b, br))
+          continue;
+        ++compared;
+        if (a->sample == b->sample) ++same;
+        if (!lfoRegion || (key <= 60 && (b->modLfoToPitch || b->modLfoToVolumeCb || b->vibLfoToPitch))) lfoRegion = b;
+      }
+      if (compared == 0 || same * 5 < compared * 4 || !lfoRegion) break;
+      const Sf2Region& l = *lfoRegion;
+      const bool mod = l.modLfoToPitch != 0.0 || l.modLfoToVolumeCb != 0.0;
+      const double hz = mod ? l.modLfoHz : l.vibLfoHz;
+      const double cents = std::abs(mod ? l.modLfoToPitch : l.vibLfoToPitch);
+      k.wave = false;
+      k.lfo = true;
+      k.periodMs = 1000.0 / std::clamp(hz, 1.0, 20.0);
+      // The level swing it states; or, for a pitch swing alone, the level
+      // swing GrandOrgue pairs with it (15% to 8.4 cents).
+      k.ampDepthPct = l.modLfoToVolumeCb != 0.0
+                          ? 100.0 * (1.0 - std::pow(10.0, -std::abs(l.modLfoToVolumeCb) / 200.0))
+                          : cents / 0.56;
+      k.ampDepthPct = std::clamp(k.ampDepthPct, 1.0, 50.0);
+      c.note("a tremulant preset that swings the same samples with its LFOs is a level tremulant at their rate");
+      break;
+    }
+  }
+
   // Windchest groups: one per set of filters.
   std::map<std::pair<std::vector<int>, std::vector<int>>, int> chestOf;
   std::vector<std::pair<std::vector<int>, std::vector<int>>> chests;
@@ -932,6 +981,9 @@ JOrganImportReport convertJOrganText(const std::string& text, const std::string&
     ++drawstop;
     if (k.wave) {
       o << "TremulantType=Wave\n";
+    } else if (k.lfo) {
+      o << "TremulantType=Synth\nPeriod=" << k.periodMs << "\nStartRate=10\nStopRate=10\nAmpModDepth="
+        << k.ampDepthPct << "\n";
     } else {
       // FluidSynth's modulation wheel: its vibrato LFO, 8.2 Hz by default.
       o << "TremulantType=Synth\nPeriod=122\nStartRate=10\nStopRate=10\nAmpModDepth=6\n";
@@ -1009,8 +1061,9 @@ JOrganImportReport convertJOrganUnguarded(const std::string& path, const std::st
         std::error_code ec;
         const auto size = std::filesystem::file_size(p, ec);
         const auto time = std::filesystem::last_write_time(p, ec);
-        stamp += font + " " + std::to_string(ec ? 0 : size) + " " +
-                 std::to_string(ec ? 0 : time.time_since_epoch().count()) + "\n";
+        // Plain integers: a file time's count is __int128 on some libc++.
+        stamp += font + " " + std::to_string(ec ? 0ull : static_cast<unsigned long long>(size)) + " " +
+                 std::to_string(ec ? 0ll : static_cast<long long>(time.time_since_epoch().count())) + "\n";
       }
   }
   const std::filesystem::path stampFile = pathOf(work) / "import.stamp";

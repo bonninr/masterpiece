@@ -18,7 +18,12 @@ enum : int {
   kStartloopAddrsOffset = 2,
   kEndloopAddrsOffset = 3,
   kStartAddrsCoarseOffset = 4,
+  kModLfoToPitch = 5,
+  kVibLfoToPitch = 6,
   kModEnvToPitch = 7,
+  kModLfoToVolume = 13,
+  kFreqModLfo = 22,
+  kFreqVibLfo = 24,
   kInitialFilterFc = 8,
   kEndAddrsCoarseOffset = 12,
   kPan = 17,
@@ -266,6 +271,11 @@ std::vector<Sf2Region> SoundFont2::regions(int presetIndex) const {
       r.sustainCb = std::clamp(sum(kSustainVolEnv, 0), 0, 1440);
       r.filterFcCents = sum(kInitialFilterFc, 13500);
       r.exclusiveClass = iz.get(kExclusiveClass, 0);
+      r.modLfoHz = 8.176 * std::pow(2.0, sum(kFreqModLfo, 0) / 1200.0);
+      r.vibLfoHz = 8.176 * std::pow(2.0, sum(kFreqVibLfo, 0) / 1200.0);
+      r.modLfoToPitch = sum(kModLfoToPitch, 0);
+      r.vibLfoToPitch = sum(kVibLfoToPitch, 0);
+      r.modLfoToVolumeCb = sum(kModLfoToVolume, 0);
       out.push_back(r);
     }
   }
@@ -370,6 +380,8 @@ std::string SoundFont2::Builder::bytes() const {
       if (z.fineTune) gen(kFineTune, z.fineTune);
       if (z.coarseTune) gen(kCoarseTune, z.coarseTune);
       if (z.modEnvToPitch) gen(kModEnvToPitch, z.modEnvToPitch);
+      if (z.modLfoToVolume) gen(kModLfoToVolume, z.modLfoToVolume);
+      if (z.freqModLfo) gen(kFreqModLfo, z.freqModLfo);
       if (z.attenuationCb) gen(kInitialAttenuation, z.attenuationCb);
       gen(kReleaseVolEnv, z.releaseTimecents);
       gen(kSampleModes, z.loopMode);

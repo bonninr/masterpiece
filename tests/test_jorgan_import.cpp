@@ -113,6 +113,24 @@ const char* kDisposition = R"(<?xml version="1.0" encoding="UTF-8" ?>
       </messages>
       <value>0.5</value>
     </continuousFilter>
+    <switchFilter id="6">
+      <name>Tremulant Gedeckt</name>
+      <references/>
+      <messages>
+        <switchFilter-intercept>equal 192, get program, </switchFilter-intercept>
+        <switchFilter-engaged>set 192, set program | add 1, </switchFilter-engaged>
+        <switchFilter-disengaged>set 192, set program 0, </switchFilter-disengaged>
+      </messages>
+    </switchFilter>
+    <rank id="12">
+      <name>Gedeckt</name>
+      <references><reference id="1"/><reference id="6"/></references>
+      <messages>
+        <rank-engaged>set 176, set 0, set 0</rank-engaged>
+        <rank-engaged>set 192, set 60, </rank-engaged>
+        <rank-notePlayed>set 144, set pitch, set 127</rank-notePlayed>
+      </messages>
+    </rank>
     <rank id="11">
       <name>Drum</name>
       <references><reference id="1"/><reference id="4"/></references>
@@ -233,6 +251,7 @@ public:
     b.samples.push_back({"low", sine(8000, 130.81), 2000, 6000, 44100, 48, 0});
     b.samples.push_back({"high", sine(8000, 523.25), 2000, 6000, 44100, 72, -10});
     b.samples.push_back({"drum", sine(3000, 80.0), 0, 0, 44100, 60, 0});
+    b.samples.push_back({"low trem", sine(8000, 131.5), 2000, 6000, 44100, 48, 0});
     mp::SoundFont2::Builder::Preset flute{"Flute", 0, 50, {}};
     flute.zones.push_back({0, 63, 0, -1, 0, 1, 0, -6000});
     flute.zones.push_back({64, 127, 1, -1, 5, 1, 30, -6000});
@@ -240,11 +259,19 @@ public:
     mp::SoundFont2::Builder::Preset trem{"Flute trem", 0, 10, {}};
     // Tuned down a tone and back up by the modulation envelope, as the
     // Piteå reeds are: in tune while held.
-    trem.zones.push_back({0, 127, 0, -1, 0, 1, 0, -6000, -2, 200});
+    trem.zones.push_back({0, 127, 3, -1, 0, 1, 0, -6000, -2, 200});
     b.presets.push_back(trem);
     mp::SoundFont2::Builder::Preset drum{"Drum", 0, 3, {}};
     drum.zones.push_back({0, 127, 2, -1, 0, 0, 0, -12000});
     b.presets.push_back(drum);
+    // A tremulant preset on the same sample, swung by the modulation LFO:
+    // 3 dB at 5.9 Hz, as the Freedom's are.
+    mp::SoundFont2::Builder::Preset gedeckt{"Gedeckt", 0, 60, {}};
+    gedeckt.zones.push_back({0, 127, 0, -1, 0, 1, 0, -6000});
+    b.presets.push_back(gedeckt);
+    mp::SoundFont2::Builder::Preset gedecktTrem{"Gedeckt trem", 0, 61, {}};
+    gedecktTrem.zones.push_back({0, 127, 0, -1, 0, 1, 0, -6000, 0, 0, 30, -565});
+    b.presets.push_back(gedecktTrem);
     {
       std::ofstream f(dir / "test.sf2", std::ios::binary);
       const std::string s = b.bytes();
@@ -253,7 +280,7 @@ public:
     mp::SoundFont2 sf;
     std::string err;
     MP_CHECK(sf.open((dir / "test.sf2").string(), err), "the SoundFont opens: " + err);
-    MP_CHECK(sf.presets().size() == 3 && sf.samples().size() == 3, "three presets, three samples");
+    MP_CHECK(sf.presets().size() == 5 && sf.samples().size() == 4, "five presets, four samples");
     const int p = sf.findPreset(0, 50);
     MP_CHECK(p == 0, "the flute is bank 0 program 50");
     const auto regions = sf.regions(p);
@@ -290,6 +317,9 @@ public:
     MP_CHECK(has("HasPedals=Y") && has("NumberOfManuals=1"), "a pedal and one manual");
     MP_CHECK(has("[Manual000]\nName=Pedal") && has("[Manual001]\nName=Great"), "the pedal is manual 0");
     MP_CHECK(has("TremulantType=Wave"), "the program-switching filter is a wave tremulant");
+    MP_CHECK(has("Name=Tremulant Gedeckt\nDispLabelText=Tremulant Gedeckt\nDisplayed=Y\nDefaultToEngaged=N\n") &&
+                 has("TremulantType=Synth\nPeriod=169.") && has("AmpModDepth=29.2"),
+             "a tremulant preset on the same samples is a level tremulant at its LFO: 5.9 Hz, 3 dB");
     MP_CHECK(has("AmpMinimumLevel=25"), "the swell closes to the expression it sends at 0: 64 of 127, squared");
     // Key 61 of the flute (MIDI 60) plays the low sample, rooted at 48.
     MP_CHECK(has("Pipe061PitchTuning=1200"), "a key an octave above its region's root is retuned an octave");

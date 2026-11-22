@@ -45,6 +45,10 @@ struct Sf2Region {
   double sustainCb = 0.0;     // the volume envelope's sustain level, below full
   double filterFcCents = 13500.0;  // 13500 and above: no filter
   int exclusiveClass = 0;
+  // The two LFOs: their rates (Hz) and what they swing, pitch in cents and
+  // level in centibels.
+  double modLfoHz = 8.176, vibLfoHz = 8.176;
+  double modLfoToPitch = 0.0, vibLfoToPitch = 0.0, modLfoToVolumeCb = 0.0;
 };
 
 struct Sf2Preset {
@@ -75,7 +79,7 @@ public:
     struct Zone {
       int keyLo = 0, keyHi = 127, sample = 0, rootKey = -1, fineTune = 0;
       int loopMode = 1, attenuationCb = 0, releaseTimecents = -12000;
-      int coarseTune = 0, modEnvToPitch = 0;
+      int coarseTune = 0, modEnvToPitch = 0, modLfoToVolume = 0, freqModLfo = 0;
     };
     struct Preset { std::string name; int bank = 0, program = 0; std::vector<Zone> zones; };
     struct Sample { std::string name; std::vector<int16_t> pcm; uint32_t loopStart = 0, loopEnd = 0;
