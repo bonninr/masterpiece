@@ -396,26 +396,56 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
       sampleRate_, static_cast<juce::uint32>(juce::jmax(1, samplesPerBlock)),
       static_cast<juce::uint32>(juce::jmax(1, getTotalNumOutputChannels()))};
 
-  enclosureFilters_.clear();
   busEnclosures_.clear();
+  enclosureFilters_.clear();
   enclosureBusIndex_.clear();
+  pipeStackBus_.clear();
   // Stable bus order: enclosure ids ascending, so a reload of the same organ
   // produces the same layout and a saved registration still lines up.
+  std::vector<Id> boxes;
   for (const auto& [id, e] : model_.enclosures) {
     (void)e;
-    busEnclosures_.push_back(id);
+    boxes.push_back(id);
   }
-  std::sort(busEnclosures_.begin(), busEnclosures_.end());
-  for (size_t i = 0; i < busEnclosures_.size(); ++i) {
-    const Id id = busEnclosures_[i];
-    enclosureBusIndex_[id] = static_cast<int>(i);
-    auto& filters = enclosureFilters_[id];
-    filters.resize(static_cast<size_t>(kEnclosureFilterSlots));
-    for (auto& f : filters) {
-      f.prepare(spec);
-      // Start where the shoe actually is, so loading an organ with the swell
-      // open does not ramp audibly through the first block.
-      f.snapTo(controls_.shutterFor(model_.enclosures.at(id)));
+  std::sort(boxes.begin(), boxes.end());
+  for (const Id id : boxes) {
+    enclosureBusIndex_[id] = static_cast<int>(busEnclosures_.size());
+    busEnclosures_.push_back({id});
+  }
+  // Then each set of boxes some pipes stand in together, in a stable order.
+  std::map<std::vector<Id>, int> stacks;
+  for (const auto& [pipeId, extra] : model_.pipeExtraEnclosures) {
+    const auto first = model_.pipeEnclosure.find(pipeId);
+    if (first == model_.pipeEnclosure.end() || model_.enclosures.count(first->second) == 0) continue;
+    std::vector<Id> set{first->second};
+    for (const Id id : extra)
+      if (model_.enclosures.count(id) != 0) set.push_back(id);
+    if (set.size() > 1) stacks.emplace(std::move(set), 0);
+  }
+  for (auto& [set, index] : stacks) {
+    index = static_cast<int>(busEnclosures_.size());
+    busEnclosures_.push_back(set);
+  }
+  for (const auto& [pipeId, extra] : model_.pipeExtraEnclosures) {
+    const auto first = model_.pipeEnclosure.find(pipeId);
+    if (first == model_.pipeEnclosure.end()) continue;
+    std::vector<Id> set{first->second};
+    for (const Id id : extra)
+      if (model_.enclosures.count(id) != 0) set.push_back(id);
+    if (const auto it = stacks.find(set); it != stacks.end()) pipeStackBus_[pipeId] = it->second;
+  }
+  enclosureFilters_.resize(busEnclosures_.size());
+  for (size_t bus = 0; bus < busEnclosures_.size(); ++bus) {
+    auto& perBox = enclosureFilters_[bus];
+    perBox.resize(busEnclosures_[bus].size());
+    for (size_t m = 0; m < perBox.size(); ++m) {
+      perBox[m].resize(static_cast<size_t>(kEnclosureFilterSlots));
+      for (auto& f : perBox[m]) {
+        f.prepare(spec);
+        // Start where the shoe actually is, so loading an organ with the
+        // swell open does not ramp audibly through the first block.
+        f.snapTo(controls_.shutterFor(model_.enclosures.at(busEnclosures_[bus][m])));
+      }
     }
   }
   // Everything no box encloses goes to one extra bus that no filter touches.
@@ -1125,7 +1155,22 @@ int MasterpieceProcessor::mixBusForPipe(Id rankId, int midiNote) {
   return juce::jmax(0, indexOf(dest));
 }
 
+#if MP_ENABLE_DSP
+void MasterpieceProcessor::applyEnclosures(int bus, size_t slot, juce::dsp::AudioBlock<float>& block) {
+  if (bus < 0 || bus >= static_cast<int>(busEnclosures_.size())) return;
+  const auto& boxes = busEnclosures_[static_cast<size_t>(bus)];
+  auto& filters = enclosureFilters_[static_cast<size_t>(bus)];
+  for (size_t m = 0; m < boxes.size(); ++m) {
+    const auto encIt = model_.enclosures.find(boxes[m]);
+    if (encIt == model_.enclosures.end() || slot >= filters[m].size()) continue;
+    filters[m][slot].processBlock(block, encIt->second, controls_.shutterFor(encIt->second),
+                                  graph_.engineSwitch);
+  }
+}
+#endif
+
 int MasterpieceProcessor::busForPipe(Id pipeId) const {
+  if (const auto stack = pipeStackBus_.find(pipeId); stack != pipeStackBus_.end()) return stack->second;
   const auto encIt = model_.pipeEnclosure.find(pipeId);
   if (encIt == model_.pipeEnclosure.end()) return unenclosedBus_;
   const auto busIt = enclosureBusIndex_.find(encIt->second);
@@ -1422,16 +1467,8 @@ void MasterpieceProcessor::renderOneMixBus(juce::AudioBuffer<float>& dest,
       float* const* planes = busOuts_[static_cast<size_t>(bus)];
 #if MP_ENABLE_DSP
       if (enclosuresActive && bus < static_cast<int>(busEnclosures_.size())) {
-        const Id encId = busEnclosures_[static_cast<size_t>(bus)];
-        const auto filterIt = enclosureFilters_.find(encId);
-        const auto encIt = model_.enclosures.find(encId);
-        if (filterIt != enclosureFilters_.end() && encIt != model_.enclosures.end()) {
-          juce::dsp::AudioBlock<float> block(planes, static_cast<size_t>(numCh),
-                                             static_cast<size_t>(numFrames));
-          filterIt->second[enclosureSlot].processBlock(block, encIt->second,
-                                                       controls_.shutterFor(encIt->second),
-                                                       graph_.engineSwitch);
-        }
+        juce::dsp::AudioBlock<float> block(planes, static_cast<size_t>(numCh), static_cast<size_t>(numFrames));
+        applyEnclosures(bus, enclosureSlot, block);
       }
 #endif
       for (int ch = 0; ch < numCh; ++ch) dest.addFrom(ch, 0, planes[ch], numFrames);
@@ -1451,17 +1488,9 @@ void MasterpieceProcessor::renderOneMixBus(juce::AudioBuffer<float>& dest,
 
 #if MP_ENABLE_DSP
     if (bus < static_cast<int>(busEnclosures_.size())) {
-      const Id encId = busEnclosures_[static_cast<size_t>(bus)];
-      const auto filterIt = enclosureFilters_.find(encId);
-      const auto encIt = model_.enclosures.find(encId);
-      if (filterIt != enclosureFilters_.end() && encIt != model_.enclosures.end()) {
-        juce::dsp::AudioBlock<float> block(
-            busScratch_.getArrayOfWritePointers(),
-            static_cast<size_t>(numCh), static_cast<size_t>(numFrames));
-        filterIt->second[enclosureSlot].processBlock(block, encIt->second,
-                                                     controls_.shutterFor(encIt->second),
-                                                     graph_.engineSwitch);
-      }
+      juce::dsp::AudioBlock<float> block(busScratch_.getArrayOfWritePointers(), static_cast<size_t>(numCh),
+                                         static_cast<size_t>(numFrames));
+      applyEnclosures(bus, enclosureSlot, block);
     }
 #endif
 
