@@ -4,9 +4,9 @@ Instructions for AI agents that operate Masterpiece for its player: build it,
 configure it, voice an organ, map a MIDI console, route outputs, record and
 measure takes, prepare pull requests.
 
-Masterpiece contains no AI and calls none, and the skills change no code of
-it. The direction is the other way round: the player's agent reads these
-instructions and works Masterpiece from the outside, through the same means
+Masterpiece calls no AI while it runs, and the skills change nothing in its
+code. They are only a guide for AI agents that work on Masterpiece: the
+player's agent reads these instructions and works Masterpiece from the outside, through the same means
 every player and script has: the control API built into the program, the
 command line, the settings files, and the source code.
 

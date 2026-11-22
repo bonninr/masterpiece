@@ -18,7 +18,8 @@ Linux, Android and iOS. It plays Hauptwerk and GrandOrgue sample sets.
 
 ## How this skill works
 
-Masterpiece contains no AI and calls none. The agent works from the outside,
+Masterpiece calls no AI while it runs, and this skill changes nothing in its
+code. The agent works from the outside,
 with the same means any player or script has:
 
 | Means | Reaches | Reference |
