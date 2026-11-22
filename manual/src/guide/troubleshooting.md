@@ -153,6 +153,8 @@ Parts of one set that carry numbered names (`01_`, `02_`, `03_`) or share a pack
 
 A package that opens but loads with the dialog **Some samples could not be read** has damaged files. The text says that the pipes of those files are silent and that the organ plays without them. Test the archive in 7-Zip or WinRAR and download it again. A damaged unpack is not marked as finished, so the next open unpacks again.
 
+The dialog **Some samples are missing** names the files that the organ definition lists and the disk does not hold, the first three of them, with the count. Their pipes are silent, and a stop with none of its samples does not respond to a click. The organ was installed in part, or a package it needs was left out: install it again with every package it needs. The log lists the first 50 missing files and the count of the others.
+
 Phones and tablets open `.rar` and `.orgue` packages only. On iPhone and iPad, a package picked on its own is lent without its folder; the dialog **The rest of &lt;file&gt;** asks for the folder that holds the other volumes.
 
 ## Slow loads

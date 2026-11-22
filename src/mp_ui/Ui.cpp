@@ -2448,9 +2448,9 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
     // Which ones, in the log: a count alone says nothing to act on (#90).
     for (const auto& f : result.samples.missingFiles)
       juce::Logger::writeToLog("samples: missing " + juce::String(f));
-    if (result.samples.missing > static_cast<int>(result.samples.missingFiles.size()))
+    if (result.samples.missingFileCount > static_cast<int>(result.samples.missingFiles.size()))
       juce::Logger::writeToLog("samples: and " +
-                               juce::String(result.samples.missing - static_cast<int>(result.samples.missingFiles.size())) +
+                               juce::String(result.samples.missingFileCount - static_cast<int>(result.samples.missingFiles.size())) +
                                " more missing");
     for (const auto& f : result.samples.failedFiles)
       juce::Logger::writeToLog("samples: unreadable " + juce::String(f));
@@ -2544,12 +2544,12 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
     for (size_t i = 0; i < result.samples.missingFiles.size() && i < 3; ++i)
       which << juce::String(result.samples.missingFiles[i]) << "\n";
     showWithLog(TRANS("Some samples are missing"),
-                (result.samples.missing == 1
+                (result.samples.missingFileCount == 1
                      ? TRANS("1 sample file named by the organ was not found, so the pipes it belongs "
                              "to are silent. A stop with none of its samples does not respond.")
                      : TRANS("%1 sample files named by the organ were not found, so the pipes they "
                              "belong to are silent. A stop with none of its samples does not respond.")
-                           .replace("%1", juce::String(result.samples.missing))) +
+                           .replace("%1", juce::String(result.samples.missingFileCount))) +
                     "\n\n" + which + "\n" +
                     TRANS("The organ was installed in part, or a package it needs is missing. "
                           "Installing the organ again, with every package it needs, usually puts it right."));
