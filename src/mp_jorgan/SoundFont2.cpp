@@ -92,7 +92,12 @@ bool SoundFont2::open(const std::string& path, std::string& error) {
     error = path + " is not a SoundFont 2 file";
     return false;
   }
-  const uint64_t riffEnd = 8 + static_cast<uint64_t>(u32(head + 4));
+  // A chunk is never larger than what is left of the file: a damaged size
+  // ends the reading rather than asking for gigabytes.
+  f.seekg(0, std::ios::end);
+  const uint64_t fileSize = static_cast<uint64_t>(f.tellg());
+  f.seekg(12);
+  const uint64_t riffEnd = std::min<uint64_t>(fileSize, 8 + static_cast<uint64_t>(u32(head + 4)));
   std::map<std::string, std::string> tables;  // the pdta sub-chunks, read whole
   uint64_t sm24Bytes = 0;
   uint64_t at = 12;
@@ -111,6 +116,7 @@ bool SoundFont2::open(const std::string& path, std::string& error) {
         if (!f.read(sh, 8)) break;
         const std::string id(sh, 4);
         const uint64_t subSize = u32(sh + 4);
+        if (sub + 8 + subSize > fileSize) break;
         if (kind == "sdta" && id == "smpl") {
           smplOffset_ = sub + 8;
           smplBytes_ = subSize;

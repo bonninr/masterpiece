@@ -368,6 +368,21 @@ public:
     MP_CHECK(again.ok && again.reused, "a second load reuses the converted samples");
     MP_CHECK(again.organText == rep.organText && again.organFile == rep.organFile, "and gives the same definition");
     MP_CHECK(again.notes == rep.notes, "and the same notes");
+
+    // Damaged files fail to open; they never take the program down.
+    {
+      std::ofstream f(dir / "Broken.disposition", std::ios::binary);
+      f << "<organ><elements><stop id=\"1\"><name>x</name></stop>";
+    }
+    const mp::JOrganImportReport broken = mp::convertJOrgan((dir / "Broken.disposition").string(), (dir / "w2").string());
+    MP_CHECK(!broken.ok && !broken.error.empty(), "a disposition that is not XML is refused: " + broken.error);
+    {
+      const std::string whole = fileBytes(dir / "test.sf2");
+      std::ofstream f(dir / "test.sf2", std::ios::binary | std::ios::trunc);
+      f.write(whole.data(), static_cast<std::streamsize>(whole.size() / 3));
+    }
+    const mp::JOrganImportReport cut = mp::convertJOrgan((dir / "Test.disposition").string(), (dir / "w3").string());
+    MP_CHECK(cut.ok, "a truncated SoundFont leaves its ranks silent and the organ opens: " + cut.error);
     fs::remove_all(dir, ec);
   }
 };

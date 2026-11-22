@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -983,7 +984,8 @@ JOrganImportReport convertJOrganText(const std::string& text, const std::string&
   return rep;
 }
 
-JOrganImportReport convertJOrgan(const std::string& path, const std::string& workFolder) {
+namespace {
+JOrganImportReport convertJOrganUnguarded(const std::string& path, const std::string& workFolder) {
   JOrganImportReport rep;
   std::string text;
   if (!readFile(path, text)) {
@@ -1037,6 +1039,25 @@ JOrganImportReport convertJOrgan(const std::string& path, const std::string& wor
     f << stamp;
   }
   return rep;
+}
+
+}  // namespace
+
+// The conversion runs on a thread of its own, where an exception would end
+// the program: whatever throws -- memory refused, a file system error -- is
+// a disposition that did not open.
+JOrganImportReport convertJOrgan(const std::string& path, const std::string& workFolder) {
+  try {
+    return convertJOrganUnguarded(path, workFolder);
+  } catch (const std::exception& e) {
+    JOrganImportReport rep;
+    rep.error = std::string("the conversion failed: ") + e.what();
+    return rep;
+  } catch (...) {
+    JOrganImportReport rep;
+    rep.error = "the conversion failed";
+    return rep;
+  }
 }
 
 }  // namespace mp
