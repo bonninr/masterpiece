@@ -386,7 +386,7 @@ public:
     for (const auto& [id, s] : m.stops) sounding += s.ranks.empty() ? 0 : 1;
     MP_CHECK(sounding == 5, "five stops that sound, got " + std::to_string(sounding));
     MP_CHECK(m.enclosures.size() == 1, "one swell");
-    MP_CHECK(m.tremulants.size() == 1, "one tremulant");
+    MP_CHECK(m.tremulants.size() == 2, "two tremulants");
     MP_CHECK(mp::deriveOrganRoot(rep.organFile) == work.string(),
              "its samples are found beside it, in the work folder");
     MP_CHECK(m.samples.size() > 0 && std::all_of(m.samples.begin(), m.samples.end(), [&](const auto& s) {
