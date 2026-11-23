@@ -3,6 +3,7 @@
 #include "JOrganDisposition.h"
 #include "JOrganHauptwerk.h"
 #include "JOrganOrgan.h"
+#include "JOrganSfArk.h"
 #include "JOrganSkin.h"
 #include "SoundFont2.h"
 
@@ -208,7 +209,21 @@ struct Converter {
         note("sound \"" + e.name + "\" (" + e.type + ") names no SoundFont; its ranks are silent");
         continue;
       }
-      const std::filesystem::path p = soundFontPath(dispositionDir, font);
+      std::filesystem::path p = soundFontPath(dispositionDir, font);
+      // Packed with sfArk: unpacked into the work folder, once.
+      std::error_code ec;
+      const std::filesystem::path packed = std::filesystem::exists(p, ec) ? std::filesystem::path() : sfArkFor(p);
+      if (!packed.empty()) {
+        const std::filesystem::path out = pathOf(work) / "sfark" / pathOf(fileSafe(utf8Of(p.stem())) + ".sf2");
+        std::string err;
+        const bool current = std::filesystem::exists(out, ec) &&
+                             std::filesystem::last_write_time(out, ec) >= std::filesystem::last_write_time(packed, ec);
+        if (!current && !unpackSfArk(packed, out, err)) {
+          note("SoundFont " + utf8Of(packed.filename()) + ": " + err + "; its ranks are silent");
+          continue;
+        }
+        p = out;
+      }
       auto sf = std::make_unique<SoundFont2>();
       std::string err;
       if (!sf->open(utf8Of(p), err)) {
@@ -974,7 +989,11 @@ JOrganImportReport convertJOrganUnguarded(const std::string& path, const std::st
     if (readJOrganDisposition(text, d, err)) {
       for (const JOrganElement& e : d.elements) {
         const std::string font = e.prop("soundfont");
-        if (!font.empty()) stampOf(font, soundFontPath(utf8Of(dir), font));
+        if (font.empty()) continue;
+        const std::filesystem::path p = soundFontPath(utf8Of(dir), font);
+        std::error_code ec;
+        const std::filesystem::path packed = std::filesystem::exists(p, ec) ? std::filesystem::path() : sfArkFor(p);
+        stampOf(font, packed.empty() ? p : packed);
       }
       for (const std::string& f : jorganSkinFiles(d, utf8Of(dir))) stampOf(f, pathOf(f));
     }
