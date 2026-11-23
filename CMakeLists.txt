@@ -428,6 +428,7 @@ endif()
 
 add_subdirectory(src/mp_core)
 add_subdirectory(src/mp_archive)
+add_subdirectory(src/mp_jorgan)
 if(TARGET mp_verovio)
   add_subdirectory(src/mp_score)
 endif()

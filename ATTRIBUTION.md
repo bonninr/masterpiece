@@ -54,6 +54,18 @@ the property of its producer and is governed by that producer's terms.
 | [Oloron-Sainte-Marie](https://piotrgrabowski.pl/oloron-sainte-marie/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
 | [Bégard](https://piotrgrabowski.pl/begard/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
 
+### jOrgan organs
+
+The consoles in `screenshots/jorgan` come from jOrgan organs, each a
+disposition and the SoundFonts it names, converted by Masterpiece for testing.
+
+| Organ | Disposition and SoundFonts | Source |
+|---|---|---|
+| Bureå Church, Bureå Choir, Bureå Funeral Chapel, Piteå School of Music, Kalvträsk Church | Paul Stratman, from Lars Palo's GrandOrgue sample sets | [jOrgan Swedish Organ Series](https://jorgan.info/base/arch/ps/jo/sw/Swedish_Organ_Series.html) |
+| Freedom 3/29, Robert Morton Opus 2401 (Lite), GM MIDI | South African Virtual Organs; the Freedom uses Bruce Miles' cinema organ SoundFonts | [savirtualorgans](https://sites.google.com/site/savirtualorgans/jorgan-dispositions) |
+| Village Organ, English Organ, Wurlitzer 216 and 260, Compton | Bruce Miles | [jorgan.info](https://jorgan.info/base/bm/Midi_Consoles.html) |
+| fluidsynth example | The jOrgan project | [jOrgan](https://github.com/svenmeier/jorgan) |
+
 ---
 
 The second recording, *New tested instruments* (thirty works on fifteen

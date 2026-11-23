@@ -6,6 +6,7 @@
 #include "../mp_archive/OrganInstaller.h"
 
 #include "../mp_core/GrandOrgueImport.h"
+#include "../mp_jorgan/JOrganImport.h"
 #include "../mp_core/LoadPlan.h"
 #include "../mp_core/PathCase.h"
 #include "../mp_core/Utf8Path.h"
@@ -10407,7 +10408,12 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     // file's: a newer importer can number the same samples differently
     // while the .organ file stays as it was. The stamp covers the table
     // itself, so a cache from another importer is never read against it.
-    if (isGrandOrgueDefinition(effectiveOdf.getFullPathName().toStdString())) {
+    // A jOrgan organ's samples are files its translation wrote: its stamp
+    // covers the translation's own stamp too.
+    const std::string odfPath = effectiveOdf.getFullPathName().toStdString();
+    if (isJOrganDisposition(odfPath))
+      odfStamp += "|" + root.getChildFile("import.stamp").loadFileAsString().toStdString();
+    if (isGrandOrgueDefinition(odfPath) || isJOrganDisposition(odfPath)) {
       std::vector<std::pair<Id, const SampleRef*>> rows;
       for (const auto& [id, ref] : model_.samples) rows.emplace_back(id, &ref);
       std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) { return a.first < b.first; });

@@ -18,6 +18,7 @@ const juce::Colour kBg(0xff15171c), kRowBg(0xff20232a), kRowHover(0xff2a2f3a),
 juce::String formatOf(const juce::File& f) {
   const auto ext = f.getFileExtension().toLowerCase();
   if (ext == ".organ" || ext == ".orgue") return "GrandOrgue";
+  if (ext == ".disposition") return "jOrgan";
   if (ext.endsWith("hauptwerk_xml")) return "Hauptwerk";
   if (ext == ".rar") return TRANS("package");
   return {};

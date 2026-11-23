@@ -14,6 +14,7 @@ Settings that decide how much memory an organ takes, and whether release tails s
 | Composite organ | A Hauptwerk-format definition whose samples come from several sample sets | See [Composite organs](#composite-organs). |
 | GrandOrgue organ definition | `.organ` | Converted in memory as it loads, console included. The converted definition is never written to disk. |
 | GrandOrgue package | `.orgue` | Read in place. Packages that depend on other packages need those beside them. |
+| jOrgan disposition | `.disposition` | Converted in memory as it loads, as GrandOrgue organs are; its SoundFont samples written as WAV files. See [jOrgan organs](#jorgan-organs). |
 | Hauptwerk-format package | `.rar`, for example `Name.CompPkg.Hauptwerk.rar` | Read in place. See [Playing from packages](#playing-from-packages). |
 
 GrandOrgue files may be encoded in UTF-8 or in the Western code page of their author; Masterpiece detects which. A GrandOrgue organ has no organ id, so Masterpiece derives one from a hash of the file: the same file is always the same organ and keeps its own settings.
@@ -48,7 +49,7 @@ The **File** menu holds three items:
 
 The file dialog is titled **Choose an organ definition file** (**Choose an organ package** on phones and tablets). It lists these patterns:
 
-`*.Organ_Hauptwerk_xml`, `*.CustomOrgan_Hauptwerk_xml`, `*.Organ.Hauptwerk.xml`, `*.CustomOrgan.Hauptwerk.xml`, `*.organ`, `*.rar`, `*.orgue`
+`*.Organ_Hauptwerk_xml`, `*.CustomOrgan_Hauptwerk_xml`, `*.Organ.Hauptwerk.xml`, `*.CustomOrgan.Hauptwerk.xml`, `*.organ`, `*.disposition`, `*.rar`, `*.orgue`
 
 On phones and tablets the list is `*.rar` and `*.orgue`, and any other file is ignored. The dialog starts in the folder the last organ was chosen from; that folder is stored as `openfolder` in `settings.mpglobal`. On macOS the dialog also lets you navigate into tagged folders from search results.
 
@@ -205,6 +206,32 @@ Sets found in archives are joined to the composite's own archives and read from 
 A GrandOrgue organ opens from its `.organ` file in a folder or from an `.orgue` package. The converter translates the organ's manuals, stops, ranks, couplers, tremulants, enclosures and panels into the model the loader reads. Sample and image paths stay relative to the folder of the `.organ` file. Where the two formats differ, the semantics are GrandOrgue's: a manual is a keyboard and a division at once, a pipe's release defaults to the tail of its own attack file found at the file's cue point, and an enclosure lowers the level of its windchest groups with no filter.
 
 ![A GrandOrgue organ](../images/console-grandorgue.jpg)
+
+## jOrgan organs
+
+A jOrgan organ opens from its `.disposition` file.
+
+- SoundFonts (`.sf2`): at the path the disposition gives, relative to its folder; otherwise a file of the same name beside the disposition (for paths such as `C:\Sounds\Organ.sf2`)
+- Conversion on opening, as for GrandOrgue organs: the disposition to a definition in memory; each SoundFont sample a rank uses to a WAV file with its loop and release tail
+- Location: a folder per organ in the `jOrgan` folder of the [settings folder](files.md#the-settings-folder)
+- Conversion again only when the disposition or a SoundFont changes
+- Favourites, recent organs and settings: under the disposition
+- Formats read: jOrgan 3.0 to 3.21
+
+| In the disposition | In Masterpiece |
+|---|---|
+| Keyboard | Manual; "ped" in the name: pedal. Keys and pitch shift (`sub 12`) from its MIDI message; default 61 keys from C2, pedal 32 |
+| Rank | 128 pipes; each key the SoundFont region for it, retuned from the region's root (coarse and fine tune, pitch correction, modulation envelope). Preset from bank select and program change |
+| Stop | Stop on its keyboard: transposition, key range. Shared by several keyboards: one drawstop. Constant pitch (theatre drums): one note from every key |
+| Coupler | Coupler to the keyboard holding its stops, with transposition. Keyboard's own inverse coupler at unison: unison off |
+| Stops no keyboard names | Keyboard of the unison coupler reaching them (theatre dispositions) |
+| Continuous filter | Volume or expression, moved by an input: swell shoe, closed level from the value 0. Not moved: fixed rank level. Pitch bend: fixed rank tuning |
+| Switch filter | Program change to other samples: wave tremulant. Same samples with LFOs: tremulant at the LFO's rate, level and pitch depth. Modulation controller: vibrato at 8.2 Hz, 50 cents at full |
+| Console | Organ name. Stock drawstops, keys and shoes; stops in two jambs; knob labels from each element's `stop=` line |
+
+Left out, each named in the log: combinations, memories, activators, captors, keyers, incrementers, regulators, sequences, the recorder, sounds without a SoundFont (LinuxSampler, generic MIDI), NRPN tone filters, SoundFont filters, extra layers, skins.
+
+Approximations and omissions in the log: lines starting with `load: jOrgan import:`.
 
 ## Demo sets
 

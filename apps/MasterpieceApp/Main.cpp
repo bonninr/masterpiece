@@ -83,7 +83,7 @@ public:
       if (f.existsAsFile() && (ext == ".organ_hauptwerk_xml" || ext == ".customorgan_hauptwerk_xml" ||
                                name.endsWith(".organ.hauptwerk.xml") ||
                                name.endsWith(".customorgan.hauptwerk.xml") ||
-                               ext == ".organ" || ext == ".orgue" || ext == ".rar"))
+                               ext == ".organ" || ext == ".disposition" || ext == ".orgue" || ext == ".rar"))
         return f;
     }
     return {};
@@ -141,7 +141,8 @@ public:
           "\n"
           "Usage: Masterpiece [options] [organ file]\n"
           "\n"
-          "  <organ file>             an organ definition (.Organ_Hauptwerk_xml, .organ) or\n"
+          "  <organ file>             an organ definition (.Organ_Hauptwerk_xml, .organ,\n"
+          "                           .disposition) or\n"
           "                           package (.rar, .orgue) to open; the same as --odf\n"
           "  --odf <file>             open this organ\n"
           "  --gui-only               draw its console without reading any audio\n"
