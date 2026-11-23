@@ -9,6 +9,7 @@
 #include <fstream>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <sstream>
 
 #if MP_JORGAN_SKINS
@@ -404,7 +405,9 @@ struct Renderer {
     g.addTransform(juce::AffineTransform::scale(v.scale).translated(static_cast<float>(r.getX()),
                                                                      static_cast<float>(r.getY())));
     g.setColour(l.colour);
-    g.setFont(p.font);
+    // Outlines, filled: drawn glyphs go through the renderer's glyph cache,
+    // which the message thread shares, and this runs on the loader's.
+    juce::GlyphArrangement glyphs;
     const std::string& a = l.alignment;
     int y = 0;
     if (a == "CENTER" || a == "RIGHT" || a == "LEFT") y += height / 2 - p.height / 2;
@@ -415,9 +418,13 @@ struct Renderer {
       const int lw = p.lines[i].second;
       if (a == "TOP" || a == "CENTER" || a == "BOTTOM") x = width / 2 - lw / 2;
       else if (a == "RIGHT" || a == "TOP_RIGHT" || a == "BOTTOM_RIGHT") x = width - lw;
-      g.drawSingleLineText(juce::String::fromUTF8(p.lines[i].first.c_str()), x, y + p.ascent);
+      glyphs.addLineOfText(p.font, juce::String::fromUTF8(p.lines[i].first.c_str()), static_cast<float>(x),
+                           static_cast<float>(y + p.ascent));
       y += p.ascent + p.descent;
     }
+    juce::Path outline;
+    glyphs.createPath(outline);
+    g.fillPath(outline);
   }
 
   void draw(juce::Graphics& g, const Layer& l, juce::Point<int> d) const {
@@ -475,6 +482,9 @@ constexpr float kMinZoom = 0.25f;
 
 std::vector<JOrganOrgan::Console> drawJOrganConsoles(const JOrganDisposition& d, const std::string& dispositionDir,
                                                      const std::string& workFolder, std::vector<std::string>& notes) {
+  // One drawing at a time: skins share fonts, and a work folder its pictures.
+  static std::mutex drawing;
+  std::lock_guard<std::mutex> lock(drawing);
   std::vector<JOrganOrgan::Console> out;
   std::map<std::string, std::unique_ptr<Skin>> skins;
   const std::filesystem::path skinDir = pathOf(workFolder) / "skin";
