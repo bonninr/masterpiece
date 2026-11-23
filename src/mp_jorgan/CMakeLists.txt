@@ -15,6 +15,7 @@ target_include_directories(mp_jorgan PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_
 target_compile_features(mp_jorgan PUBLIC cxx_std_20)
 target_link_libraries(mp_jorgan PUBLIC pugixml::pugixml)
 if(TARGET juce::juce_graphics)
-  target_link_libraries(mp_jorgan PUBLIC juce::juce_graphics)
+  # Private: its sources build into this library only, not every one above.
+  target_link_libraries(mp_jorgan PRIVATE juce::juce_graphics)
   target_compile_definitions(mp_jorgan PRIVATE MP_JORGAN_SKINS=1)
 endif()
