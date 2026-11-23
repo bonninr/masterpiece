@@ -448,6 +448,15 @@ public:
         mp::convertJOrgan((dir / "Test.disposition").string(), (dir / "w4").string(), true);
     MP_CHECK(header.ok && header.name == "Test Organ" && header.id == rep.id && !fs::exists(dir / "w4"),
              "a header-only load names the organ and writes nothing");
+    {
+      std::ofstream f(dir / "Named.disposition", std::ios::binary);
+      f << "<organ version=\"3.20\"><elements><console id=\"1\"><name>.RIGHT</name></console>"
+           "<console id=\"2\"><name>*Main Console</name></console></elements></organ>";
+    }
+    const mp::JOrganImportReport named =
+        mp::convertJOrgan((dir / "Named.disposition").string(), (dir / "w6").string(), true);
+    MP_CHECK(named.ok && named.name == "Main Console",
+             "the organ named by its first console past jOrgan's sort marks, got " + named.name);
 
     skinned(dir);
 

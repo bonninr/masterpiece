@@ -26,7 +26,7 @@ namespace {
 
 // Bumped whenever the conversion changes what it writes, so a work folder
 // from an earlier version is made again.
-constexpr int kImporterVersion = 13;
+constexpr int kImporterVersion = 14;
 
 std::string lower(std::string s) {
   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -134,6 +134,18 @@ std::string labelOf(const std::string& name, const std::string& description) {
   return name;
 }
 
+
+// The organ's name: its first console's, past the marks jOrgan players sort
+// consoles with ("*Main", ".LEFT"); a console whose name is a mark and a
+// word (".RIGHT") is a side panel and names nothing.
+std::string organNameOf(const JOrganDisposition& d, const std::string& fallback) {
+  for (const JOrganElement& e : d.elements) {
+    if (e.type != "console" || e.name.empty() || e.name[0] == '.') continue;
+    const auto start = e.name.find_first_not_of("* ");
+    if (start != std::string::npos) return e.name.substr(start);
+  }
+  return fallback.empty() ? std::string("jOrgan organ") : fallback;
+}
 
 // The cents a SoundFont's initialAttenuation stands for, as FluidSynth --
 // jOrgan's player -- applies it: 0.4 of the value, as the hardware the format
@@ -691,12 +703,7 @@ JOrganImportReport convertJOrganText(const std::string& text, const std::string&
 
   // ---- the organ -------------------------------------------------------------
   JOrganOrgan organ;
-  for (const JOrganElement& e : d.elements)
-    if (e.type == "console" && !e.name.empty()) {
-      organ.name = e.name;
-      break;
-    }
-  if (organ.name.empty()) organ.name = fallbackName.empty() ? std::string("jOrgan organ") : fallbackName;
+  organ.name = organNameOf(d, fallbackName);
   organ.id = 1000000000ll + static_cast<long long>(fnv(text) % 1000000000ull);
   for (const Manual& m : manuals) organ.manuals.push_back({m.name, m.pedal, m.firstMidi, m.keys});
 
@@ -958,12 +965,7 @@ JOrganImportReport convertJOrganUnguarded(const std::string& path, const std::st
   if (headerOnly) {
     JOrganDisposition d;
     if (!readJOrganDisposition(text, d, rep.error)) return rep;
-    rep.name = stemOf(path);
-    for (const JOrganElement& e : d.elements)
-      if (e.type == "console" && !e.name.empty()) {
-        rep.name = e.name;
-        break;
-      }
+    rep.name = organNameOf(d, stemOf(path));
     rep.id = 1000000000ll + static_cast<long long>(fnv(text) % 1000000000ull);
     rep.xml = jorganHauptwerkHeader(rep.name, rep.id);
     rep.ok = true;
