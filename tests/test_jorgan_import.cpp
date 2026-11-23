@@ -508,7 +508,7 @@ public:
 <style><name>stop</name><layers>
   <button><binding>active</binding><fill>BOTH</fill><layers>
     <image><file>off.png</file></image><image><file>ON.png</file></image></layers></button>
-  <text><binding>stop</binding><font><name>Serif</name><style>1</style><size>12</size></font>
+  <text><binding>stop</binding><width>40</width><height>30</height><font><name>Serif</name><style>1</style><size>12</size></font>
     <color><red>255</red><green>255</green><blue>255</blue></color></text>
 </layers></style>
 <style><name>shoe</name><layers><slider><binding>value</binding><layers>
