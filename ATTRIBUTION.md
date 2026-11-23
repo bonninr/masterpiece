@@ -164,7 +164,8 @@ understanding throughout, and is gratefully acknowledged:
 It is built on [JUCE](https://juce.com/), [pugixml](https://pugixml.org/),
 [libarchive](https://www.libarchive.org/), which reads organs straight from their
 packages, and [WavPack](https://www.wavpack.com/), which decodes compressed samples
-(both BSD licence).
+(both BSD licence), and [sfArkLib](https://github.com/raboof/sfArkLib) (GPL-3.0),
+which unpacks sfArk SoundFonts for jOrgan organs.
 
 The score panel engraves with [Verovio](https://www.verovio.org/) (LGPL-3.0) in
 the [Bravura](https://github.com/steinbergmedia/bravura) music font (SIL Open
