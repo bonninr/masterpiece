@@ -261,6 +261,14 @@ struct Skin {
     if (n == "serif" || n == "timesroman") family = juce::Font::getDefaultSerifFontName();
     else if (n == "sansserif" || n == "dialog" || n == "dialoginput" || n == "helvetica") family = juce::Font::getDefaultSansSerifFontName();
     else if (n == "monospaced" || n == "courier") family = juce::Font::getDefaultMonospacedFontName();
+    // A family the system does not have, as Arial on Linux: its default of the
+    // same kind, as Java substitutes one.
+    static const juce::StringArray installed = juce::Font::findAllTypefaceNames();
+    if (!installed.contains(family, true))
+      family = (n.find("serif") != std::string::npos && n.find("sans") == std::string::npos) ||
+                       n.find("times") != std::string::npos || n.find("roman") != std::string::npos
+                   ? juce::Font::getDefaultSerifFontName()
+                   : juce::Font::getDefaultSansSerifFontName();
     const int flags = (bold ? juce::Font::bold : 0) | (italic ? juce::Font::italic : 0);
     return juce::Font(juce::FontOptions(family, size, flags).withPointHeight(size));
   }
