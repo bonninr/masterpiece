@@ -278,9 +278,12 @@ public:
     // 3 dB at 5.9 Hz, as the Freedom's are.
     mp::SoundFont2::Builder::Preset gedeckt{"Gedeckt", 0, 60, {}};
     gedeckt.zones.push_back({0, 127, 0, -1, 0, 1, 0, -6000});
+    // A chiff: unlooped, over fewer keys, laid over the tone.
+    gedeckt.zones.push_back({36, 96, 2, -1, 0, 0, 0, -12000});
     b.presets.push_back(gedeckt);
     mp::SoundFont2::Builder::Preset gedecktTrem{"Gedeckt trem", 0, 61, {}};
     gedecktTrem.zones.push_back({0, 127, 0, -1, 0, 1, 0, -6000, 0, 0, 30, -565});
+    gedecktTrem.zones.push_back({36, 96, 2, -1, 0, 0, 0, -12000});
     b.presets.push_back(gedecktTrem);
     {
       std::ofstream f(dir / "test.sf2", std::ios::binary);
@@ -396,6 +399,9 @@ public:
       if (t.name == "Tremulant Gedeckt") lfo = &t;
     MP_CHECK(lfo && std::abs(lfo->engagedHz - 5.9) < 0.05, "the LFO tremulant at its LFO's 5.9 Hz");
     const mp::Pipe* gedecktPipe = pipeAt(rankNamed("Gedeckt"), 60);
+    MP_CHECK(gedecktPipe && !gedecktPipe->layers.empty() && !gedecktPipe->layers[0].attacks.empty() &&
+                 gedecktPipe->layers[0].attacks[0].sample.fileName.find("low") != std::string::npos,
+             "the looped tone under a chiff layer, not the chiff");
     const auto mod = gedecktPipe ? m.tremulantPipes.find(gedecktPipe->pipeId) : m.tremulantPipes.end();
     MP_CHECK(mod != m.tremulantPipes.end() && std::abs(mod->second.ampDepthDb - 5.79) < 0.05,
              "its 3 dB swing: 29% of level, 5.8 dB over the waveform's 15%");

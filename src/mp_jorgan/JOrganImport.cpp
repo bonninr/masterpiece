@@ -26,7 +26,7 @@ namespace {
 
 // Bumped whenever the conversion changes what it writes, so a work folder
 // from an earlier version is made again.
-constexpr int kImporterVersion = 14;
+constexpr int kImporterVersion = 15;
 
 std::string lower(std::string s) {
   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -404,6 +404,17 @@ struct Converter {
       if (key >= r.keyLo && key <= r.keyHi && velocity >= r.velLo && velocity <= r.velHi) hits.push_back(&r);
     main = right = nullptr;
     if (hits.empty()) return false;
+    // A sustained layer before a short one: organ presets lay a chiff or a
+    // key click, unlooped, over the looped tone. A drum kit's instrument on
+    // a single key stays the one.
+    const auto looped = [](const Sf2Region* r) { return r->loopMode == 1 || r->loopMode == 3; };
+    const bool drumKey = std::any_of(hits.begin(), hits.end(), [&](const Sf2Region* r) {
+      return !looped(r) && r->keyLo == r->keyHi;
+    });
+    if (!drumKey && std::any_of(hits.begin(), hits.end(), looped) && !std::all_of(hits.begin(), hits.end(), looped)) {
+      hits.erase(std::remove_if(hits.begin(), hits.end(), [&](const Sf2Region* r) { return !looped(r); }), hits.end());
+      note("a key with a looped and an unlooped SoundFont layer (a chiff) plays the looped one");
+    }
     const auto& samples = sf.samples();
     // A stereo pair: the left sample and the right one it links to.
     for (const Sf2Region* a : hits) {
