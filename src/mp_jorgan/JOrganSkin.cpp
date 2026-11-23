@@ -49,7 +49,9 @@ std::filesystem::path findIgnoringCase(const std::filesystem::path& dir, const s
 // that name beside the disposition or in a "skins" folder there. Names in
 // any case.
 std::filesystem::path skinPath(const std::string& dispositionDir, const std::string& name) {
-  std::string rel = name;
+  // Spaces around it, as "schlicker_7.0.zip " is written, are no part of it.
+  const auto first = name.find_first_not_of(" \t\r\n");
+  std::string rel = first == std::string::npos ? std::string() : name.substr(first, name.find_last_not_of(" \t\r\n") - first + 1);
   std::replace(rel.begin(), rel.end(), '\\', '/');
   const std::string last = rel.substr(rel.find_last_of('/') + 1);
   const std::filesystem::path dir = pathOf(dispositionDir);

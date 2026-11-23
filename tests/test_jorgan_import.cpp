@@ -543,7 +543,7 @@ public:
                  "<console-locationReference id=\"20\"><x>10</x><y>20</y></console-locationReference>"
                  "<console-locationReference id=\"2\"><x>100</x><y>20</y></console-locationReference>"
                  "<console-locationReference id=\"50\"><x>200</x><y>20</y></console-locationReference>");
-    text.insert(at("</console>"), "<style>console</style><zoom>0.5</zoom><skin>testskin</skin>");
+    text.insert(at("</console>"), "<style>console</style><zoom>0.5</zoom><skin>testskin </skin>");
     text.insert(at("<active>true</active>"), "<style>stop</style>");
     text.insert(at("<value>1.0</value>"), "<style>shoe</style>");
     text.insert(at("<references/>\n      <messages/>\n    </combination>"), "<style>label</style>");

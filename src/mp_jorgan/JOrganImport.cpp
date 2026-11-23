@@ -26,7 +26,7 @@ namespace {
 
 // Bumped whenever the conversion changes what it writes, so a work folder
 // from an earlier version is made again.
-constexpr int kImporterVersion = 15;
+constexpr int kImporterVersion = 16;
 
 std::string lower(std::string s) {
   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
