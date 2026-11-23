@@ -14,6 +14,10 @@
 #include "../src/mp_jorgan/JOrganImport.h"
 #include "../src/mp_jorgan/SoundFont2.h"
 
+#ifdef MP_TEST_HAS_AUDIO
+#include <juce_graphics/juce_graphics.h>
+#endif
+
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -274,9 +278,15 @@ public:
     // 3 dB at 5.9 Hz, as the Freedom's are.
     mp::SoundFont2::Builder::Preset gedeckt{"Gedeckt", 0, 60, {}};
     gedeckt.zones.push_back({0, 127, 0, -1, 0, 1, 0, -6000});
+    // A chiff: unlooped, over fewer keys, laid over the tone.
+    gedeckt.zones.push_back({36, 96, 2, -1, 0, 0, 0, -12000});
+    // And a quiet looped layer as wide as the tone, as Jeux lays its chiffs.
+    gedeckt.zones.push_back({0, 127, 1, -1, 0, 1, 900, -6000});
     b.presets.push_back(gedeckt);
     mp::SoundFont2::Builder::Preset gedecktTrem{"Gedeckt trem", 0, 61, {}};
     gedecktTrem.zones.push_back({0, 127, 0, -1, 0, 1, 0, -6000, 0, 0, 30, -565});
+    gedecktTrem.zones.push_back({36, 96, 2, -1, 0, 0, 0, -12000});
+    gedecktTrem.zones.push_back({0, 127, 1, -1, 0, 1, 900, -6000});
     b.presets.push_back(gedecktTrem);
     {
       std::ofstream f(dir / "test.sf2", std::ios::binary);
@@ -392,6 +402,9 @@ public:
       if (t.name == "Tremulant Gedeckt") lfo = &t;
     MP_CHECK(lfo && std::abs(lfo->engagedHz - 5.9) < 0.05, "the LFO tremulant at its LFO's 5.9 Hz");
     const mp::Pipe* gedecktPipe = pipeAt(rankNamed("Gedeckt"), 60);
+    MP_CHECK(gedecktPipe && !gedecktPipe->layers.empty() && !gedecktPipe->layers[0].attacks.empty() &&
+                 gedecktPipe->layers[0].attacks[0].sample.fileName.find("low") != std::string::npos,
+             "the loud looped tone under the chiff layers, not a chiff");
     const auto mod = gedecktPipe ? m.tremulantPipes.find(gedecktPipe->pipeId) : m.tremulantPipes.end();
     MP_CHECK(mod != m.tremulantPipes.end() && std::abs(mod->second.ampDepthDb - 5.79) < 0.05,
              "its 3 dB swing: 29% of level, 5.8 dB over the waveform's 15%");
@@ -444,6 +457,32 @@ public:
         mp::convertJOrgan((dir / "Test.disposition").string(), (dir / "w4").string(), true);
     MP_CHECK(header.ok && header.name == "Test Organ" && header.id == rep.id && !fs::exists(dir / "w4"),
              "a header-only load names the organ and writes nothing");
+    {
+      std::ofstream f(dir / "Named.disposition", std::ios::binary);
+      f << "<organ version=\"3.20\"><elements><console id=\"1\"><name>.RIGHT</name></console>"
+           "<console id=\"2\"><name>*Main Console</name></console></elements></organ>";
+    }
+    const mp::JOrganImportReport named =
+        mp::convertJOrgan((dir / "Named.disposition").string(), (dir / "w6").string(), true);
+    MP_CHECK(named.ok && named.name == "Main Console",
+             "the organ named by its first console past jOrgan's sort marks, got " + named.name);
+
+    skinned(dir);
+
+    // A SoundFont packed with sfArk, damaged: its ranks are silent, the
+    // organ opens.
+    {
+      std::string text = kDisposition;
+      text.replace(text.find("TEST.sf2"), 8, "Packed.sf2");
+      std::ofstream f(dir / "Packed.disposition", std::ios::binary);
+      f << text;
+      std::ofstream p(dir / "packed.sfArk", std::ios::binary);
+      p << "not an sfArk file, not at all, only words";
+    }
+    const mp::JOrganImportReport packed = mp::convertJOrgan((dir / "Packed.disposition").string(), (dir / "w5").string());
+    bool packedNote = false;
+    for (const auto& n : packed.notes) packedNote = packedNote || n.find("packed.sfArk") != std::string::npos;
+    MP_CHECK(packed.ok && packedNote, "a damaged sfArk file is named in the notes and the organ opens");
 
     // Damaged files fail to open; they never take the program down.
     {
@@ -460,6 +499,109 @@ public:
     const mp::JOrganImportReport cut = mp::convertJOrgan((dir / "Test.disposition").string(), (dir / "w3").string());
     MP_CHECK(cut.ok, "a truncated SoundFont leaves its ranks silent and the organ opens: " + cut.error);
     fs::remove_all(dir, ec);
+  }
+
+  // A console drawn by its skin: a folder beside the disposition with
+  // skin.xml and its pictures, the console at half size.
+  void skinned(const fs::path& dir) {
+#ifdef MP_TEST_HAS_AUDIO
+    const fs::path skin = dir / "TestSkin";
+    fs::create_directories(skin);
+    auto png = [&](const char* name, int w, int h, juce::Colour c) {
+      juce::Image img(juce::Image::ARGB, w, h, true, juce::SoftwareImageType());
+      img.clear(img.getBounds(), c);
+      juce::File f(juce::String((skin / name).string()));
+      juce::FileOutputStream out(f);
+      juce::PNGImageFormat().writeImageToStream(img, out);
+    };
+    png("wood.png", 64, 64, juce::Colour(0xff804020));
+    png("off.png", 40, 30, juce::Colour(0xffff0000));
+    png("on.png", 40, 30, juce::Colour(0xff00ff00));
+    for (int i = 0; i < 4; ++i)
+      png(("s" + std::to_string(i) + ".png").c_str(), 20, 50, juce::Colour::greyLevel(i / 3.0f));
+    {
+      std::ofstream f(skin / "skin.xml", std::ios::binary);
+      f << R"(<skin><name>test</name><styles>
+<style><name>console</name><layers><image><file>wood.png</file></image></layers></style>
+<style><name>stop</name><layers>
+  <button><binding>active</binding><fill>BOTH</fill><layers>
+    <image><file>off.png</file></image><image><file>ON.png</file></image></layers></button>
+  <text><binding>stop</binding><width>40</width><height>30</height><font><name>Serif</name><style>1</style><size>12</size></font>
+    <color><red>255</red><green>255</green><blue>255</blue></color></text>
+</layers></style>
+<style><name>shoe</name><layers><slider><binding>value</binding><layers>
+  <image><file>s0.png</file></image><image><file>s1.png</file></image>
+  <image><file>s2.png</file></image><image><file>s3.png</file></image></layers></slider></layers></style>
+<style><name>label</name><layers>
+  <image><file>off.png</file><fill>BOTH</fill><border><top>2</top><left>2</left><bottom>2</bottom><right>2</right></border></image>
+  <text><binding>name</binding><padding><top>4</top><left>30</left><bottom>4</bottom><right>30</right></padding>
+    <font><name>SansSerif</name><style>0</style><size>12</size></font></text>
+</layers></style>
+</styles></skin>)";
+    }
+    std::string text = kDisposition;
+    const auto at = [&](const std::string& s) { return text.find(s); };
+    text.replace(at("<console-locationReference id=\"20\"><x>10</x><y>20</y></console-locationReference>"),
+                 std::string("<console-locationReference id=\"20\"><x>10</x><y>20</y></console-locationReference>").size(),
+                 "<console-locationReference id=\"20\"><x>10</x><y>20</y></console-locationReference>"
+                 "<console-locationReference id=\"2\"><x>100</x><y>20</y></console-locationReference>"
+                 "<console-locationReference id=\"50\"><x>200</x><y>20</y></console-locationReference>");
+    text.insert(at("</console>"), "<style>console</style><zoom>0.5</zoom><skin>testskin </skin>");
+    text.insert(at("<active>true</active>"), "<style>stop</style>");
+    text.insert(at("<value>1.0</value>"), "<style>shoe</style>");
+    text.insert(at("<references/>\n      <messages/>\n    </combination>"), "<style>label</style>");
+    {
+      std::ofstream f(dir / "Skinned.disposition", std::ios::binary);
+      f << text;
+    }
+    const fs::path work = dir / "skinned-work";
+    const mp::JOrganImportReport rep = mp::convertJOrgan((dir / "Skinned.disposition").string(), work.string());
+    MP_CHECK(rep.ok, "the skinned disposition converts: " + rep.error);
+    if (!rep.ok) return;
+    auto has = [&](const std::string& s) { return rep.xml.find(s) != std::string::npos; };
+    MP_CHECK(has("skin/c1-e20-0.png") && has("skin/c1-e20-1.png"), "the stop drawn off and on");
+    MP_CHECK(has("skin/c1-background.png"), "the console's style as its background");
+    MP_CHECK(has("<Name>Stock console</Name>"), "the stock page after the skin's");
+    auto image = [&](const std::string& rel) {
+      return juce::ImageFileFormat::loadFrom(juce::File(juce::String((work / rel).string())));
+    };
+    const juce::Image off = image("skin/c1-e20-0.png"), on = image("skin/c1-e20-1.png");
+    MP_CHECK(off.getWidth() == 20 && off.getHeight() == 15, "the stop's picture at the console's half size");
+    MP_CHECK(off.isValid() && on.isValid() && off.getPixelAt(1, 1).getRed() > 200 && on.getPixelAt(1, 1).getGreen() > 200,
+             "the button's first child off, its second on, its file name in any case");
+    const juce::Image label = image("skin/c1-e50.png");
+    MP_CHECK(label.getWidth() >= 30, "the label stretched past its picture by its text's padding, got " +
+                                         std::to_string(label.getWidth()));
+    MP_CHECK(fs::exists(work / "skin/c1-e2-3.png") && !fs::exists(work / "skin/c1-e2-4.png"), "the shoe's four frames");
+
+    mp::OdfLoader loader;
+    mp::OrganModel m;
+    mp::OdfDiagnostics diag;
+    mp::OdfLoader::Options opts;
+    MP_CHECK(loader.loadFromXmlString(rep.xml, (dir / "Skinned.disposition").string(), opts, m, diag),
+             "the skinned organ loads");
+    MP_CHECK(m.displayPages.size() == 2, "two pages: the skin's console and the stock one");
+    const mp::Switch* knob = nullptr;
+    for (const auto& [id, s] : m.switches)
+      if (s.name == "M2.Flute 8' (Test Organ)") knob = &s;
+    MP_CHECK(knob && knob->dispInstanceId != 0 && knob->clickable && knob->defaultEngaged,
+             "the stop's picture is a knob of its own, drawn as the stop stands");
+    bool forth = false, back = false;
+    for (const auto& l : m.switchLinkages) {
+      if (knob && l.sourceSwitchId == knob->switchId) forth = true;
+      if (knob && l.destSwitchId == knob->switchId) back = true;
+    }
+    MP_CHECK(forth && back, "wired both ways to the stop's switch");
+    const mp::ContinuousControl* shoe = nullptr;
+    for (const auto& [id, c] : m.continuousControls)
+      if (c.name == "Swell") shoe = &c;
+    MP_CHECK(shoe && shoe->imageSetInstanceId != 0, "the swell moves its picture on the skin's page");
+
+    const mp::JOrganImportReport again = mp::convertJOrgan((dir / "Skinned.disposition").string(), work.string());
+    MP_CHECK(again.reused, "a second load reuses the drawn pictures");
+#else
+    (void)dir;
+#endif
   }
 };
 

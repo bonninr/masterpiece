@@ -1,7 +1,8 @@
 // A translated jOrgan organ as a Hauptwerk definition, in memory, for the
 // loader: keyboards and divisions, stops, couplers as key actions, ranks
-// and pipes on the WAV files, enclosures, tremulants, and a console page
-// drawn with the program's stock drawstops, keys and shoes.
+// and pipes on the WAV files, enclosures, tremulants; a page per skinned
+// console, on its pictures; and a page drawn with the program's stock
+// drawstops, keys and shoes.
 #pragma once
 
 #include "JOrganOrgan.h"

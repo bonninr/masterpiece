@@ -212,9 +212,11 @@ A GrandOrgue organ opens from its `.organ` file in a folder or from an `.orgue` 
 A jOrgan organ opens from its `.disposition` file.
 
 - SoundFonts (`.sf2`): at the path the disposition gives, relative to its folder; otherwise a file of the same name beside the disposition (for paths such as `C:\Sounds\Organ.sf2`)
+- sfArk SoundFonts (`.sfArk`, self-extracting `.sfArk.exe`) beside the disposition, in place of a missing `.sf2`: unpacked once into the organ's folder
+- Skins (a folder or `.zip` beside the disposition, as the console names it): a page per console, drawn by its skin; then the stock page with keys and every drawstop
 - Conversion on opening, as for GrandOrgue organs: the disposition to a definition in memory; each SoundFont sample a rank uses to a WAV file with its loop and release tail
 - Location: a folder per organ in the `jOrgan` folder of the [settings folder](files.md#the-settings-folder)
-- Conversion again only when the disposition or a SoundFont changes
+- Conversion again only when the disposition, a SoundFont or a skin changes
 - Favourites, recent organs and settings: under the disposition
 - Formats read: jOrgan 3.0 to 3.21
 
@@ -227,9 +229,9 @@ A jOrgan organ opens from its `.disposition` file.
 | Stops no keyboard names | Keyboard of the unison coupler reaching them (theatre dispositions) |
 | Continuous filter | Volume or expression, moved by an input: swell shoe, closed level from the value 0. Not moved: fixed rank level. Pitch bend: fixed rank tuning |
 | Switch filter | Program change to other samples: wave tremulant. Same samples with LFOs: tremulant at the LFO's rate, level and pitch depth. Modulation controller: vibrato at 8.2 Hz, 50 cents at full |
-| Console | Organ name. Stock drawstops, keys and shoes; stops in two jambs; knob labels from each element's `stop=` line |
+| Console | Organ name. With a skin: a page per console, each element at its place in its style (images, nine-part borders, texts from the name or description, skin fonts), states as pictures; stops, couplers, tremulants and swells clickable. Stock page: drawstops, keys and shoes; stops in two jambs; knob labels from each element's `stop=` line |
 
-Left out, each named in the log: combinations, memories, activators, captors, keyers, incrementers, regulators, sequences, the recorder, sounds without a SoundFont (LinuxSampler, generic MIDI), NRPN tone filters, SoundFont filters, extra layers, skins.
+Left out, each named in the log: combinations, memories, activators, captors, keyers, incrementers, regulators, sequences, the recorder, sounds without a SoundFont (LinuxSampler, generic MIDI), NRPN tone filters, SoundFont filters, extra layers. On skinned consoles: combinations, pistons and other controls drawn but not clickable.
 
 Approximations and omissions in the log: lines starting with `load: jOrgan import:`.
 

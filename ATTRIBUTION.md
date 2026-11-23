@@ -65,6 +65,10 @@ disposition and the SoundFonts it names, converted by Masterpiece for testing.
 | Freedom 3/29, Robert Morton Opus 2401 (Lite), GM MIDI | South African Virtual Organs; the Freedom uses Bruce Miles' cinema organ SoundFonts | [savirtualorgans](https://sites.google.com/site/savirtualorgans/jorgan-dispositions) |
 | Village Organ, English Organ, Wurlitzer 216 and 260, Compton | Bruce Miles | [jorgan.info](https://jorgan.info/base/bm/Midi_Consoles.html) |
 | fluidsynth example | The jOrgan project | [jOrgan](https://github.com/svenmeier/jorgan) |
+| Hanseatic Baroque Organ, Cavaillé-Coll | Bernd Casper | [jorgan.info](https://jorgan.info/base/arch/bc/Bernd_Casper's_Dispositions.html) |
+| Oberhausbergen, Orgue Alain | Panos Ghekas | [jorgan.info](https://jorgan.info/base/arch/pg/Panos_Ghekas'_Dispositions.html) |
+| American Classic Organ, Aeolian-Skinner Opus 1234, Jaeckel Opus 5, Van Oeckelen, Walcker (Wildervank), Volkmann (Łędziny), English Organ Tribute | Paul Stratman | [jOrgan dispositions](https://jorgan.info/base/arch/ps/jo/jOrgan_Dispositions.html) |
+| Christie 3 manuals | Rick Whatson | [jorgan.info](https://jorgan.info/base/arch/bc/Bernd_Casper's_Dispositions.html) (jOrgan 3.14 test kit) |
 
 ---
 
@@ -164,7 +168,8 @@ understanding throughout, and is gratefully acknowledged:
 It is built on [JUCE](https://juce.com/), [pugixml](https://pugixml.org/),
 [libarchive](https://www.libarchive.org/), which reads organs straight from their
 packages, and [WavPack](https://www.wavpack.com/), which decodes compressed samples
-(both BSD licence).
+(both BSD licence), and [sfArkLib](https://github.com/raboof/sfArkLib) (GPL-3.0),
+which unpacks sfArk SoundFonts for jOrgan organs.
 
 The score panel engraves with [Verovio](https://www.verovio.org/) (LGPL-3.0) in
 the [Bravura](https://github.com/steinbergmedia/bravura) music font (SIL Open

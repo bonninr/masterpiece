@@ -3,6 +3,8 @@
 #include "JOrganDisposition.h"
 #include "JOrganHauptwerk.h"
 #include "JOrganOrgan.h"
+#include "JOrganSfArk.h"
+#include "JOrganSkin.h"
 #include "SoundFont2.h"
 
 #include "mp_core/Utf8Path.h"
@@ -24,7 +26,7 @@ namespace {
 
 // Bumped whenever the conversion changes what it writes, so a work folder
 // from an earlier version is made again.
-constexpr int kImporterVersion = 10;
+constexpr int kImporterVersion = 17;
 
 std::string lower(std::string s) {
   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -133,6 +135,18 @@ std::string labelOf(const std::string& name, const std::string& description) {
 }
 
 
+// The organ's name: its first console's, past the marks jOrgan players sort
+// consoles with ("*Main", ".LEFT"); a console whose name is a mark and a
+// word (".RIGHT") is a side panel and names nothing.
+std::string organNameOf(const JOrganDisposition& d, const std::string& fallback) {
+  for (const JOrganElement& e : d.elements) {
+    if (e.type != "console" || e.name.empty() || e.name[0] == '.') continue;
+    const auto start = e.name.find_first_not_of("* ");
+    if (start != std::string::npos) return e.name.substr(start);
+  }
+  return fallback.empty() ? std::string("jOrgan organ") : fallback;
+}
+
 // The cents a SoundFont's initialAttenuation stands for, as FluidSynth --
 // jOrgan's player -- applies it: 0.4 of the value, as the hardware the format
 // came from did.
@@ -207,7 +221,21 @@ struct Converter {
         note("sound \"" + e.name + "\" (" + e.type + ") names no SoundFont; its ranks are silent");
         continue;
       }
-      const std::filesystem::path p = soundFontPath(dispositionDir, font);
+      std::filesystem::path p = soundFontPath(dispositionDir, font);
+      // Packed with sfArk: unpacked into the work folder, once.
+      std::error_code ec;
+      const std::filesystem::path packed = std::filesystem::exists(p, ec) ? std::filesystem::path() : sfArkFor(p);
+      if (!packed.empty()) {
+        const std::filesystem::path out = pathOf(work) / "sfark" / pathOf(fileSafe(utf8Of(p.stem())) + ".sf2");
+        std::string err;
+        const bool current = std::filesystem::exists(out, ec) &&
+                             std::filesystem::last_write_time(out, ec) >= std::filesystem::last_write_time(packed, ec);
+        if (!current && !unpackSfArk(packed, out, err)) {
+          note("SoundFont " + utf8Of(packed.filename()) + ": " + err + "; its ranks are silent");
+          continue;
+        }
+        p = out;
+      }
       auto sf = std::make_unique<SoundFont2>();
       std::string err;
       if (!sf->open(utf8Of(p), err)) {
@@ -376,6 +404,17 @@ struct Converter {
       if (key >= r.keyLo && key <= r.keyHi && velocity >= r.velLo && velocity <= r.velHi) hits.push_back(&r);
     main = right = nullptr;
     if (hits.empty()) return false;
+    // A sustained layer before a short one: organ presets lay a chiff or a
+    // key click, unlooped, over the looped tone. A drum kit's instrument on
+    // a single key stays the one.
+    const auto looped = [](const Sf2Region* r) { return r->loopMode == 1 || r->loopMode == 3; };
+    const bool drumKey = std::any_of(hits.begin(), hits.end(), [&](const Sf2Region* r) {
+      return !looped(r) && r->keyLo == r->keyHi;
+    });
+    if (!drumKey && std::any_of(hits.begin(), hits.end(), looped) && !std::all_of(hits.begin(), hits.end(), looped)) {
+      hits.erase(std::remove_if(hits.begin(), hits.end(), [&](const Sf2Region* r) { return !looped(r); }), hits.end());
+      note("a key with a looped and an unlooped SoundFont layer (a chiff) plays the looped one");
+    }
     const auto& samples = sf.samples();
     // A stereo pair: the left sample and the right one it links to.
     for (const Sf2Region* a : hits) {
@@ -388,11 +427,13 @@ struct Converter {
         }
     }
     // Several layers: the one made for the fewest keys. A drum kit lays a
-    // filler over the whole keyboard and one instrument on each key.
+    // filler over the whole keyboard and one instrument on each key; of
+    // layers as wide, the loudest: a quiet chiff lies over the tone.
     main = *std::min_element(hits.begin(), hits.end(), [](const Sf2Region* a, const Sf2Region* b) {
-      return a->keyHi - a->keyLo < b->keyHi - b->keyLo;
+      const int wa = a->keyHi - a->keyLo, wb = b->keyHi - b->keyLo;
+      return wa != wb ? wa < wb : a->attenuationCb < b->attenuationCb;
     });
-    if (hits.size() > 1) note("a key with several SoundFont layers plays the layer made for the fewest keys");
+    if (hits.size() > 1) note("a key with several SoundFont layers plays the layer made for the fewest keys, the loudest of those");
     return true;
   }
 };
@@ -675,12 +716,7 @@ JOrganImportReport convertJOrganText(const std::string& text, const std::string&
 
   // ---- the organ -------------------------------------------------------------
   JOrganOrgan organ;
-  for (const JOrganElement& e : d.elements)
-    if (e.type == "console" && !e.name.empty()) {
-      organ.name = e.name;
-      break;
-    }
-  if (organ.name.empty()) organ.name = fallbackName.empty() ? std::string("jOrgan organ") : fallbackName;
+  organ.name = organNameOf(d, fallbackName);
   organ.id = 1000000000ll + static_cast<long long>(fnv(text) % 1000000000ull);
   for (const Manual& m : manuals) organ.manuals.push_back({m.name, m.pedal, m.firstMidi, m.keys});
 
@@ -771,7 +807,9 @@ JOrganImportReport convertJOrganText(const std::string& text, const std::string&
     return rankOf[key] = static_cast<int>(organ.ranks.size());
   };
 
+  std::map<int, int> drawstopOfElement;  // the first drawstop of each element
   auto drawstopOf = [&](const JOrganElement& e, const std::string& name) {
+    drawstopOfElement.emplace(e.id, static_cast<int>(organ.drawstops.size()));
     organ.drawstops.push_back({name, labelOf(name, e.description), e.prop("active") == "true"});
     return static_cast<int>(organ.drawstops.size()) - 1;
   };
@@ -903,6 +941,21 @@ JOrganImportReport convertJOrganText(const std::string& text, const std::string&
   for (const auto& [type, n] : others)
     c.note(std::to_string(n) + " " + type + " element(s) are left out");
 
+  // The consoles, as their skins draw them; each picture of a stop, coupler,
+  // tremulant or swell moves it.
+  std::map<int, int> enclosureOfElement;
+  for (size_t i = 0; i < enclosureEls.size(); ++i) enclosureOfElement[enclosureEls[i]->id] = static_cast<int>(i);
+  std::vector<std::string> skinNotes;
+  organ.consoles = drawJOrganConsoles(d, dispositionDir, workFolder, skinNotes);
+  for (const auto& n : skinNotes) c.note(n);
+  for (auto& console : organ.consoles)
+    for (auto& v : console.views) {
+      const auto ds = drawstopOfElement.find(v.element);
+      if (ds != drawstopOfElement.end() && v.frames.size() == 2 && !v.slider) v.drawstop = ds->second;
+      const auto en = enclosureOfElement.find(v.element);
+      if (en != enclosureOfElement.end() && v.slider) v.enclosure = en->second;
+    }
+
   rep.name = organ.name;
   rep.id = organ.id;
   rep.xml = jorganHauptwerkXml(organ);
@@ -925,12 +978,7 @@ JOrganImportReport convertJOrganUnguarded(const std::string& path, const std::st
   if (headerOnly) {
     JOrganDisposition d;
     if (!readJOrganDisposition(text, d, rep.error)) return rep;
-    rep.name = stemOf(path);
-    for (const JOrganElement& e : d.elements)
-      if (e.type == "console" && !e.name.empty()) {
-        rep.name = e.name;
-        break;
-      }
+    rep.name = organNameOf(d, stemOf(path));
     rep.id = 1000000000ll + static_cast<long long>(fnv(text) % 1000000000ull);
     rep.xml = jorganHauptwerkHeader(rep.name, rep.id);
     rep.ok = true;
@@ -945,18 +993,25 @@ JOrganImportReport convertJOrganUnguarded(const std::string& path, const std::st
   {
     JOrganDisposition d;
     std::string err;
-    if (readJOrganDisposition(text, d, err))
+    auto stampOf = [&](const std::string& name, const std::filesystem::path& p) {
+      std::error_code ec;
+      const auto size = std::filesystem::file_size(p, ec);
+      const auto time = std::filesystem::last_write_time(p, ec);
+      // Plain integers: a file time's count is __int128 on some libc++.
+      stamp += name + " " + std::to_string(ec ? 0ull : static_cast<unsigned long long>(size)) + " " +
+               std::to_string(ec ? 0ll : static_cast<long long>(time.time_since_epoch().count())) + "\n";
+    };
+    if (readJOrganDisposition(text, d, err)) {
       for (const JOrganElement& e : d.elements) {
         const std::string font = e.prop("soundfont");
         if (font.empty()) continue;
         const std::filesystem::path p = soundFontPath(utf8Of(dir), font);
         std::error_code ec;
-        const auto size = std::filesystem::file_size(p, ec);
-        const auto time = std::filesystem::last_write_time(p, ec);
-        // Plain integers: a file time's count is __int128 on some libc++.
-        stamp += font + " " + std::to_string(ec ? 0ull : static_cast<unsigned long long>(size)) + " " +
-                 std::to_string(ec ? 0ll : static_cast<long long>(time.time_since_epoch().count())) + "\n";
+        const std::filesystem::path packed = std::filesystem::exists(p, ec) ? std::filesystem::path() : sfArkFor(p);
+        stampOf(font, packed.empty() ? p : packed);
       }
+      for (const std::string& f : jorganSkinFiles(d, utf8Of(dir))) stampOf(f, pathOf(f));
+    }
   }
   const std::filesystem::path stampFile = pathOf(work) / "import.stamp";
   const std::filesystem::path xmlFile = pathOf(work) / "organ.xml";
