@@ -262,10 +262,12 @@ struct Paragraph {
   std::vector<std::pair<std::string, int>> lines;  // text and width
 };
 
+// A text layer's text: a line of the description by its key, which jOrgan
+// binds after the name, so "name = Principal" shows in place of the name.
 std::string textOf(const Layer& l, const ViewState& v) {
-  if (l.binding == "name") return v.name;
   const auto it = v.texts.find(l.binding);
-  return it == v.texts.end() ? std::string() : it->second;
+  if (it != v.texts.end()) return it->second;
+  return l.binding == "name" ? v.name : std::string();
 }
 
 std::string trim(const std::string& s) {
