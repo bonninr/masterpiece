@@ -25,16 +25,40 @@ std::string lower(std::string s) {
   return s;
 }
 
-// The skin a console names, beside the disposition, its name in any case.
+// `rel` under `dir`, each part in any case; empty when not there.
+std::filesystem::path findIgnoringCase(const std::filesystem::path& dir, const std::string& rel) {
+  std::filesystem::path at = dir;
+  std::error_code ec;
+  std::istringstream parts(rel);
+  for (std::string part; std::getline(parts, part, '/');) {
+    if (part.empty() || part == ".") continue;
+    std::filesystem::path next = at / pathOf(part);
+    if (!std::filesystem::exists(next, ec)) {
+      next.clear();
+      for (const auto& entry : std::filesystem::directory_iterator(at, ec))
+        if (lower(utf8Of(entry.path().filename())) == lower(part)) next = entry.path();
+      if (next.empty()) return {};
+    }
+    at = next;
+  }
+  return at == dir ? std::filesystem::path() : at;
+}
+
+// The skin a console names, as jOrgan finds it from the disposition's
+// folder: the path given ("skins/organ.zip", "/organ.zip"), then the file of
+// that name beside the disposition or in a "skins" folder there. Names in
+// any case.
 std::filesystem::path skinPath(const std::string& dispositionDir, const std::string& name) {
   std::string rel = name;
   std::replace(rel.begin(), rel.end(), '\\', '/');
-  rel = rel.substr(rel.find_last_of('/') + 1);
+  const std::string last = rel.substr(rel.find_last_of('/') + 1);
   const std::filesystem::path dir = pathOf(dispositionDir);
-  std::error_code ec;
-  if (std::filesystem::exists(dir / pathOf(rel), ec)) return dir / pathOf(rel);
-  for (const auto& entry : std::filesystem::directory_iterator(dir, ec))
-    if (lower(utf8Of(entry.path().filename())) == lower(rel)) return entry.path();
+  const bool absolute = (rel.size() > 2 && rel[1] == ':') || rel.rfind("//", 0) == 0;
+  for (const std::string& candidate : {absolute ? std::string() : rel, last, "skins/" + last}) {
+    if (candidate.empty() || last.empty()) continue;
+    const std::filesystem::path p = findIgnoringCase(dir, candidate);
+    if (!p.empty()) return p;
+  }
   return {};
 }
 
@@ -97,14 +121,9 @@ struct SkinFiles {
       in->readIntoMemoryBlock(out);
       return true;
     }
-    std::filesystem::path p = folder / pathOf(name);
+    const std::filesystem::path p = findIgnoringCase(folder, name);
     std::error_code ec;
-    if (!std::filesystem::exists(p, ec)) {
-      p.clear();
-      for (const auto& entry : std::filesystem::directory_iterator(folder, ec))
-        if (lower(utf8Of(entry.path().filename())) == lower(name)) p = entry.path();
-      if (p.empty()) return false;
-    }
+    if (p.empty() || std::filesystem::is_directory(p, ec)) return false;
     return juce::File(juce::String::fromUTF8(utf8Of(p).c_str())).loadFileAsData(out);
   }
 };
