@@ -65,6 +65,10 @@ disposition and the SoundFonts it names, converted by Masterpiece for testing.
 | Freedom 3/29, Robert Morton Opus 2401 (Lite), GM MIDI | South African Virtual Organs; the Freedom uses Bruce Miles' cinema organ SoundFonts | [savirtualorgans](https://sites.google.com/site/savirtualorgans/jorgan-dispositions) |
 | Village Organ, English Organ, Wurlitzer 216 and 260, Compton | Bruce Miles | [jorgan.info](https://jorgan.info/base/bm/Midi_Consoles.html) |
 | fluidsynth example | The jOrgan project | [jOrgan](https://github.com/svenmeier/jorgan) |
+| Hanseatic Baroque Organ, Cavaillé-Coll | Bernd Casper | [jorgan.info](https://jorgan.info/base/arch/bc/Bernd_Casper's_Dispositions.html) |
+| Oberhausbergen, Orgue Alain | Panos Ghekas | [jorgan.info](https://jorgan.info/base/arch/pg/Panos_Ghekas'_Dispositions.html) |
+| American Classic Organ, Aeolian-Skinner Opus 1234, Jaeckel Opus 5, Van Oeckelen, Walcker (Wildervank), Volkmann (Łędziny), English Organ Tribute | Paul Stratman | [jOrgan dispositions](https://jorgan.info/base/arch/ps/jo/jOrgan_Dispositions.html) |
+| Christie 3 manuals | Rick Whatson | [jorgan.info](https://jorgan.info/base/arch/bc/Bernd_Casper's_Dispositions.html) (jOrgan 3.14 test kit) |
 
 ---
 
