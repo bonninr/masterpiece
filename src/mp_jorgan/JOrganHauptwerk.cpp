@@ -67,6 +67,7 @@ void general(Emitter& out, const std::string& name, long long id) {
 // Ids, per table, in ranges that read back as what they are in a log.
 constexpr int kStopSwitchBase = 3000;   // + drawstop
 constexpr int kKeySwitchBase = 20000;   // + keys in order
+constexpr int kKnobSwitchBase = 40000;  // + a skin's pictures of drawstops
 constexpr int kStopBase = 100000;       // + stop
 constexpr int kCouplerStopBase = 110000;// + coupler: listed with the stops
 constexpr int kRankBase = 1000;         // + rank
@@ -327,9 +328,10 @@ std::string jorganHauptwerkXml(const JOrganOrgan& o) {
   }
 
   // ---- the console -------------------------------------------------------
-  // One page: wood, the drawstops in two jambs, the manuals between them
-  // with the swell shoes above the pedal.
-  const int page = 1;
+  // The skin's consoles, one page each, then the stock page: wood, the
+  // drawstops in two jambs, the manuals between them with the swell shoes
+  // above the pedal.
+  int page = 1;
   int nextSet = 1, nextInstance = 1, nextText = 1;
   std::map<std::string, int> setMemo;
   auto imageSet = [&](const std::vector<std::string>& stock, bool wood) {
@@ -400,6 +402,84 @@ std::string jorganHauptwerkXml(const JOrganOrgan& o) {
     Emitter::set(t, "AttachedToImageSetInstanceID", inst);
     Emitter::yn(t, "PosRelativeToTopLeftOfImageSetInstance", true);
   };
+
+  // ---- the skin's consoles ---------------------------------------------
+  // Each element's pictures, one per state, in the work folder. The first
+  // picture of a swell moves it; every picture of a drawstop is a knob of
+  // its own, wired both ways to the drawstop's switch.
+  auto pictureSet = [&](const std::vector<JOrganOrgan::Picture>& frames) {
+    const int id = nextSet++;
+    auto set = out.row("ImageSet");
+    Emitter::set(set, "ImageSetID", id);
+    Emitter::set(set, "InstallationPackageID", 0);
+    Emitter::set(set, "Name", frames.front().file);
+    Emitter::set(set, "ImageWidthPixels", frames.front().width);
+    Emitter::set(set, "ImageHeightPixels", frames.front().height);
+    for (size_t i = 0; i < frames.size(); ++i) {
+      auto el = out.row("ImageSetElement");
+      Emitter::set(el, "ImageSetID", id);
+      Emitter::set(el, "ImageIndexWithinSet", static_cast<int>(i) + 1);
+      Emitter::set(el, "BitmapFilename", frames[i].file);
+    }
+    return id;
+  };
+  auto link = [&](int source, int dest) {
+    auto l = out.row("SwitchLinkage");
+    Emitter::set(l, "SourceSwitchID", source);
+    Emitter::set(l, "DestSwitchID", dest);
+    Emitter::yn(l, "SourceSwitchLinkIfEngaged", true);
+    Emitter::set(l, "EngageLinkActionCode", 1);
+    Emitter::set(l, "DisengageLinkActionCode", 2);
+  };
+  std::set<int> skinnedShoes;
+  int nextKnob = kKnobSwitchBase;
+  for (const auto& console : o.consoles) {
+    // The background over the elements' extent, or over the whole picture
+    // when it is a little larger: drawn for the screen the console fills.
+    int w = console.width, h = console.height;
+    const auto& bg = console.background;
+    if (!bg.file.empty() && bg.width <= w * 3 / 2 && bg.height <= h * 3 / 2) {
+      w = std::max(w, bg.width);
+      h = std::max(h, bg.height);
+    }
+    if (!bg.file.empty()) instance(pictureSet({bg}), 0, 0, 0, w, h);
+    for (const auto& v : console.views) {
+      const int set = pictureSet(v.frames);
+      const int inst = instance(set, v.x, v.y, 2);
+      out.lists["ImageSetInstance"].last_child().child("DefaultImageIndexWithinSet").text() = v.initial + 1;
+      if (v.drawstop >= 0) {
+        const int knob = nextKnob++;
+        auto sw = emitSwitch(knob, o.drawstops[v.drawstop].name + " (" + console.name + ")",
+                             o.drawstops[v.drawstop].engaged);
+        Emitter::set(sw, "Disp_ImageSetInstanceID", inst);
+        Emitter::set(sw, "Disp_ImageSetIndexEngaged", 2);
+        Emitter::set(sw, "Disp_ImageSetIndexDisengaged", 1);
+        Emitter::yn(sw, "Clickable", true);
+        link(knob, kStopSwitchBase + v.drawstop);
+        link(kStopSwitchBase + v.drawstop, knob);
+      } else if (v.enclosure >= 0 && skinnedShoes.insert(v.enclosure).second) {
+        const int n = static_cast<int>(v.frames.size());
+        for (int f = 0; f < n; ++f) {
+          // The frame jOrgan shows at a position: the nearest of the slider's.
+          auto st = out.row("ContinuousControlImageSetStage");
+          Emitter::set(st, "ImageSetID", set);
+          const int highest =
+              n == 2 ? (f == 0 ? 0 : 127)
+                     : (f == n - 1 ? 127 : static_cast<int>(std::ceil(127.0 * (f + 0.5) / (n - 1))) - 1);
+          Emitter::set(st, "HighestContinuousControlValue", highest);
+          Emitter::set(st, "ImageSetIndex", f + 1);
+        }
+        auto cc = enclosureControls[v.enclosure];
+        Emitter::set(cc, "ImageSetInstanceID", inst);
+        Emitter::yn(cc, "Clickable", true);
+        Emitter::yn(cc, "ClickingHigherIncreasesValue", true);
+      }
+    }
+    auto pg = out.row("DisplayPage");
+    Emitter::set(pg, "PageID", page);
+    Emitter::set(pg, "Name", console.name.empty() ? o.name : console.name);
+    ++page;
+  }
 
   // The geometry.
   constexpr int kCellW = 78, kCellH = 69, kMargin = 30;
@@ -518,6 +598,7 @@ std::string jorganHauptwerkXml(const JOrganOrgan& o) {
     const int n = static_cast<int>(o.enclosures.size());
     const int left = centerX + (centerW - n * 2 * shoeWH.first) / 2 + shoeWH.first / 2;
     for (int e = 0; e < n; ++e) {
+      if (skinnedShoes.count(e)) continue;
       const int inst = instance(set, left + e * 2 * shoeWH.first, y, 2);
       auto cc = enclosureControls[e];
       Emitter::set(cc, "ImageSetInstanceID", inst);
@@ -532,7 +613,7 @@ std::string jorganHauptwerkXml(const JOrganOrgan& o) {
 
   auto pg = out.row("DisplayPage");
   Emitter::set(pg, "PageID", page);
-  Emitter::set(pg, "Name", o.name);
+  Emitter::set(pg, "Name", o.consoles.empty() ? o.name : std::string("Stock console"));
   return out.text();
 }
 

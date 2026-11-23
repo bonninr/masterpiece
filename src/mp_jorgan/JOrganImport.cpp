@@ -3,6 +3,7 @@
 #include "JOrganDisposition.h"
 #include "JOrganHauptwerk.h"
 #include "JOrganOrgan.h"
+#include "JOrganSkin.h"
 #include "SoundFont2.h"
 
 #include "mp_core/Utf8Path.h"
@@ -24,7 +25,7 @@ namespace {
 
 // Bumped whenever the conversion changes what it writes, so a work folder
 // from an earlier version is made again.
-constexpr int kImporterVersion = 10;
+constexpr int kImporterVersion = 11;
 
 std::string lower(std::string s) {
   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -771,7 +772,9 @@ JOrganImportReport convertJOrganText(const std::string& text, const std::string&
     return rankOf[key] = static_cast<int>(organ.ranks.size());
   };
 
+  std::map<int, int> drawstopOfElement;  // the first drawstop of each element
   auto drawstopOf = [&](const JOrganElement& e, const std::string& name) {
+    drawstopOfElement.emplace(e.id, static_cast<int>(organ.drawstops.size()));
     organ.drawstops.push_back({name, labelOf(name, e.description), e.prop("active") == "true"});
     return static_cast<int>(organ.drawstops.size()) - 1;
   };
@@ -903,6 +906,21 @@ JOrganImportReport convertJOrganText(const std::string& text, const std::string&
   for (const auto& [type, n] : others)
     c.note(std::to_string(n) + " " + type + " element(s) are left out");
 
+  // The consoles, as their skins draw them; each picture of a stop, coupler,
+  // tremulant or swell moves it.
+  std::map<int, int> enclosureOfElement;
+  for (size_t i = 0; i < enclosureEls.size(); ++i) enclosureOfElement[enclosureEls[i]->id] = static_cast<int>(i);
+  std::vector<std::string> skinNotes;
+  organ.consoles = drawJOrganConsoles(d, dispositionDir, workFolder, skinNotes);
+  for (const auto& n : skinNotes) c.note(n);
+  for (auto& console : organ.consoles)
+    for (auto& v : console.views) {
+      const auto ds = drawstopOfElement.find(v.element);
+      if (ds != drawstopOfElement.end() && v.frames.size() == 2 && !v.slider) v.drawstop = ds->second;
+      const auto en = enclosureOfElement.find(v.element);
+      if (en != enclosureOfElement.end() && v.slider) v.enclosure = en->second;
+    }
+
   rep.name = organ.name;
   rep.id = organ.id;
   rep.xml = jorganHauptwerkXml(organ);
@@ -945,18 +963,21 @@ JOrganImportReport convertJOrganUnguarded(const std::string& path, const std::st
   {
     JOrganDisposition d;
     std::string err;
-    if (readJOrganDisposition(text, d, err))
+    auto stampOf = [&](const std::string& name, const std::filesystem::path& p) {
+      std::error_code ec;
+      const auto size = std::filesystem::file_size(p, ec);
+      const auto time = std::filesystem::last_write_time(p, ec);
+      // Plain integers: a file time's count is __int128 on some libc++.
+      stamp += name + " " + std::to_string(ec ? 0ull : static_cast<unsigned long long>(size)) + " " +
+               std::to_string(ec ? 0ll : static_cast<long long>(time.time_since_epoch().count())) + "\n";
+    };
+    if (readJOrganDisposition(text, d, err)) {
       for (const JOrganElement& e : d.elements) {
         const std::string font = e.prop("soundfont");
-        if (font.empty()) continue;
-        const std::filesystem::path p = soundFontPath(utf8Of(dir), font);
-        std::error_code ec;
-        const auto size = std::filesystem::file_size(p, ec);
-        const auto time = std::filesystem::last_write_time(p, ec);
-        // Plain integers: a file time's count is __int128 on some libc++.
-        stamp += font + " " + std::to_string(ec ? 0ull : static_cast<unsigned long long>(size)) + " " +
-                 std::to_string(ec ? 0ll : static_cast<long long>(time.time_since_epoch().count())) + "\n";
+        if (!font.empty()) stampOf(font, soundFontPath(utf8Of(dir), font));
       }
+      for (const std::string& f : jorganSkinFiles(d, utf8Of(dir))) stampOf(f, pathOf(f));
+    }
   }
   const std::filesystem::path stampFile = pathOf(work) / "import.stamp";
   const std::filesystem::path xmlFile = pathOf(work) / "organ.xml";

@@ -85,6 +85,28 @@ struct JOrganOrgan {
     std::vector<int> enclosures, tremulants;  // indexes
   };
   std::vector<Chest> chests;
+
+  // A console as its skin draws it: a background tile and each element's
+  // pictures at its place. Without one, the console is the stock layout.
+  struct Picture {
+    std::string file;  // relative to the work folder
+    int width = 0, height = 0;
+  };
+  struct ConsoleView {
+    int element = 0;              // the disposition's element
+    int x = 0, y = 0;
+    std::vector<Picture> frames;  // off and on; a slider's positions; else one
+    bool slider = false;
+    int initial = 0;              // the frame it shows as the disposition stands
+    int drawstop = -1, enclosure = -1;  // what it moves, when it moves one
+  };
+  struct Console {
+    std::string name;
+    int width = 0, height = 0;
+    Picture background;           // tiled over the page
+    std::vector<ConsoleView> views;  // in drawing order
+  };
+  std::vector<Console> consoles;
 };
 
 }  // namespace mp
