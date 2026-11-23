@@ -280,10 +280,13 @@ public:
     gedeckt.zones.push_back({0, 127, 0, -1, 0, 1, 0, -6000});
     // A chiff: unlooped, over fewer keys, laid over the tone.
     gedeckt.zones.push_back({36, 96, 2, -1, 0, 0, 0, -12000});
+    // And a quiet looped layer as wide as the tone, as Jeux lays its chiffs.
+    gedeckt.zones.push_back({0, 127, 1, -1, 0, 1, 900, -6000});
     b.presets.push_back(gedeckt);
     mp::SoundFont2::Builder::Preset gedecktTrem{"Gedeckt trem", 0, 61, {}};
     gedecktTrem.zones.push_back({0, 127, 0, -1, 0, 1, 0, -6000, 0, 0, 30, -565});
     gedecktTrem.zones.push_back({36, 96, 2, -1, 0, 0, 0, -12000});
+    gedecktTrem.zones.push_back({0, 127, 1, -1, 0, 1, 900, -6000});
     b.presets.push_back(gedecktTrem);
     {
       std::ofstream f(dir / "test.sf2", std::ios::binary);
@@ -401,7 +404,7 @@ public:
     const mp::Pipe* gedecktPipe = pipeAt(rankNamed("Gedeckt"), 60);
     MP_CHECK(gedecktPipe && !gedecktPipe->layers.empty() && !gedecktPipe->layers[0].attacks.empty() &&
                  gedecktPipe->layers[0].attacks[0].sample.fileName.find("low") != std::string::npos,
-             "the looped tone under a chiff layer, not the chiff");
+             "the loud looped tone under the chiff layers, not a chiff");
     const auto mod = gedecktPipe ? m.tremulantPipes.find(gedecktPipe->pipeId) : m.tremulantPipes.end();
     MP_CHECK(mod != m.tremulantPipes.end() && std::abs(mod->second.ampDepthDb - 5.79) < 0.05,
              "its 3 dB swing: 29% of level, 5.8 dB over the waveform's 15%");

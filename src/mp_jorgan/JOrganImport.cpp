@@ -26,7 +26,7 @@ namespace {
 
 // Bumped whenever the conversion changes what it writes, so a work folder
 // from an earlier version is made again.
-constexpr int kImporterVersion = 16;
+constexpr int kImporterVersion = 17;
 
 std::string lower(std::string s) {
   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -427,11 +427,13 @@ struct Converter {
         }
     }
     // Several layers: the one made for the fewest keys. A drum kit lays a
-    // filler over the whole keyboard and one instrument on each key.
+    // filler over the whole keyboard and one instrument on each key; of
+    // layers as wide, the loudest: a quiet chiff lies over the tone.
     main = *std::min_element(hits.begin(), hits.end(), [](const Sf2Region* a, const Sf2Region* b) {
-      return a->keyHi - a->keyLo < b->keyHi - b->keyLo;
+      const int wa = a->keyHi - a->keyLo, wb = b->keyHi - b->keyLo;
+      return wa != wb ? wa < wb : a->attenuationCb < b->attenuationCb;
     });
-    if (hits.size() > 1) note("a key with several SoundFont layers plays the layer made for the fewest keys");
+    if (hits.size() > 1) note("a key with several SoundFont layers plays the layer made for the fewest keys, the loudest of those");
     return true;
   }
 };
