@@ -34,11 +34,13 @@ if(TARGET juce::juce_graphics)
       SOURCE_SUBDIR do-not-build
     )
     FetchContent_MakeAvailable(sfarklib)
+    # Not sfklZip.cpp: its one function, UnMemcomp, is in JOrganSfArk.cpp.
+    # sfklZip.cpp declares the message buffer a pointer where sfklCoding.cpp
+    # makes it an array: unlinkable with MSVC, a stray write elsewhere.
     set(MP_SFARK_SOURCES
       ${sfarklib_SOURCE_DIR}/sfklCoding.cpp ${sfarklib_SOURCE_DIR}/sfklCrunch.cpp
       ${sfarklib_SOURCE_DIR}/sfklDiff.cpp ${sfarklib_SOURCE_DIR}/sfklFile.cpp
-      ${sfarklib_SOURCE_DIR}/sfklLPC.cpp ${sfarklib_SOURCE_DIR}/sfklString.cpp
-      ${sfarklib_SOURCE_DIR}/sfklZip.cpp)
+      ${sfarklib_SOURCE_DIR}/sfklLPC.cpp ${sfarklib_SOURCE_DIR}/sfklString.cpp)
     target_sources(mp_jorgan PRIVATE ${MP_SFARK_SOURCES})
     # Every target is little-endian; the library's own warnings are its own.
     set_source_files_properties(${MP_SFARK_SOURCES} PROPERTIES

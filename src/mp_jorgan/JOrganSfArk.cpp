@@ -106,6 +106,20 @@ int mp_sfark_uncompress(unsigned char* dest, unsigned long* destLen, const unsig
   return got > 0 || sourceLen == 0 ? Z_OK : Z_DATA_ERROR;
 }
 
+// sfklZip.cpp's one function, as it declares it in wcc.h: a block inflated,
+// its length, or 0 with sfArkLib's error flag set.
+extern int GlobalErrorFlag;
+unsigned int UnMemcomp(const unsigned char* in, int inBytes, unsigned char* out, int outBytes) {
+  unsigned long n = static_cast<unsigned long>(outBytes);
+  const int result = mp_sfark_uncompress(out, &n, in, static_cast<unsigned long>(inBytes));
+  if (result != Z_OK) {
+    mp::gSfArkMessage = "a damaged block";
+    GlobalErrorFlag = result == Z_MEM_ERROR ? SFARKLIB_ERR_MALLOC : SFARKLIB_ERR_CORRUPT;
+    return 0;
+  }
+  return static_cast<unsigned int>(n);
+}
+
 unsigned long mp_sfark_adler32(unsigned long adler, const unsigned char* buf, unsigned int len) {
   unsigned long a = adler & 0xffff, b = (adler >> 16) & 0xffff;
   for (unsigned int i = 0; i < len; ++i) {
