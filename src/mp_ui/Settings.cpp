@@ -1649,7 +1649,7 @@ void ReverbPanel::midiMenu() {
   menu.addItem(1, TRANS("Learn: move the knob or pedal"));
   menu.addItem(2, TRANS("Clear mapping"), !existing.empty());
   juce::Component::SafePointer<ReverbPanel> self(this);
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&midi_), [self](int choice) {
+  showMenu(menu, juce::PopupMenu::Options().withTargetComponent(&midi_), [self](int choice) {
     if (self == nullptr) return;
     if (choice == 1) self->proc_.beginLearn(MidiTargetKind::ReverbWet, 0, false);
     if (choice == 2) {
@@ -1959,7 +1959,7 @@ void RecorderPanel::showMidiMenu() {
     item += 3;
   }
   juce::Component::SafePointer<RecorderPanel> self(this);
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&midi_), [self](int chosen) {
+  showMenu(menu, juce::PopupMenu::Options().withTargetComponent(&midi_), [self](int chosen) {
     if (self == nullptr || chosen <= 0) return;
     const bool record = chosen <= 3;
     const auto kind = record ? MidiTargetKind::RecorderRecord : MidiTargetKind::RecorderPlay;
@@ -2251,7 +2251,7 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
     juce::PopupMenu menu;
     for (Id kb : proc_.playableKeyboards())
       menu.addItem(static_cast<int>(kb), juce::String(proc_.keyboardName(kb)));
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&learnManuals_),
+    showMenu(menu, juce::PopupMenu::Options().withTargetComponent(&learnManuals_),
                        [this](int kb) {
                          if (kb > 0) ManualDialog::show(proc_, static_cast<Id>(kb), ManualDialog::Tab::Pistons);
                        });
@@ -2483,7 +2483,7 @@ void MidiPanel::learnMenu(const LearnButton& l) {
   menu.addItem(2, TRANS("Clear"), !existing.empty());
   menu.addItem(3, TRANS("MIDI window..."));
   juce::Component::SafePointer<MidiPanel> self(this);
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(l.button),
+  showMenu(menu, juce::PopupMenu::Options().withTargetComponent(l.button),
                      [self, kind, id, name](int choice) {
                        if (self == nullptr) return;
                        switch (choice) {
@@ -3877,7 +3877,7 @@ void VoicingPanel::midiMenu() {
     item += 10;
   }
   juce::Component::SafePointer<VoicingPanel> self(this);
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&midi_), [self, targets](int choice) {
+  showMenu(menu, juce::PopupMenu::Options().withTargetComponent(&midi_), [self, targets](int choice) {
     if (self == nullptr || choice <= 0) return;
     const auto& t = targets[static_cast<size_t>((choice - 1) / 10)];
     switch ((choice - 1) % 10) {
@@ -5539,7 +5539,7 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
     const Source s = sourceOfTab_[static_cast<size_t>(index)];
     juce::PopupMenu m;
     m.addItem(TRANS("Open %1 in a window of its own").replace("%1", sourceName(s)), [this, s] { setDetached(s, true); });
-    m.showMenuAsync(juce::PopupMenu::Options().withMousePosition());
+    showMenu(m, juce::PopupMenu::Options().withMousePosition());
   };
   if (!kMobile) addAndMakeVisible(detach_);
   detach_.setTooltip(TRANS("Opens this tab's strips in a window of their own, to keep beside the console; closing it "
@@ -5553,7 +5553,7 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
     juce::PopupMenu m;
     for (Source s : sectionsWithStrips())
       m.addItem(TRANS("Open %1 in a window of its own").replace("%1", sourceName(s)), [this, s] { setDetached(s, true); });
-    m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&detach_));
+    showMenu(m, juce::PopupMenu::Options().withTargetComponent(&detach_));
   };
   addAndMakeVisible(emptySource_);
   styleLabel(emptySource_, "");
@@ -5744,7 +5744,7 @@ void MixerPanel::faderMidiMenu(Fader& f) {
     menu.addItem(base + 1, TRANS("Clear mapping"), !existing.empty());
   }
   juce::Component::SafePointer<MixerPanel> self(this);
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&f.strip->midi),
+  showMenu(menu, juce::PopupMenu::Options().withTargetComponent(&f.strip->midi),
                      [self, targets](int choice) {
                        if (self == nullptr || choice <= 0) return;
                        const auto& [kind, id] = targets[static_cast<size_t>((choice - 1) / 2)];
@@ -5928,7 +5928,7 @@ void MixerPanel::mixMenu(int mixId) {
       if (self != nullptr) self->mixesChanged();
     });
   });
-  m.showMenuAsync(juce::PopupMenu::Options().withMousePosition());
+  showMenu(m, juce::PopupMenu::Options().withMousePosition());
 }
 
 // Each perspective's and division's box shows the destination its ranks

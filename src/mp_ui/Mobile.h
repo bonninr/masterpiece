@@ -191,6 +191,14 @@ inline const juce::Identifier kStaysOpen{"mpStaysOpen"};
 // with menu rows tall enough to touch. Installed once at startup and removed
 // before shutdown; nothing happens elsewhere.
 void installTouchLook();
+// A menu that a click outside closes without the click doing anything else
+// (#1247). JUCE closes a menu at once on a click outside it and lets the
+// click through to what lies under it, unless the click lands on the
+// component the menu is attached to. Attached to its window, at the same
+// place, a click anywhere in the window only closes the menu.
+juce::PopupMenu::Options closingClickStays(juce::PopupMenu::Options o);
+// menu.showMenuAsync, with closingClickStays.
+void showMenu(juce::PopupMenu& menu, const juce::PopupMenu::Options& o, std::function<void(int)> done = nullptr);
 void removeTouchLook();
 
 // Whether a file name is something a phone or tablet opens: a .rar or .orgue

@@ -1,4 +1,5 @@
 #include "MixerStrip.h"
+#include "Mobile.h"
 
 #include <iterator>
 
@@ -63,6 +64,10 @@ int FaderLook::capLength(const juce::Slider& s) {
 }
 
 int FaderLook::getSliderThumbRadius(juce::Slider& s) { return capLength(s) / 2; }
+
+juce::PopupMenu::Options FaderLook::getOptionsForComboBoxPopupMenu(juce::ComboBox& box, juce::Label& label) {
+  return mp::ui::closingClickStays(juce::LookAndFeel_V4::getOptionsForComboBoxPopupMenu(box, label));
+}
 
 void FaderLook::drawRotarySlider(juce::Graphics& g, int x, int y, int w, int h, float pos, float startAngle,
                                  float endAngle, juce::Slider& s) {

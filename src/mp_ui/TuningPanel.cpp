@@ -237,7 +237,7 @@ void TuningPanel::showMidiMenu() {
     item += 3;
   }
   juce::Component::SafePointer<TuningPanel> self(this);
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&midi_), [self, targets](int chosen) {
+  showMenu(menu, juce::PopupMenu::Options().withTargetComponent(&midi_), [self, targets](int chosen) {
     if (self == nullptr || chosen <= 0) return;
     const Target& target = targets[static_cast<size_t>((chosen - 1) / 3)];
     switch ((chosen - 1) % 3) {

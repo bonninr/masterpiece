@@ -30,29 +30,52 @@ juce::Component::SafePointer<juce::Component>& hostPointer() {
   return host;
 }
 
-// JUCE's default look, kept, with what a finger needs instead of a mouse.
+// JUCE's default look, kept, with what a finger needs instead of a mouse on
+// a phone or a tablet, and on every system a list that a click outside
+// closes without doing anything else (#1247).
 class TouchLook : public juce::LookAndFeel_V4 {
 public:
+  juce::PopupMenu::Options getOptionsForComboBoxPopupMenu(juce::ComboBox& box, juce::Label& label) override {
+    return closingClickStays(juce::LookAndFeel_V4::getOptionsForComboBoxPopupMenu(box, label));
+  }
   void getIdealPopupMenuItemSize(const juce::String& text, bool isSeparator,
                                  int standardMenuItemHeight, int& idealWidth,
                                  int& idealHeight) override {
     juce::LookAndFeel_V4::getIdealPopupMenuItemSize(text, isSeparator, standardMenuItemHeight,
                                                     idealWidth, idealHeight);
-    if (!isSeparator) {
+    if (kMobile && !isSeparator) {
       idealHeight = juce::jmax(idealHeight, kTouchTitleBar);
       idealWidth += 32;
     }
   }
   juce::Font getPopupMenuFont() override {
-    return juce::LookAndFeel_V4::getPopupMenuFont().withHeight(20.0f);
+    return kMobile ? juce::LookAndFeel_V4::getPopupMenuFont().withHeight(20.0f)
+                   : juce::LookAndFeel_V4::getPopupMenuFont();
   }
 };
 
 std::unique_ptr<TouchLook> touchLook;
 }  // namespace
 
+juce::PopupMenu::Options closingClickStays(juce::PopupMenu::Options o) {
+  auto area = o.getTargetScreenArea();
+  if (area.isEmpty()) area = juce::Rectangle<int>(juce::Desktop::getMousePosition(), juce::Desktop::getMousePosition());
+  juce::Component* under = o.getTargetComponent();
+  if (under == nullptr) under = juce::Desktop::getInstance().findComponentAt(area.getCentre());
+  if (under == nullptr) return o;
+  auto* top = under->getTopLevelComponent();
+  if (top == nullptr || top == o.getTargetComponent()) return o;
+  return o.withTargetComponent(top).withTargetScreenArea(area);
+}
+
+void showMenu(juce::PopupMenu& menu, const juce::PopupMenu::Options& o, std::function<void(int)> done) {
+  menu.showMenuAsync(closingClickStays(o), std::move(done));
+}
+
 void installTouchLook() {
-  if (!kMobile || touchLook != nullptr) return;
+  // On every system: the lists' click outside (#1247); the finger's sizes
+  // only on phones and tablets.
+  if (touchLook != nullptr) return;
   touchLook = std::make_unique<TouchLook>();
   juce::LookAndFeel::setDefaultLookAndFeel(touchLook.get());
 }
