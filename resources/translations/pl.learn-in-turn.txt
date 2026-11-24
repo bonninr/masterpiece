@@ -45,7 +45,6 @@
 "Add tab" = "Dodaj przełącznik"
 "Add this organ's mappings" = "Dodaj przypisania tych organów"
 "Map this organ..." = "Przypisz te organy..."
-"%1 mapped from the profile. Tick the matches below to map them too." = "Przypisano z profilu: %1. Zaznacz dopasowania poniżej, aby przypisać także je."
 "Console profile..." = "Profil kontuaru..."
 "Map from console profile..." = "Przypisz z profilu kontuaru..."
 "Related" = "Pokrewny"

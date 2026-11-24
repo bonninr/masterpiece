@@ -188,6 +188,23 @@ CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
   };
   fewerGenerals_.onClick = [changeCounts] { changeCounts(-1, 0); };
   moreGenerals_.onClick = [changeCounts] { changeCounts(1, 0); };
+  addChildComponent(readyMade_);
+  readyMade_.setTooltip(TRANS("PP, P, MF, F, Plein jeu and Tutti, built from this organ's stop names, in the "
+                              "generals not yet set"));
+  readyMade_.onClick = [this] {
+    juce::Component::SafePointer<CombinationsPanel> safe(this);
+    juce::AlertWindow::showOkCancelBox(
+        juce::MessageBoxIconType::QuestionIcon, TRANS("Ready-made registrations"),
+        TRANS("Fill the generals not yet set with PP, P, MF, F, Plein jeu and Tutti, built from this organ's stop "
+              "names? Generals already set stay as they are. Each can be changed with Set, and renamed, "
+              "afterwards."),
+        TRANS("Fill"), TRANS("Cancel"), this, juce::ModalCallbackFunction::create([safe](int result) {
+          if (result != 1 || safe == nullptr) return;
+          safe->proc_.fillReadyMadeGenerals();
+          safe->rebuild();
+          safe->applyView();
+        }));
+  };
   fewerDivisionals_.onClick = [changeCounts] { changeCounts(0, -1); };
   moreDivisionals_.onClick = [changeCounts] { changeCounts(0, 1); };
 
@@ -247,24 +264,45 @@ CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
   note_.setJustificationType(juce::Justification::topLeft);
 
   rebuild();
+  // Sequencer or levels (#1246): the frames as GrandOrgue's sequencer, or
+  // read as levels of generals, as English consoles have them.
+  addChildComponent(style_);
+  style_.addItem(TRANS("Sequencer"), 1);
+  for (int n = 1; n <= MasterpieceProcessor::kMaxLevelSize; ++n)
+    style_.addItem(TRANS("Levels of %1 generals").replace("%1", juce::String(n)), n + 1);
+  style_.setTooltip(TRANS("The stepper as GrandOrgue's sequencer, frames 000 to 998, or as levels of generals: "
+                          "- and + step through the generals, the level buttons move a level, and the numbered "
+                          "buttons pick a general of the level"));
+  style_.onChange = [this] {
+    const int id = style_.getSelectedId();
+    if (id <= 0) return;
+    proc_.setStepperLevels(id > 1);
+    if (id > 1) proc_.setLevelSize(id - 1);
+    applyView();
+  };
   applyView();
   startTimerHz(10);
 }
 
 void CombinationsPanel::applyView() {
   simple_ = proc_.simpleMode();
-  const bool frames = !simple_ && sequencerShown();
+  levels_ = simple_ || proc_.stepperLevels();
+  const int perLevel = proc_.levelStep();
+  style_.setSelectedId(proc_.stepperLevels() ? proc_.levelSize() + 1 : 1, juce::dontSendNotification);
+  style_.setVisible(!simple_ && sequencerShown());
+  const bool frames = !levels_ && sequencerShown();
   for (juce::Component* c :
        std::initializer_list<juce::Component*>{&stepFirst_, &stepLast_, &frame_, &insertFrame_, &deleteFrame_})
     c->setVisible(frames);
   for (juce::Component* c :
        std::initializer_list<juce::Component*>{&stepPrev_, &stepNext_, &stepBack10_, &stepForward10_})
     c->setVisible(sequencerShown());
-  for (auto& b : digits_) b->setVisible(sequencerShown());
-  level_.setVisible(simple_ && sequencerShown());
+  for (size_t i = 0; i < digits_.size(); ++i)
+    digits_[i]->setVisible(sequencerShown() && static_cast<int>(i) < perLevel);
+  level_.setVisible(levels_ && sequencerShown());
   const bool generals = !simple_ && combinationsShown();
   for (juce::Component* c :
-       std::initializer_list<juce::Component*>{&generalsLabel_, &fewerGenerals_, &moreGenerals_})
+       std::initializer_list<juce::Component*>{&generalsLabel_, &fewerGenerals_, &moreGenerals_, &readyMade_})
     c->setVisible(generals);
   for (auto& b : generals_) b->setVisible(generals);
   const bool divisionals = combinationsShown() && !divisions_.empty();
@@ -278,16 +316,22 @@ void CombinationsPanel::applyView() {
   }
   pedalCoupler_.setVisible(divisionals && proc_.coupledDivisions().valid());
   pedalManual_.setVisible(pedalCoupler_.isVisible());
-  stepPrev_.setButtonText(simple_ ? "-" : "<");
-  stepNext_.setButtonText(simple_ ? "+" : ">");
-  stepPrev_.setTooltip(simple_ ? TRANS("The general before") : juce::String());
-  stepNext_.setTooltip(simple_ ? TRANS("The next general") : juce::String());
-  stepBack10_.setTooltip(simple_ ? TRANS("The level before") : TRANS("Ten frames back"));
-  stepForward10_.setTooltip(simple_ ? TRANS("The next level") : TRANS("Ten frames on"));
-  for (int i = 0; i < 10; ++i)
+  stepPrev_.setButtonText(levels_ ? "-" : "<");
+  stepNext_.setButtonText(levels_ ? "+" : ">");
+  stepPrev_.setTooltip(levels_ ? TRANS("The general before") : juce::String());
+  stepNext_.setTooltip(levels_ ? TRANS("The next general") : juce::String());
+  stepBack10_.setButtonText("-" + juce::String(perLevel));
+  stepForward10_.setButtonText("+" + juce::String(perLevel));
+  stepBack10_.setTooltip(levels_ ? TRANS("The level before") : TRANS("Ten frames back"));
+  stepForward10_.setTooltip(levels_ ? TRANS("The next level") : TRANS("Ten frames on"));
+  for (int i = 0; i < 10; ++i) {
+    // Levels number their generals from 1; the sequencer's digits are the
+    // last figure of a frame, from 0.
+    digits_[static_cast<size_t>(i)]->setButtonText(juce::String(levels_ ? i + 1 : i));
     digits_[static_cast<size_t>(i)]->setTooltip(
-        simple_ ? TRANS("General %1 of this level").replace("%1", juce::String(i))
+        levels_ ? TRANS("General %1 of this level").replace("%1", juce::String(i + 1))
                 : TRANS("The frame ending in %1, among the ten shown").replace("%1", juce::String(i)));
+  }
   const int w = std::max(getWidth(), preferredWidth());
   setSize(w, preferredHeight(w));
   resized();
@@ -383,8 +427,9 @@ int CombinationsPanel::preferredHeight(int /*width*/) const {
 // The widths resized() lays out, row by row.
 int CombinationsPanel::preferredWidth() const {
   const auto& pc = proc_.playerCombinations();
-  int w = simple_ ? 56 + kGap + 56 + 12 + 48 + 48 + 110 + 48 + 48
+  int w = levels_ ? 56 + kGap + 56 + 12 + 48 + 48 + 110 + 48 + 48
                   : 56 + kGap + 56 + 12 + 34 + 40 + 34 + 110 + 34 + 40 + 34 + kGap * 2 + 56 + 56;
+  if (!simple_) w += kGap * 2 + kStyleW;
   if (!simple_)
     w = std::max(w, kDivisionLabelW + std::min(pc.generalCount(), kPerRow) * (kPistonW + kGap));
   if (!divisions_.empty()) {
@@ -404,7 +449,8 @@ void CombinationsPanel::resized() {
   row.removeFromLeft(kGap);
   generalCancel_.setBounds(row.removeFromLeft(56).reduced(1));
   row.removeFromLeft(12);
-  if (simple_) {
+  if (!simple_) style_.setBounds(row.removeFromRight(kStyleW).reduced(1));
+  if (levels_) {
     stepBack10_.setBounds(row.removeFromLeft(48).reduced(1));
     stepPrev_.setBounds(row.removeFromLeft(48).reduced(1));
     level_.setBounds(row.removeFromLeft(110));
@@ -426,8 +472,10 @@ void CombinationsPanel::resized() {
   // The digits take the row's width in ten equal cells.
   if (sequencerShown()) {
     row = r.removeFromTop(kRow);
+    const int perLevel = proc_.levelStep();
     const int cell = row.getWidth() / 10;
-    for (auto& b : digits_) b->setBounds(row.removeFromLeft(cell).reduced(1));
+    for (int i = 0; i < perLevel && i < static_cast<int>(digits_.size()); ++i)
+      digits_[static_cast<size_t>(i)]->setBounds(row.removeFromLeft(cell).reduced(1));
   }
   r.removeFromTop(kSection);
 
@@ -436,6 +484,8 @@ void CombinationsPanel::resized() {
     generalsLabel_.setBounds(row.removeFromLeft(kDivisionLabelW));
     fewerGenerals_.setBounds(row.removeFromLeft(26).reduced(1));
     moreGenerals_.setBounds(row.removeFromLeft(26).reduced(1));
+    row.removeFromLeft(kGap);
+    readyMade_.setBounds(row.removeFromLeft(110).reduced(1));
     r.removeFromTop(kGap);
     for (size_t i = 0; i < generals_.size(); ++i) {
       const int col = static_cast<int>(i) % kPerRow;
@@ -507,7 +557,7 @@ void CombinationsPanel::refreshState() {
     return;
   }
 
-  if (proc_.simpleMode() != simple_) applyView();
+  if (proc_.simpleMode() != simple_ || (proc_.simpleMode() || proc_.stepperLevels()) != levels_) applyView();
 
   const bool capturing = proc_.captureMode();
   setter_.setToggleState(capturing, juce::dontSendNotification);
@@ -533,26 +583,36 @@ void CombinationsPanel::refreshState() {
   const auto shown = [](int f) {
     return juce::String::formatted("%03d", PlayerCombinations::shownNumber(f));
   };
-  frame_.setText(pc.frame() == 0 ? (last == 0 ? juce::String(TRANS("No frames"))
-                                              : TRANS("- of %1").replace("%1", shown(last)))
-                                 : TRANS("Frame %1 of %2")
-                                       .replace("%1", shown(pc.frame()))
-                                       .replace("%2", shown(std::max(last, pc.frame()))),
-                 juce::dontSendNotification);
+  // Every frame is there (#1245): the one chosen by its number, and whether it
+  // holds a registration; "of" names the last frame that does.
+  juce::String frameText;
+  if (pc.frame() == 0)
+    frameText = last == 0 ? juce::String(TRANS("No frames")) : TRANS("- of %1").replace("%1", shown(last));
+  else if (!pc.frameSet(pc.frame()))
+    frameText = TRANS("Frame %1, empty").replace("%1", shown(pc.frame()));
+  else
+    frameText = TRANS("Frame %1 of %2").replace("%1", shown(pc.frame())).replace("%2", shown(std::max(last, pc.frame())));
+  frame_.setText(frameText, juce::dontSendNotification);
   // The ten of the level shown: set when the frame holds a registration, lit
   // for the one drawn now.
-  const int base = PlayerCombinations::shownNumber(std::max(pc.frame(), 1)) / 10 * 10;
-  for (int i = 0; i < 10; ++i) {
+  const int perLevel = proc_.levelStep();
+  const int base = PlayerCombinations::shownNumber(std::max(pc.frame(), 1)) / perLevel * perLevel;
+  for (int i = 0; i < perLevel; ++i) {
     const int f = base + i + 1;
     paintPiston(*digits_[static_cast<size_t>(i)], f <= PlayerCombinations::kMaxFrames && pc.frameSet(f),
                 pc.frame() == f);
   }
-  level_.setText(TRANS("Level %1").replace("%1", juce::String(base / 10 + 1)), juce::dontSendNotification);
+  level_.setText(pc.frame() >= 1 ? TRANS("Level %1, general %2")
+                                       .replace("%1", juce::String(base / perLevel + 1))
+                                       .replace("%2", juce::String(pc.frame() - base))
+                                 : TRANS("Level %1").replace("%1", juce::String(base / perLevel + 1)),
+                 juce::dontSendNotification);
   stepPrev_.setEnabled(pc.frame() > 1);
-  stepNext_.setEnabled(capturing || pc.frame() < last);
-  stepFirst_.setEnabled(pc.frame() != 1 && (last > 0 || capturing));
+  stepNext_.setEnabled(pc.frame() < PlayerCombinations::kMaxFrames);
+  stepFirst_.setEnabled(pc.frame() != 1);
   stepBack10_.setEnabled(pc.frame() > 1);
-  stepForward10_.setEnabled(capturing || pc.frame() < last);
+  stepForward10_.setEnabled(pc.frame() < PlayerCombinations::kMaxFrames);
+
   stepLast_.setEnabled(last > 0 && pc.frame() != last);
   deleteFrame_.setEnabled(pc.frame() >= 1 && last > 0);
   setDelete_.setEnabled(!proc_.combinationSetName().empty());
@@ -561,10 +621,10 @@ void CombinationsPanel::refreshState() {
   note_.setText(map.learning()
                     ? TRANS("Now press the control on your console that should do "
                             "this. Right-click the piston again to cancel.")
-                : simple_
-                    ? TRANS("Press Set, then a general, to store what is drawn. - and + step "
-                            "through the generals, -10 and +10 through the levels. Right-click "
-                            "any piston to map it to your console.")
+                : levels_
+                    ? TRANS("Press Set, then a general, to store what is drawn. - and + step through the "
+                            "generals, the level buttons through the levels. Right-click any piston to map "
+                            "it to your console.")
                     : TRANS("Press Set, then a piston, to store what is drawn. "
                             "A piston never set does nothing. Right-click any piston "
                             "to map it to your console."),
@@ -588,12 +648,11 @@ void CombinationsPanel::refreshSets() {
 void askForFrame(MasterpieceProcessor& p) {
   // One at a time, and gone with its answer.
   static std::unique_ptr<juce::AlertWindow> prompt;
-  const int last = p.playerCombinations().lastUsedFrame();
+  // Every frame is there (#1245): any of them, set or not.
   prompt = std::make_unique<juce::AlertWindow>(
       TRANS("Go to a frame"),
-      last > 0 ? TRANS("A frame number, 000 to %1:")
-                     .replace("%1", juce::String::formatted("%03d", PlayerCombinations::shownNumber(last)))
-               : TRANS("A frame number:"),
+      TRANS("A frame number, 000 to %1:")
+          .replace("%1", juce::String::formatted("%03d", PlayerCombinations::shownNumber(PlayerCombinations::kMaxFrames))),
       juce::MessageBoxIconType::NoIcon);
   prompt->addTextEditor("frame", "", TRANS("Frame"));
   if (auto* editor = prompt->getTextEditor("frame")) {
@@ -609,9 +668,7 @@ void askForFrame(MasterpieceProcessor& p) {
     prompt.reset();
     if (text.isEmpty()) return;
     const int typed = text.getIntValue() + 1;
-    // Past the end is the end, unless the setter is on and the sequence may grow.
-    const int last = p.playerCombinations().lastUsedFrame();
-    const int to = p.captureMode() ? typed : juce::jmin(typed, last);
+    const int to = juce::jmin(typed, PlayerCombinations::kMaxFrames);
     // With Set on, the frame shown is stored into, as its digit does.
     if (to >= 1 && (p.captureMode() || to != p.playerCombinations().frame())) p.stepperGoto(to);
   }));

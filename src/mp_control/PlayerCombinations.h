@@ -158,9 +158,11 @@ public:
   void lightDivisional(Id divisionId, int n);
 
   // --- stepper ----------------------------------------------------------
-  // Frames 1..kMaxFrames. Stepping forward stops after the last frame that
-  // holds anything, so a piece's sequence does not run on into empties --
-  // except while capturing, when stepping on is how a sequence gets longer.
+  // Frames 1..kMaxFrames, every one of them there from the start, set or
+  // not, as on GrandOrgue's setter (#1245): stepping goes to the next frame
+  // whatever it holds, and an empty frame recalls nothing, so the stops stay
+  // as they are. Its place is kept: storing into frame 010 with 000 to 004
+  // set needs no frames inserted, and moves none.
   int frame() const { return frame_; }
   int lastUsedFrame() const;
   bool frameSet(int oneBased) const;
@@ -183,6 +185,31 @@ public:
   void clearAll();
 
   static std::string keyOf(const Element& e);
+
+  // --- ready-made registrations (#1221) ------------------------------------
+  // Graded registrations built from the stop names, as the PP to Tutti
+  // buttons of a digital organ: PP, P, MF, F, Plein jeu, Tutti. Each stop is
+  // read through the stop-name dictionary (family and footage, in several
+  // languages); the main manual is the one with the most stops, the pedal the
+  // division `keyboardOf` gives 0. A level holds the one before it:
+  //   PP         a soft stopped flute 8' on a manual, a soft 16' in the pedal
+  //   P          a flute 8' on the main manual too, a flute 8' in the pedal
+  //   MF         the main manual's principal 8' and a flute 4', a 4' on the
+  //              others, the pedal's 8' principal
+  //   F          the principal chorus to 2' on every manual, the pedal's 16'
+  //   Plein jeu  the mixtures and the principals' mutations
+  //   Tutti      every stop but celestes and percussion, every coupler; no
+  //              tremulant
+  // `isTremulant` says which switch elements are tremulants; the others are
+  // couplers. Nothing here stores anything: the processor fills only the
+  // generals not yet set.
+  struct Suggestion {
+    std::string name;
+    std::vector<char> drawn;  // one flag per element, in elements() order
+  };
+  static std::vector<Suggestion> suggestRegistrations(const std::vector<Element>& elements,
+                                                      const std::function<int(Id)>& keyboardOf,
+                                                      const std::function<bool(Id)>& isTremulant);
 
 private:
   std::vector<Element> elements_;

@@ -145,6 +145,10 @@ public:
 
       const int mapped = panel.applyStrong();
       MP_CHECK(mapped == 3, "three strong matches mapped, got " + std::to_string(mapped) + " from " + offered);
+      // What was mapped without asking is listed for the player (#1012).
+      const auto applied = panel.appliedStrong().joinIntoString("|");
+      MP_CHECK(panel.appliedStrong().size() == 3 && applied.contains("Open Diapason 8") && applied.contains("Principal 8"),
+               "the three are listed, tab and control: " + applied.toStdString());
       auto number = [&](mp::Id sw) {
         const auto b = proc.midiMap().bindingsFor(mp::MidiTargetKind::Switch, sw);
         return b.size() == 1 ? b.front()->source.number : -static_cast<int>(b.size());

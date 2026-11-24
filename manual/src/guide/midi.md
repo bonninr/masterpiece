@@ -324,7 +324,7 @@ Click the key button (it reads **None** or the current key), then press the key,
 | **Closes it** (shoes) | Moves the shoe down by the step. | **None** | Any key |
 | **Each press moves it by** (shoes) | The size of one step on the 0 to 127 travel. | 8 | 1 to 64 |
 
-A stored key operates organ switches (stops, couplers, tremulants and the organ's own pistons) and shoes. The tab also appears for the player's generals, divisionals, cancels, setter and sequencer buttons; a key stored there has no effect.
+A stored key operates organ switches (stops, couplers, tremulants and the organ's own pistons) and shoes, and the player's generals, divisionals, cancels, setter and sequencer buttons, as their MIDI message does: a console whose pistons are wired to a computer-keyboard encoder plays them this way.
 
 ## Sending to a console
 

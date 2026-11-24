@@ -45,7 +45,6 @@
 "Add tab" = "Registerwippe hinzufügen"
 "Add this organ's mappings" = "Zuordnungen dieser Orgel hinzufügen"
 "Map this organ..." = "Diese Orgel zuordnen..."
-"%1 mapped from the profile. Tick the matches below to map them too." = "%1 aus dem Profil zugeordnet. Haken Sie die Zuordnungen unten an, um auch sie zu übernehmen."
 "Console profile..." = "Spieltischprofil..."
 "Map from console profile..." = "Aus Spieltischprofil zuordnen..."
 "Related" = "Verwandt"

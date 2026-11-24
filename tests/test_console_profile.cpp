@@ -175,6 +175,30 @@ public:
              "a coupler at another pitch is another coupler");
     MP_CHECK(mp::matchScore(coupler("II/I", 2, 1), coupler("I/P", 1, 0)) == 0.0, "nor between other keyboards");
     MP_CHECK(mp::matchScore(stop("Tremulant", 2), tremulant("Tremulant", 2)) == 0.0, "a stop is not a tremulant");
+
+    // Names from real sets (#1245). Lemmer writes the footage against the
+    // name, after a code; Pinerolo spells its flutes "floit".
+    MP_CHECK(mp::stopTraits("2117_Prestant8").footage == 8.0 &&
+                 mp::stopTraits("2117_Prestant8").family == ToneFamily::Principal,
+             "2117_Prestant8 is a principal 8'");
+    MP_CHECK(mp::stopTraits("2116_Fluit4d").footage == 4.0, "Fluit4d is a 4'");
+    MP_CHECK(mp::stopTraits("Rohrfloit 4'").family == ToneFamily::StoppedFlute, "Rohrfloit is a stopped flute");
+    MP_CHECK(mp::stopTraits("Holfloit 8'").family == ToneFamily::OpenFlute, "Holfloit an open one");
+    MP_CHECK(mp::stopTraits("Posaun 16'").family == ToneFamily::ChorusReed, "Posaun is a reed");
+    MP_CHECK(mp::stopTraits("Mixtur 4fach").ranks == 4 && mp::stopTraits("Mixtur 4fach").footage == 0.0,
+             "4fach still reads as ranks");
+    // By sound, never a knob that is no pipework: Caen, Ashton and Melcer were
+    // offered their Blower, Pinerolo its Vogelgesang and "Start blower on organ
+    // load", each on no keyboard and at no pitch.
+    {
+      auto offKeyboard = [&](const char* label) { return stop(label, -1); };
+      const auto none = mp::matchProfile({stop("Mixture III", 1), stop("Bass Flute 8", 0)},
+                                         {offKeyboard("Blower On/Off"), offKeyboard("Vogelgesang"),
+                                          offKeyboard("Start blower on organ load")});
+      MP_CHECK(none.empty(), "no blower or bird call is offered, got " + std::to_string(none.size()));
+      MP_CHECK(mp::matchProfile({stop("Bourdon 16", 0)}, {stop("Posaun 16'", 0)}).empty(),
+               "a Bourdon is not offered a Posaune by sound");
+    }
   }
 };
 

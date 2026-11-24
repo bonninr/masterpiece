@@ -45,7 +45,6 @@
 "Add tab" = "Añadir tecla de registro"
 "Add this organ's mappings" = "Añadir las asignaciones de este órgano"
 "Map this organ..." = "Asignar este órgano..."
-"%1 mapped from the profile. Tick the matches below to map them too." = "%1 asignados desde el perfil. Marca las coincidencias de abajo para asignarlas también."
 "Console profile..." = "Perfil de consola..."
 "Map from console profile..." = "Asignar desde el perfil de consola..."
 "Related" = "Afín"

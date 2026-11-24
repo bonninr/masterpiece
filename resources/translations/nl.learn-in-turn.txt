@@ -45,7 +45,6 @@
 "Add tab" = "Registerwip toevoegen"
 "Add this organ's mappings" = "Koppelingen van dit orgel toevoegen"
 "Map this organ..." = "Dit orgel koppelen..."
-"%1 mapped from the profile. Tick the matches below to map them too." = "%1 gekoppeld vanuit het profiel. Vink de overeenkomsten hieronder aan om ook die te koppelen."
 "Console profile..." = "Speeltafelprofiel..."
 "Map from console profile..." = "Koppelen vanuit speeltafelprofiel..."
 "Related" = "Verwant"

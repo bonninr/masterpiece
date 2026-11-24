@@ -106,8 +106,12 @@ bool ProfileMatchPanel::refresh() {
 
 int ProfileMatchPanel::applyStrong() {
   std::vector<ProfileMatch> chosen;
-  for (const auto& m : matches_)
-    if (m.strong) chosen.push_back(m);
+  applied_.clear();
+  for (int i = 0; i < matchCount(); ++i)
+    if (matches_[static_cast<size_t>(i)].strong) {
+      chosen.push_back(matches_[static_cast<size_t>(i)]);
+      applied_.add(tabText(i) + " -> " + controlText(i));
+    }
   const int n = applyProfileMatches(proc_, profile_, controls_, chosen);
   refresh();
   return n;

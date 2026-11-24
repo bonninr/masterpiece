@@ -45,7 +45,6 @@
 "Add tab" = "Ajouter un domino"
 "Add this organ's mappings" = "Ajouter les associations de cet orgue"
 "Map this organ..." = "Associer cet orgue..."
-"%1 mapped from the profile. Tick the matches below to map them too." = "%1 associés depuis le profil. Cochez les correspondances ci-dessous pour les associer aussi."
 "Console profile..." = "Profil de console..."
 "Map from console profile..." = "Associer depuis le profil de console..."
 "Related" = "Apparenté"

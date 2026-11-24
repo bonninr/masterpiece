@@ -6834,12 +6834,15 @@ public:
     pc.generalCancel(out);
     MP_CHECK(out.size() == 6, "a general cancel, the whole registration -- never the blower");
 
-    // The stepper: frames of its own, held at both ends.
+    // The stepper: frames of its own, every one there from the start
+    // (#1245). An empty frame is stepped to and recalls nothing.
     out.clear();
-    MP_CHECK(!pc.stepNext(false, read, out), "an empty sequence cannot be stepped");
+    MP_CHECK(pc.stepNext(false, read, out) && pc.frame() == 1 && out.empty(),
+             "an empty sequence steps to frame 1, which changes nothing");
+    MP_CHECK(pc.stepPrev(false, read, out) == false && pc.frame() == 1, "and is held at frame 1");
     drawn.clear();
     draw(K::Stop, 1);
-    MP_CHECK(pc.stepNext(true, read, out) && pc.frame() == 1, "with Set on, stepping captures");
+    MP_CHECK(pc.gotoFrame(1, true, read, out) && pc.frame() == 1, "with Set on, a frame captures");
     draw(K::Stop, 3);
     MP_CHECK(pc.stepNext(true, read, out) && pc.frame() == 2 && pc.lastUsedFrame() == 2,
              "and stepping on is how the sequence grows");
@@ -6847,10 +6850,10 @@ public:
     out.clear();
     MP_CHECK(pc.stepNext(false, read, out) && has(out, K::Stop, 3, true),
              "stepping forward recalls the next frame");
-    MP_CHECK(!pc.stepNext(false, read, out) && pc.frame() == 2,
-             "and does not run on past the last frame that holds anything");
-
-    MP_CHECK(pc.stepPrev(false, read, out) && pc.frame() == 1, "back to frame 1");
+    out.clear();
+    MP_CHECK(pc.stepNext(false, read, out) && pc.frame() == 3 && out.empty(),
+             "past the last frame set, an empty frame: its place is there, and the stops stay");
+    MP_CHECK(pc.gotoFrame(1, false, read, out) && pc.frame() == 1, "back to frame 1");
     MP_CHECK(pc.insertFrame() && pc.frame() == 1 && pc.frameSet(2) && pc.lastUsedFrame() == 3,
              "inserting copies the current frame into a new one after it, as GrandOrgue does");
     out.clear();
@@ -17475,8 +17478,9 @@ public:
     MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
     const auto& pc = proc.playerCombinations();
 
-    MP_CHECK(!proc.stepperFirst() && !proc.stepperLast() && !proc.stepperJump(10) && pc.frame() == 0,
-             "an empty sequence has nowhere to go");
+    MP_CHECK(!proc.stepperLast() && pc.frame() == 0, "an empty sequence has no last frame");
+    MP_CHECK(proc.stepperJump(10) && pc.frame() == 10, "but its frames are there: ten on from none is 009 (#1245)");
+    MP_CHECK(proc.stepperFirst() && pc.frame() == 1, "and first is 000");
 
     // Twenty-five frames, the stop drawn in the odd ones.
     proc.setCaptureMode(true);
@@ -17492,8 +17496,9 @@ public:
     MP_CHECK(!proc.stepperFirst(), "and stays there");
     MP_CHECK(proc.stepperJump(10) && pc.frame() == 11, "ten on from 1 is 11");
     MP_CHECK(proc.stepperJump(10) && pc.frame() == 21, "and 21");
-    MP_CHECK(proc.stepperJump(10) && pc.frame() == 25, "ten on from 21 stops at the last frame");
-    MP_CHECK(!proc.stepperJump(10) && pc.frame() == 25, "and goes no further");
+    MP_CHECK(proc.stepperJump(10) && pc.frame() == 31 && proc.stopEngaged(901),
+             "ten on from 21 is 31, past the last frame set: empty, the stop stays drawn");
+    proc.stepperGoto(25);
     MP_CHECK(proc.stepperJump(-10) && pc.frame() == 15, "ten back from 25 is 15");
     MP_CHECK(proc.stepperJump(-10) && pc.frame() == 5, "and 5");
     MP_CHECK(proc.stepperJump(-10) && pc.frame() == 1, "ten back from 5 stops at frame 1");
@@ -17502,10 +17507,10 @@ public:
     proc.stepperGoto(2);
     MP_CHECK(!proc.stopEngaged(901), "an even frame pushes the stop in");
 
-    // With Set on, a jump may run past the end: that is how a sequence grows.
+    // With Set on, a jump stores into the frame it lands on.
     proc.stepperLast();
     proc.setCaptureMode(true);
-    MP_CHECK(proc.stepperJump(10) && pc.frame() == 35, "with Set on, ten on from 25 is 35");
+    MP_CHECK(proc.stepperJump(10) && pc.frame() == 35 && pc.lastUsedFrame() == 35, "with Set on, ten on from 25 stores 35");
     proc.setCaptureMode(false);
 
     // The new targets keep their names in a map file.
@@ -17517,7 +17522,7 @@ public:
 static SequencerJumpsTest g_sequencerJumps;
 
 // The digit buttons (#298), 0 to 9 as on GrandOrgue's setter: a frame of the
-// ten shown, and a digit past the last frame that holds anything goes nowhere.
+// ten shown, set or not (#1245).
 class SequencerDigitsTest final : public mp::test::Test {
 public:
   SequencerDigitsTest() : Test("functional.control.sequencer-digits", Category::Functional) {}
@@ -17530,7 +17535,7 @@ public:
     MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
     const auto& pc = proc.playerCombinations();
 
-    MP_CHECK(!proc.stepperDigit(3) && pc.frame() == 0, "an empty sequence has nowhere to go");
+    MP_CHECK(proc.stepperDigit(3) && pc.frame() == 4, "an empty sequence: digit 3 goes to 003, empty");
 
     proc.setCaptureMode(true);
     for (int f = 1; f <= 25; ++f) proc.stepperGoto(f);
@@ -17543,8 +17548,8 @@ public:
     MP_CHECK(proc.stepperDigit(0) && pc.frame() == 1, "digit 0 goes to 000");
     MP_CHECK(proc.stepperDigit(0) && pc.frame() == 1, "a digit for the frame already shown fires it again");
     MP_CHECK(proc.stepperGoto(15) && proc.stepperDigit(7) && pc.frame() == 18, "on 014, digit 7 goes to 017");
-    MP_CHECK(proc.stepperGoto(21) && !proc.stepperDigit(9) && pc.frame() == 21,
-             "on 020, digit 9 (029) is past the last frame that holds anything");
+    MP_CHECK(proc.stepperGoto(21) && proc.stepperDigit(9) && pc.frame() == 30 && pc.lastUsedFrame() == 25,
+             "on 020, digit 9 goes to 029, past the last frame set, storing nothing");
     proc.setCaptureMode(true);
     MP_CHECK(proc.stepperDigit(9) && pc.frame() == 30 && pc.lastUsedFrame() == 30,
              "with Set on, it stores there, and the sequence grows");
@@ -17553,6 +17558,43 @@ public:
   }
 };
 static SequencerDigitsTest g_sequencerDigits;
+
+// Levels of generals (#1246): the frames read eight at a time. The digits
+// pick a general of the level, the level buttons move eight, and the global
+// file keeps the choice.
+class SequencerLevelsTest final : public mp::test::Test {
+public:
+  SequencerLevelsTest() : Test("functional.control.sequencer-levels", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    PlayerPistonsProcessorTest::Keep keepGlobal(proc.globalSettingsFile());
+    PlayerPistonsProcessorTest::Keep keepSettings(proc.settingsFileFor(odf));
+    PlayerPistonsProcessorTest::Keep keepCombinations(proc.combinationFileFor(odf));
+    keepCombinations.file.deleteFile();
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
+    const auto& pc = proc.playerCombinations();
+
+    MP_CHECK(proc.levelStep() == 10, "the sequencer reads ten frames to a level");
+    proc.setStepperLevels(true);
+    proc.setLevelSize(8);
+    MP_CHECK(proc.levelStep() == 8, "levels of eight generals");
+    MP_CHECK(proc.stepperDigit(7) && pc.frame() == 8, "the eighth general of level 1 is frame 8");
+    MP_CHECK(!proc.stepperDigit(8), "a level of eight has no ninth general");
+    MP_CHECK(proc.stepperJump(10) && pc.frame() == 16, "the next level: eight on, general 8 of level 2");
+    MP_CHECK(proc.stepperDigit(0) && pc.frame() == 9, "its first general is frame 9");
+    MP_CHECK(proc.stepperJump(-10) && pc.frame() == 1, "the level before: general 1 of level 1");
+    proc.setLevelSize(40);
+    MP_CHECK(proc.levelSize() == mp::MasterpieceProcessor::kMaxLevelSize, "at most ten generals to a level");
+
+    proc.setLevelSize(6);
+    MP_CHECK(proc.saveGlobalDefaults(), "the global file is written");
+    mp::MasterpieceProcessor next;
+    next.loadGlobalDefaults();
+    MP_CHECK(next.stepperLevels() && next.levelSize() == 6, "levels of six come back");
+  }
+};
+static SequencerLevelsTest g_sequencerLevels;
 
 // A frame is stored into after Insert (a player's report): with Set on, the
 // digit of the frame shown stores into it, and so does the top bar's Set. The
@@ -17917,6 +17959,25 @@ public:
     const auto a = two.actionFor(cancel, 0);
     MP_CHECK(a.valid() && !a.engage, "a cancel sent as 0 still cancels");
     MP_CHECK(two.actionFor(draw, 127).valid() && two.actionFor(draw, 127).engage, "and the draw draws");
+
+    // The lamp sent back (#1245): the same messages the tab sent. Two
+    // controllers go out whole, as a hex send; one note at two velocities is a
+    // note send at those velocities.
+    const auto both = mp::MidiMap::sendForOnOff(mp::MidiTargetKind::Switch, 7, draw, 127, cancel, 0);
+    MP_CHECK(both.kind == mp::MidiSourceKind::SysEx && both.targetId == 7 &&
+                 both.sysExOn == std::vector<uint8_t>({0xB0, 30, 127}) &&
+                 both.sysExOff == std::vector<uint8_t>({0xB0, 31, 0}),
+             "two controllers are sent back as they came, each whole");
+    MP_CHECK(mp::MidiMap::sendBytes(both, 1) == both.sysExOn && mp::MidiMap::sendBytes(both, 0) == both.sysExOff,
+             "the draw's message when the stop comes on, the cancel's when it goes off");
+    mp::MidiSource key;
+    key.kind = mp::MidiSourceKind::Note;
+    key.channel = 0;  // heard on any channel
+    key.number = 40;
+    const auto one = mp::MidiMap::sendForOnOff(mp::MidiTargetKind::Switch, 7, key, 100, key, 0);
+    MP_CHECK(one.kind == mp::MidiSourceKind::Note && one.number == 40 && one.channel == 1 && one.high == 100 &&
+                 one.low == 0,
+             "one note is sent back at its two velocities, on channel 1 when heard on any");
   }
 };
 static MidiListenPairTest g_midiListenPair;

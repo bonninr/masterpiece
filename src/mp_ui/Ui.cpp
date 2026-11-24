@@ -2264,9 +2264,15 @@ void MasterpieceEditor::offerConsoleProfile() {
   setOrganProfileStamp(proc_, stamp);
   juce::Logger::writeToLog("console profile: " + juce::String(strong) + " mapped, " +
                            juce::String(panel.matchCount()) + " to confirm");
-  if (panel.matchCount() == 0) return;
-  panel.setNote(TRANS("%1 mapped from the profile. Tick the matches below to map them too.")
-                    .replace("%1", juce::String(strong)));
+  // What was mapped without asking is shown, so it can be checked (#1012):
+  // each tab and the control it now works. The window opens whenever
+  // anything was mapped, and not only for matches left to confirm.
+  if (strong == 0 && panel.matchCount() == 0) return;
+  juce::String note = TRANS("%1 mapped from the profile: %2.")
+                          .replace("%1", juce::String(strong))
+                          .replace("%2", panel.appliedStrong().joinIntoString(", "));
+  if (panel.matchCount() > 0) note << " " << TRANS("Tick the matches below to map them too.");
+  panel.setNote(note);
   showFloating(*profileMatches_, true, juce::Process::isForegroundProcess());
 }
 
@@ -3627,17 +3633,27 @@ void MasterpieceEditor::timerCallback() {
   const auto& seq = proc_.playerCombinations();
   const int last = seq.lastUsedFrame();
   const bool capturing = proc_.captureMode();
-  stepFrame_.setText(last == 0 && seq.frame() == 0
-                         ? TRANS("No frames")
-                         : TRANS("Frame %1 / %2")
-                               .replace("%1", juce::String::formatted(
-                                                  "%03d", PlayerCombinations::shownNumber(seq.frame())))
-                               .replace("%2", juce::String::formatted(
-                                                  "%03d", PlayerCombinations::shownNumber(
-                                                              juce::jmax(last, seq.frame())))),
-                     juce::dontSendNotification);
+  // As levels of generals (#1246): the level and the general of it.
+  const bool levels = proc_.simpleMode() || proc_.stepperLevels();
+  const int perLevel = proc_.levelStep();
+  if (levels && seq.frame() >= 1)
+    stepFrame_.setText(TRANS("Level %1, general %2")
+                           .replace("%1", juce::String((seq.frame() - 1) / perLevel + 1))
+                           .replace("%2", juce::String((seq.frame() - 1) % perLevel + 1)),
+                       juce::dontSendNotification);
+  else
+    stepFrame_.setText(last == 0 && seq.frame() == 0
+                           ? TRANS("No frames")
+                           : TRANS("Frame %1 / %2")
+                                 .replace("%1", juce::String::formatted(
+                                                    "%03d", PlayerCombinations::shownNumber(seq.frame())))
+                                 .replace("%2", juce::String::formatted(
+                                                    "%03d", PlayerCombinations::shownNumber(
+                                                                juce::jmax(last, seq.frame())))),
+                       juce::dontSendNotification);
   stepPrev_.setEnabled(seq.frame() > 1);
-  stepNext_.setEnabled(capturing || seq.frame() < last);
+  // Every frame is there (#1245): the next one too, set or not.
+  stepNext_.setEnabled(seq.frame() < PlayerCombinations::kMaxFrames);
   setter_.setToggleState(capturing, juce::dontSendNotification);
   {
     const auto where = proc_.storeTargetName();
