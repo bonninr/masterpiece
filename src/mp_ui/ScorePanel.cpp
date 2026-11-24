@@ -429,6 +429,7 @@ ScorePanel::ScorePanel(MasterpieceProcessor& proc, const juce::File& fonts) : pr
                   &mark_, &regPrev_, &regNext_})
     addAndMakeVisible(b);
   addChildComponent(detach_);
+  addAndMakeVisible(tempo_);
   addAndMakeVisible(pageLabel_);
   pageLabel_.setJustificationType(juce::Justification::centred);
   pageLabel_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
@@ -453,6 +454,18 @@ ScorePanel::ScorePanel(MasterpieceProcessor& proc, const juce::File& fonts) : pr
   twoUp_.onClick = [this] { setTwoPages(twoUp_.getToggleState()); };
   invert_.onClick = [this] { setInverted(invert_.getToggleState()); };
   play_.onClick = [this] { playing() ? stop() : play(); };
+  tempo_.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 70, kBar - 8);
+  tempo_.setIncDecButtonsMode(juce::Slider::incDecButtonsNotDraggable);
+  tempo_.textFromValueFunction = [](double v) { return juce::String(juce::roundToInt(v)) + " BPM"; };
+  tempo_.valueFromTextFunction = [](const juce::String& t) { return t.retainCharacters("0123456789.").getDoubleValue(); };
+  tempo_.setTooltip(TRANS("The tempo, in beats a minute: the score's own to start with, and its tempo changes "
+                          "followed. Type or step another; a double-click returns to the score's."));
+  tempo_.onValueChange = [this] {
+    // The score's own tempo, shown whole, is exactly the score's.
+    const double v = tempo_.getValue();
+    proc_.scorePlayer().setSpeed(v == std::round(scoreBpm_) ? 1.0 : v / scoreBpm_);
+  };
+  showTempo();
   manuals_.onClick = [this] { chooseManuals(); };
   detach_.onClick = [this] { if (onDetachToggle) onDetachToggle(); };
   regPrev_.onClick = [this] { stepRegistration(-1); };
@@ -603,6 +616,19 @@ void ScorePanel::readTimeline() {
     juce::MemoryInputStream in(decoded.getData(), decoded.getDataSize(), false);
     juce::MidiFile file;
     if (file.readFrom(in)) {
+      // The score's tempo: its first tempo mark, or the engraver's 120.
+      scoreBpm_ = 120.0;
+      bool found = false;
+      for (int t = 0; t < file.getNumTracks() && !found; ++t)
+        for (const auto* ev : *file.getTrack(t))
+          if (ev->message.isTempoMetaEvent() && ev->message.getTempoSecondsPerQuarterNote() > 0.0) {
+            scoreBpm_ = 60.0 / ev->message.getTempoSecondsPerQuarterNote();
+            found = true;
+            break;
+          }
+      // A new score starts at its own tempo.
+      proc_.scorePlayer().setSpeed(1.0);
+      showTempo();
       file.convertTimestampTicksToSeconds();
       for (int t = 1; t < file.getNumTracks(); ++t) {
         juce::MidiMessageSequence seq(*file.getTrack(t));
@@ -662,6 +688,8 @@ void ScorePanel::resized() {
   twoUp_.setBounds(bar.removeFromLeft(86));
   bar.removeFromLeft(8);
   play_.setBounds(bar.removeFromLeft(64));
+  tempo_.setBounds(bar.removeFromLeft(118));
+  bar.removeFromLeft(4);
   manuals_.setBounds(bar.removeFromLeft(90));
   bar.removeFromLeft(8);
   mark_.setBounds(bar.removeFromLeft(70));
@@ -814,6 +842,16 @@ void ScorePanel::setInverted(bool inverted) {
   repaint();
 }
 
+// The tempo box over a quarter of the score's tempo to four times it, at the
+// tempo the player plays at now.
+void ScorePanel::showTempo() {
+  const double bpm = std::max(1.0, scoreBpm_);
+  tempo_.setRange(std::max(1.0, std::round(bpm * ScorePlayer::kMinSpeed)), std::round(bpm * ScorePlayer::kMaxSpeed), 1.0);
+  tempo_.setDoubleClickReturnValue(true, std::round(bpm));
+  tempo_.setValue(std::round(bpm * proc_.scorePlayer().speed()), juce::dontSendNotification);
+  tempo_.updateText();
+}
+
 void ScorePanel::refreshButtons() {
   const int count = pageCount();
   prev_.setEnabled(loaded_ && page_ > 1);
@@ -821,6 +859,7 @@ void ScorePanel::refreshButtons() {
   pageLabel_.setText(loaded_ ? juce::String(page_) + " / " + juce::String(count) : juce::String(),
                      juce::dontSendNotification);
   for (auto* b : {&zoomOut_, &zoomIn_, &zoomReset_, &twoUp_, &play_, &manuals_}) b->setEnabled(loaded_);
+  tempo_.setEnabled(loaded_);
   zoomReset_.setButtonText(juce::String(loaded_ ? drawnZoom_ : zoom_) + "%");
   // Stopped by the page's size: a larger zoom would draw the same page.
   if (loaded_ && drawnZoom_ < zoom_) zoomIn_.setEnabled(false);

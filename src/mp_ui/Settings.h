@@ -739,7 +739,6 @@ private:
   void showOutputs();
   juce::ToggleButton narrow_{TRANS("Narrow strips")};
   juce::TextButton save_{TRANS("Save for this organ")};
-  juce::TextButton spread_{TRANS("Spread over the outputs")};
   juce::TextButton reset_{TRANS("All to the default")};
   // Each output's EQ, and its crossover filters, delay and polarity (#1188).
   juce::TextButton outputEq_{TRANS("Output EQ...")};

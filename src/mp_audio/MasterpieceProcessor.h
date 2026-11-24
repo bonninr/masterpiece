@@ -164,7 +164,9 @@ public:
   // Where every rank with no route of its own plays, on every organ: an
   // output, or a speaker group by its id.
   void setDefaultDestination(std::variant<BusId, int> dest);
-  // An output's name, and the other outputs it also plays into, by id.
+  // An output's name, and the other outputs it also plays into, by id. A
+  // send into an output that already plays into this one is left out: it
+  // would close a loop (#1245).
   void setOutputName(int busId, std::string name);
   void setOutputSends(int busId, std::vector<int> sends);
   // One send's level in dB, kSendFloorDb (silent) to kSendTopDb.
@@ -2460,6 +2462,14 @@ public:
   juce::File organsFolder() const;
   void setOrgansFolder(const juce::File& dir);
   static juce::File defaultOrgansFolder();
+  // Whether the player has said where organs go: chosen a folder, or kept
+  // the one offered at the first install. Until then the installer asks
+  // before it writes anything (#1245). Kept with the global settings.
+  bool organsFolderConfirmed() const { return organsFolderConfirmed_; }
+  void confirmOrgansFolder() {
+    organsFolderConfirmed_ = true;
+    writeGlobalFile();
+  }
   // The organs installed here and in every known library, as definition
   // files: what the Open window lists under Installed.
   juce::Array<juce::File> installedOrgans() const;
@@ -3267,6 +3277,7 @@ private:
   FavouriteSort favouriteSort_ = FavouriteSort::Slot;
   juce::File cacheDir_; // empty: the default place
   juce::File organsDir_; // empty: the default place
+  bool organsFolderConfirmed_ = false;
   juce::File packageDir_; // empty: none
   juce::File backupDir_;  // empty: none yet
   // Next 10% threshold to tap at, 10 through 100. Reset by whoever starts a

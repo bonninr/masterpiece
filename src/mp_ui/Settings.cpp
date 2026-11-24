@@ -7,6 +7,7 @@
 #include <array>
 #include <cmath>
 #include <map>
+#include <set>
 #include <iterator>
 #include <limits>
 
@@ -4069,6 +4070,17 @@ juce::String outputName(const MixerConfig& mixer, int busId) {
   return TRANS("Output %1").replace("%1", juce::String(busId));
 }
 
+// The live divisions with pipes: a strip on the mixer and a row in Division
+// EQ each. A division of noises alone has none, its noises' levels being
+// their ranks', on the Voicing tab (#1023, #1188, #1245).
+std::set<int> divisionsWithPipes(const MasterpieceProcessor& p) {
+  const auto noises = noiseRanks(p.organModel());
+  std::set<int> out;
+  for (const auto& [rankId, rank] : p.organModel().ranks)
+    if (noises.count(rankId) == 0) out.insert(p.liveDivisionOfRank(p.liveRankIndexOf(rankId)));
+  return out;
+}
+
 // Each division's EQ, pan and width (#1188): a high shelf above 3 kHz and a
 // low shelf below 200 Hz that every rank of the division hears added to its
 // own, where the division stands and how wide. On the mixer, beside the
@@ -4088,7 +4100,9 @@ public:
     styleLabel(panHead_, TRANS("Pan"));
     styleLabel(widthHead_, TRANS("Width"));
     std::vector<Id> ids;
-    for (const auto& [id, d] : proc_.organModel().divisions) ids.push_back(id);
+    const auto withPipes = divisionsWithPipes(proc_);
+    for (const auto& [id, d] : proc_.organModel().divisions)
+      if (withPipes.count(proc_.liveDivisionIndexOf(id)) != 0) ids.push_back(id);
     std::sort(ids.begin(), ids.end());
     for (Id id : ids) addRow(id);
     setSize(kName + 4 * (kSlider + kGap) + 24, 12 + 2 * kRow + kGap + static_cast<int>(rows_.size()) * (kRow + 4) + 12);
@@ -4436,11 +4450,11 @@ public:
       y += kRow + 4;
       row->name.setBounds(line.removeFromLeft(kName));
       line.removeFromLeft(kGap);
-      row->highHz.setBounds(line.removeFromLeft(kHz).reduced(0, 2));
+      row->highHz.setBounds(line.removeFromLeft(kHz).reduced(0, 1));
       line.removeFromLeft(kGap);
       row->highType.setBounds(line.removeFromLeft(kType).reduced(0, 1));
       line.removeFromLeft(kGap * 2);
-      row->lowHz.setBounds(line.removeFromLeft(kHz).reduced(0, 2));
+      row->lowHz.setBounds(line.removeFromLeft(kHz).reduced(0, 1));
       line.removeFromLeft(kGap);
       row->lowType.setBounds(line.removeFromLeft(kType).reduced(0, 1));
       line.removeFromLeft(kGap * 2);
@@ -4451,40 +4465,47 @@ public:
   }
 
 private:
-  static constexpr int kName = 120, kHz = 90, kType = 150, kDelay = 90;
+  static constexpr int kName = 120, kHz = 104, kType = 150, kDelay = 90;
   static constexpr int kWidth = 12 + kName + kGap + 2 * (kHz + kGap + kType + 2 * kGap) + kDelay + kGap + 90 + 24;
   struct Row {
     int busId = 0;
     juce::Label name;
-    juce::Slider highHz, lowHz, delay;
+    juce::ComboBox highHz, lowHz;
+    juce::Slider delay;
     juce::ComboBox highType, lowType;
     juce::ToggleButton invert{TRANS("Invert")};
   };
 
-  static void styleHz(juce::Slider& s, float now) {
-    s.setSliderStyle(juce::Slider::LinearBar);
-    s.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 80, kRow - 4);
-    // Under 20 Hz is off; the bar's left end.
-    s.setRange(10.0, BusFilters::kMaxHz, 0.0);
-    s.setSkewFactorFromMidPoint(632.0);
-    s.setDoubleClickReturnValue(true, 10.0);
-    s.textFromValueFunction = [](double v) {
-      if (v < BusFilters::kMinHz) return TRANS("Off");
-      if (v >= 1000.0) return juce::String(v / 1000.0, v >= 10000.0 ? 1 : 2) + " kHz";
-      return juce::String(juce::roundToInt(v)) + " Hz";
-    };
-    s.valueFromTextFunction = [](const juce::String& t) {
-      const auto v = t.trim().toLowerCase();
-      if (v.isEmpty() || !v.containsAnyOf("0123456789")) return 10.0;
-      const double n = v.getDoubleValue();
-      return v.contains("k") ? n * 1000.0 : n;
-    };
-    s.setValue(now > 0.0f ? now : 10.0, juce::dontSendNotification);
-    // The value may not have moved from where the range put it, and the box
-    // shows its text in the format above only once asked.
-    s.updateText();
-    s.setChangeNotificationOnlyOnRelease(true);
-    s.setTooltip(TRANS("The filter's frequency; at the left end, or a double-click, it is off. A value can be typed."));
+  // A frequency as the box shows it: Off, 80 Hz, 1.2 kHz.
+  static juce::String hzText(float hz) {
+    if (hz < BusFilters::kMinHz) return TRANS("Off");
+    if (hz < 1000.0f) return juce::String(juce::roundToInt(hz)) + " Hz";
+    juce::String k(hz / 1000.0, 2);
+    while (k.endsWithChar('0')) k = k.dropLastCharacters(1);
+    if (k.endsWithChar('.')) k = k.dropLastCharacters(1);
+    return k + " kHz";
+  }
+  // What was typed or picked, in Hz, 0 for off: "80", "80 Hz", "1.2k",
+  // "1,2 kHz". Text without a figure ("Off", "on") is off.
+  static float hzOf(const juce::ComboBox& c) {
+    const auto v = c.getText().trim().toLowerCase().replaceCharacter(',', '.');
+    if (!v.containsAnyOf("0123456789")) return 0.0f;
+    const double hz = v.getDoubleValue() * (v.containsChar('k') ? 1000.0 : 1.0);
+    return hz < BusFilters::kMinHz ? 0.0f : static_cast<float>(std::min<double>(hz, BusFilters::kMaxHz));
+  }
+  // The frequency box (#1241): Off and the usual crossover points to pick
+  // from, or any frequency typed in, so it shows from the start that it can
+  // be changed. A bar at its left end said only "Off".
+  static void styleHz(juce::ComboBox& c, float now) {
+    c.setEditableText(true);
+    c.addItem(TRANS("Off"), 1);
+    int id = 2;
+    for (float hz : {30.0f, 40.0f, 50.0f, 60.0f, 70.0f, 80.0f, 90.0f, 100.0f, 120.0f, 150.0f, 200.0f, 250.0f, 300.0f,
+                     400.0f, 500.0f, 600.0f, 800.0f, 1000.0f, 1200.0f, 1500.0f, 2000.0f, 2500.0f, 3000.0f, 4000.0f,
+                     5000.0f, 6000.0f, 8000.0f, 10000.0f, 12000.0f, 16000.0f})
+      c.addItem(hzText(hz), id++);
+    c.setText(hzText(now), juce::dontSendNotification);
+    c.setTooltip(TRANS("The filter's frequency: pick one, or type it in Hz or kHz. Off leaves the output unfiltered."));
   }
   static void styleType(juce::ComboBox& c, int now) {
     c.addItem(TRANS("Butterworth 12 dB"), BusFilters::Butterworth12 + 1);
@@ -4521,21 +4542,22 @@ private:
     Row* r = row.get();
     const auto apply = [this, r] {
       BusFilters f;
-      f.highPassHz = r->highHz.getValue() < BusFilters::kMinHz ? 0.0f : static_cast<float>(r->highHz.getValue());
+      f.highPassHz = hzOf(r->highHz);
       f.highPassType = r->highType.getSelectedId() - 1;
-      f.lowPassHz = r->lowHz.getValue() < BusFilters::kMinHz ? 0.0f : static_cast<float>(r->lowHz.getValue());
+      f.lowPassHz = hzOf(r->lowHz);
       f.lowPassType = r->lowType.getSelectedId() - 1;
       f.delayMs = static_cast<float>(r->delay.getValue());
       f.invert = r->invert.getToggleState();
-      r->highType.setEnabled(f.highPassHz > 0.0f);
-      r->lowType.setEnabled(f.lowPassHz > 0.0f);
+      // What was typed, as the list writes it.
+      r->highHz.setText(hzText(f.highPassHz), juce::dontSendNotification);
+      r->lowHz.setText(hzText(f.lowPassHz), juce::dontSendNotification);
       proc_.setBusFilters(r->busId, f);
       if (onChanged_) onChanged_();
     };
-    r->highType.setEnabled(now.highPassHz > 0.0f);
-    r->lowType.setEnabled(now.lowPassHz > 0.0f);
-    for (auto* sl : {&r->highHz, &r->lowHz, &r->delay}) sl->onValueChange = apply;
-    for (auto* c : {&r->highType, &r->lowType}) c->onChange = apply;
+    // The kind of each filter can be chosen before its frequency: both boxes
+    // stay open while it is off (#1241).
+    r->delay.onValueChange = apply;
+    for (auto* c : {&r->highHz, &r->lowHz, &r->highType, &r->lowType}) c->onChange = apply;
     r->invert.onClick = apply;
     for (juce::Component* c : std::initializer_list<juce::Component*>{&r->name, &r->highHz, &r->highType, &r->lowHz,
                                                                       &r->lowType, &r->delay, &r->invert})
@@ -4937,7 +4959,14 @@ private:
     const auto& buses = proc_.mixer().buses;
     for (size_t i = 0; i < sends_.size() && i < buses.size(); ++i) {
       const int other = buses[i].id.value;
-      sends_[i]->setEnabled(other != id);
+      // An output that already plays into this one, itself or through
+      // others, takes no send back: it would close a loop (#1245).
+      const bool loops = other != id && proc_.mixer().reaches(other, id);
+      sends_[i]->setEnabled(other != id && !loops);
+      sends_[i]->setTooltip(loops ? TRANS("%1 already plays into %2: a send back would make a loop")
+                                        .replace("%1", outputName(proc_.mixer(), other))
+                                        .replace("%2", name)
+                                  : juce::String());
       sends_[i]->setToggleState(bus != nullptr && std::find(bus->sends.begin(), bus->sends.end(), other) != bus->sends.end(),
                                 juce::dontSendNotification);
     }
@@ -5468,14 +5497,8 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
     outputsChanged();
   };
 
-  addAndMakeVisible(spread_);
-  spread_.setTooltip(TRANS("Each rank to the next output in turn"));
-  spread_.onClick = [this] {
-    // Round-robin: the routing audible at once, for the player to adjust.
-    const int buses = juce::jmax(1, proc_.mixBusCount());
-    for (size_t i = 0; i < rankDest_.size(); ++i) rankDest_[i] = static_cast<int>(i) % buses + 1;
-    pushRouting();
-  };
+  // No "Spread over the outputs": speaker groups spread the pipes note by
+  // note, and the rank routing list sends ranks where they belong (#1245).
   addAndMakeVisible(reset_);
   reset_.setTooltip(TRANS("Every rank loses its own route and plays through the default"));
   reset_.onClick = [this] {
@@ -6040,14 +6063,10 @@ void MixerPanel::refresh() {
     std::sort(divisions.begin(), divisions.end());
     // A strip for each division with pipes. A division of noises alone has
     // none: a noise's level is its rank's, on the Voicing tab (#1023). A noise
-    // is a rank of the Noise table, or a noise effect: key and stop actions,
-    // the blower, the shutters, ranks that take no tuning (#1162, #1188).
-    std::map<int, std::pair<int, int>> ranksIn;  // live division index: ranks, noises
-    for (const auto& [rankId, rank] : proc_.organModel().ranks) {
-      auto& n = ranksIn[proc_.liveDivisionOfRank(proc_.liveRankIndexOf(rankId))];
-      ++n.first;
-      if (rank.isNoise || rank.noiseEffect) ++n.second;
-    }
+    // is a rank of the Noise table, a noise effect (key and stop actions, the
+    // blower, the shutters, ranks that take no tuning), or a rank only the
+    // action sounds (#1162, #1188, #1245).
+    const auto withPipes = divisionsWithPipes(proc_);
     const auto addDivision = [this](Id id, int index, const juce::String& name, std::vector<int> more) {
       addFader(divisionFaders_, MidiTargetKind::DivisionLevel, id, index, name);
       divisionFaders_.back().more = more;
@@ -6074,9 +6093,7 @@ void MixerPanel::refresh() {
       const auto& d = proc_.organModel().divisions.at(id);
       divisionNames.push_back(d.name.empty() ? juce::String(static_cast<int>(id)) : juce::String(d.name));
       const int index = proc_.liveDivisionIndexOf(id);
-      const auto n = ranksIn.find(index);
-      if (n == ranksIn.end() || n->second.first == 0) continue;
-      if (n->second.second == n->second.first) continue;
+      if (withPipes.count(index) == 0) continue;
       addDivision(id, index, divisionNames.back(), {});
     }
   }
@@ -6180,7 +6197,7 @@ void MixerPanel::resized() {
   row = r.removeFromTop(kRow);
   for (auto [b, w] : std::initializer_list<std::pair<juce::Button*, int>>{
            {&channels_, 100}, {&speakerGroups_, 135}, {&routing_, 120}, {&divisionEq_, 105}, {&outputEq_, 100},
-           {&crossover_, 100}, {&spread_, 160}, {&reset_, 140}, {&save_, 150}}) {
+           {&crossover_, 100}, {&reset_, 140}, {&save_, 150}}) {
     b->setBounds(row.removeFromLeft(w).reduced(0, 1));
     row.removeFromLeft(6);
   }

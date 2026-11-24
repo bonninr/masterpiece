@@ -976,7 +976,6 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Estimated from the sample files, at the settings on the Loading tab. The choices here are saved for this organ and take effect when it is loaded again." = "Estimado a partir de los archivos de muestras, con los ajustes de la pestaña Carga. Lo elegido aquí se guarda para este órgano y se aplica al cargarlo de nuevo."
 "A correction for the room and the speakers, on the whole organ" = "Una corrección para la sala y los altavoces, en todo el órgano"
 "Outputs" = "Salidas"
-"Equalizer" = "Ecualizador"
 "Quality" = "Calidad"
 "Best: as recorded, all in memory" = "Máxima: como se grabó, todo en memoria"
 "High: as recorded, compressed, releases streamed" = "Alta: como se grabó, comprimido, liberaciones desde disco"

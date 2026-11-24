@@ -8,6 +8,7 @@
 #include "../src/mp_core/GrandOrgueImport.h"
 #include "../src/mp_core/OdfLoader.h"
 #include "../src/mp_core/OrganModel.h"
+#include "../src/mp_core/OrganStructure.h"
 #include "../src/mp_core/SparseLoading.h"
 
 #if defined(MP_TEST_HAS_AUDIO)
@@ -128,5 +129,37 @@ public:
   }
 };
 static NoiseEffectsTest g_noiseEffects;
+
+// A rank that only the action sounds is one of the organ's noises: every stop
+// row that plays it an action noise. Lemmer, Cheltenham, St Davids and
+// Wildervank put their blower, tuned like a pipe, in a division of noises
+// alone, which the mixer and Division EQ then leave out (#1245).
+class NoiseRanksTest final : public mp::test::Test {
+public:
+  NoiseRanksTest() : Test("functional.loading.noise-ranks", Category::Functional) {}
+  void run() override {
+    mp::OrganModel m;
+    for (mp::Id r : {1, 2, 3, 4, 5, 6}) m.ranks[r].rankId = r;
+    m.ranks[5].isNoise = true;
+    const auto row = [](mp::Id rank, int type, int effect) {
+      mp::StopRankEntry e;
+      e.rankId = rank;
+      e.actionType = type;
+      e.actionEffect = effect;
+      return e;
+    };
+    using E = mp::StopRankEntry;
+    m.stops[10].ranks = {row(1, E::kKeys, E::kWhileEngaged), row(4, E::kKeys, E::kWhileEngaged)};
+    m.stops[11].ranks = {row(2, E::kStopSwitch, E::kWhileEngaged)};
+    m.stops[12].ranks = {row(3, E::kKeys, E::kOnEngage), row(4, E::kKeys, E::kOnDisengage)};
+    const auto noises = mp::noiseRanks(m);
+    MP_CHECK(noises.count(2) == 1, "a blower its stop's own switch runs is a noise");
+    MP_CHECK(noises.count(3) == 1, "a key's thump is a noise");
+    MP_CHECK(noises.count(5) == 1, "a rank of the Noise table is a noise");
+    MP_CHECK(noises.count(1) == 0 && noises.count(4) == 0, "a rank the keys hold is pipework, an action row beside");
+    MP_CHECK(noises.count(6) == 0, "a rank no stop plays is not taken for a noise");
+  }
+};
+static NoiseRanksTest g_noiseRanks;
 
 }  // namespace

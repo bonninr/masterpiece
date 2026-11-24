@@ -976,7 +976,6 @@ countries: pl
 "Estimated from the sample files, at the settings on the Loading tab. The choices here are saved for this organ and take effect when it is loaded again." = "Oszacowane na podstawie plików sampli, przy ustawieniach z karty Wczytywanie. Wybory tutaj są zapisywane dla tych organów i działają po ponownym wczytaniu."
 "A correction for the room and the speakers, on the whole organ" = "Korekcja dla pomieszczenia i głośników, dla całych organów"
 "Outputs" = "Wyjścia"
-"Equalizer" = "Korektor"
 "Quality" = "Jakość"
 "Best: as recorded, all in memory" = "Najlepsza: jak nagrano, wszystko w pamięci"
 "High: as recorded, compressed, releases streamed" = "Wysoka: jak nagrano, kompresja, wybrzmienia strumieniowane"

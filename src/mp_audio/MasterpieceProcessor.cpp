@@ -934,6 +934,8 @@ void MasterpieceProcessor::setOutputName(int busId, std::string name) {
 void MasterpieceProcessor::setOutputSends(int busId, std::vector<int> sends) {
   const AudioLock lock(*this);
   sends.erase(std::remove(sends.begin(), sends.end(), busId), sends.end());
+  sends.erase(std::remove_if(sends.begin(), sends.end(), [&](int to) { return mixer_.reaches(to, busId); }),
+              sends.end());
   for (auto& b : mixer_.buses)
     if (b.id.value == busId) {
       // A send kept keeps its level; a new one starts at 0 dB.
@@ -3749,6 +3751,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
     text << "cachedir " << cacheDir_.getFullPathName() << "\n";
   if (organsDir_.getFullPathName().isNotEmpty())
     text << "organsfolder " << organsDir_.getFullPathName() << "\n";
+  if (organsFolderConfirmed_) text << "organsfolderconfirmed 1\n";
   if (packageDir_.getFullPathName().isNotEmpty())
     text << "packagedir " << packageDir_.getFullPathName() << "\n";
   if (backupDir_.getFullPathName().isNotEmpty())
@@ -4020,6 +4023,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       cacheDir_ = val.isEmpty() ? juce::File() : juce::File(val);
     } else if (key == "organsfolder") {
       organsDir_ = val.isEmpty() || !juce::File::isAbsolutePath(val) ? juce::File() : juce::File(val);
+    } else if (key == "organsfolderconfirmed") {
+      organsFolderConfirmed_ = val.getIntValue() != 0;
     } else if (key == "defaulteq") {
       VoicingEqSettings eq;
       if (eq.fromLine(val.toStdString())) defaultEq_ = eq;
@@ -4633,6 +4638,7 @@ juce::File MasterpieceProcessor::organsFolder() const {
 
 void MasterpieceProcessor::setOrgansFolder(const juce::File& dir) {
   organsDir_ = dir == defaultOrgansFolder() ? juce::File() : dir;
+  organsFolderConfirmed_ = true;
   writeGlobalFile();
 }
 

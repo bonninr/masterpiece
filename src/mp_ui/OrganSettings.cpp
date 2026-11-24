@@ -1153,7 +1153,7 @@ OrganSettingsWindow::OrganSettingsWindow(MasterpieceProcessor& p, std::function<
   tabs_.addTab(TRANS("Stops, ranks and perspectives"), kBackground, &stops_, false);
   tabs_.addTab(TRANS("Outputs"), kBackground, &outputs_, false);
   tabs_.addTab(TRANS("Voicing"), kBackground, &voicing_, false);
-  tabs_.addTab(TRANS("Equalizer"), kBackground, &eq_, false);
+  tabs_.addTab(TRANS("Organ EQ"), kBackground, &eq_, false);
   tabs_.addTab(TRANS("Reverb"), kBackground, &reverb_, false);
   if (devices != nullptr) {
     midi_ = std::make_unique<MidiPanel>(p, *devices, MidiPanel::Part::Organ);

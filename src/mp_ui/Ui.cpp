@@ -3276,7 +3276,7 @@ void MasterpieceEditor::showOrganMenu() {
   menu.addItem(1, TRANS("Organ settings..."), loaded);
   // Every tab of that window, each opening it there (#844).
   const juce::StringArray organTabs{TRANS("Loading"), TRANS("Stops, ranks and perspectives"), TRANS("Outputs"),
-                                    TRANS("Voicing"), TRANS("Equalizer"), TRANS("Reverb"),
+                                    TRANS("Voicing"), TRANS("Organ EQ"), TRANS("Reverb"),
                                     TRANS("MIDI")};
   for (int i = 0; i < organTabs.size(); ++i) menu.addItem(20 + i, organTabs[i] + "...", loaded);
   menu.addSeparator();

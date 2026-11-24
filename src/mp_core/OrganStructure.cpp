@@ -200,4 +200,17 @@ std::string windAndTremulantReport(const OrganModel& m, const CompartmentPressur
   return out;
 }
 
+std::unordered_set<Id> noiseRanks(const OrganModel& m) {
+  std::unordered_set<Id> out, keys, action;
+  for (const auto& [id, rank] : m.ranks)
+    if (rank.isNoise || rank.noiseEffect) out.insert(id);
+  for (const auto& stop : m.stops)
+    for (const auto& e : stop.second.ranks)
+      for (Id r : {e.rankId, e.alternateRankId})
+        if (r != 0) (e.isActionNoise() ? action : keys).insert(r);
+  for (Id r : action)
+    if (keys.count(r) == 0) out.insert(r);
+  return out;
+}
+
 }  // namespace mp

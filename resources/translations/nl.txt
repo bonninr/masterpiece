@@ -972,7 +972,6 @@ countries: nl be sr
 "Estimated from the sample files, at the settings on the Loading tab. The choices here are saved for this organ and take effect when it is loaded again." = "Geschat uit de samplebestanden, met de instellingen van het tabblad Laden. De keuzes hier worden voor dit orgel bewaard en gelden bij de volgende keer laden."
 "A correction for the room and the speakers, on the whole organ" = "Een correctie voor de ruimte en de luidsprekers, op het hele orgel"
 "Outputs" = "Uitgangen"
-"Equalizer" = "Equalizer"
 "Quality" = "Kwaliteit"
 "Best: as recorded, all in memory" = "Beste: zoals opgenomen, alles in het geheugen"
 "High: as recorded, compressed, releases streamed" = "Hoog: zoals opgenomen, gecomprimeerd, releases gestreamd"

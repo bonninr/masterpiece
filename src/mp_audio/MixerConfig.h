@@ -90,6 +90,22 @@ struct MixerConfig {
     return nullptr;
   }
 
+  // Whether output `from` plays into output `to`, through its sends or theirs:
+  // a send from `to` into `from` would then close a loop (#1245).
+  bool reaches(int from, int to) const {
+    std::vector<int> stack{from}, seen;
+    while (!stack.empty()) {
+      const int b = stack.back();
+      stack.pop_back();
+      if (b == to) return true;
+      if (std::find(seen.begin(), seen.end(), b) != seen.end()) continue;
+      seen.push_back(b);
+      if (const MixerBus* m = bus(BusId{b}))
+        for (int s : m->sends) stack.push_back(s);
+    }
+    return false;
+  }
+
   const BusGroup* group(int groupId) const {
     for (const auto& g : groups)
       if (g.groupId == groupId) return &g;

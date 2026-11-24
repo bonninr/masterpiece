@@ -12,7 +12,6 @@
 "Delay" = "Retardo"
 "Polarity" = "Polaridad"
 "A high-pass and a low-pass on one output make a band. Feed a speaker's outputs from one output through its sends (Outputs...): with Linkwitz-Riley filters that meet at the same frequency, the bands add up flat; at 12 dB an octave, invert one of the two." = "Un paso alto y un paso bajo en una salida forman una banda. Alimenta las salidas de un altavoz desde una salida mediante sus envíos (Salidas...): con filtros Linkwitz-Riley que se encuentran en la misma frecuencia, las bandas suman plano; a 12 dB por octava, invierte una de las dos."
-"The filter's frequency; at the left end, or a double-click, it is off. A value can be typed." = "La frecuencia del filtro; en el extremo izquierdo, o con un doble clic, está desactivado. Se puede escribir un valor."
 "Butterworth 12 dB" = "Butterworth 12 dB"
 "Butterworth 24 dB" = "Butterworth 24 dB"
 "Linkwitz-Riley 12 dB" = "Linkwitz-Riley 12 dB"
