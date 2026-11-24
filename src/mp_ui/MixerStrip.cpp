@@ -151,6 +151,13 @@ void FaderLook::drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, 
     return;
   }
   const bool vertical = style == juce::Slider::LinearVertical;
+  // A fader that does not jump to a click is dragged by how far the pointer
+  // moves, over a distance of its own: that distance is the travel drawn
+  // here, so the cap stays under the pointer or the finger (#1012). JUCE's
+  // default is a fixed distance, whatever the fader's length, and the cap
+  // fell behind the pointer.
+  if (!s.getSliderSnapsToMousePosition())
+    if (const int travel = juce::roundToInt(std::abs(maxPos - minPos)); travel > 0) s.setMouseDragSensitivity(travel);
   const juce::Rectangle<float> area(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w),
                                     static_cast<float>(h));
   const float alpha = s.isEnabled() ? 1.0f : 0.45f;
