@@ -930,6 +930,39 @@ bool message(MidiSourceKind kind, int channel, int number, int value, RawMidi& o
 
 } // namespace
 
+MidiSend MidiMap::sendForOnOff(MidiTargetKind kind, Id targetId, const MidiSource& on, int onValue,
+                               const MidiSource& off, int offValue) {
+  MidiSend s;
+  s.targetKind = kind;
+  s.targetId = targetId;
+  // A message heard on any channel goes back on channel 1.
+  const auto channelOf = [](const MidiSource& m) { return m.channel >= 1 && m.channel <= 16 ? m.channel : 1; };
+  const bool oneMessage = on.kind == off.kind && channelOf(on) == channelOf(off) && on.number == off.number &&
+                          on.kind != MidiSourceKind::ProgramChange;
+  if (oneMessage && (on.kind == MidiSourceKind::Note || on.kind == MidiSourceKind::ControlChange)) {
+    s.kind = on.kind;
+    s.channel = channelOf(on);
+    s.number = on.number;
+    s.high = onValue;
+    s.low = offValue;
+    return s;
+  }
+  // Two messages, or a program change: each sent whole, as a hex send.
+  const auto bytes = [&](const MidiSource& m, int value) {
+    std::vector<uint8_t> out;
+    RawMidi raw;
+    const int v = m.kind == MidiSourceKind::ProgramChange ? m.number : value;
+    if (message(m.kind, channelOf(m), m.number, v, raw))
+      for (int i = 0; i < raw.size; ++i) out.push_back(raw.bytes[i]);
+    return out;
+  };
+  s.kind = MidiSourceKind::SysEx;
+  s.channel = channelOf(on);
+  s.sysExOn = bytes(on, onValue);
+  s.sysExOff = bytes(off, offValue);
+  return s;
+}
+
 size_t midiMessageLength(const std::vector<uint8_t>& bytes, size_t at) {
   if (at >= bytes.size() || bytes[at] < 0x80) return 0;
   const uint8_t status = bytes[at];

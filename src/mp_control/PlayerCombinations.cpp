@@ -1,6 +1,8 @@
 #include "PlayerCombinations.h"
+#include "ConsoleProfile.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cctype>
 #include <map>
 #include <set>
@@ -258,6 +260,22 @@ std::vector<PlayerCombinations::Element> PlayerCombinations::collect(
     for (const auto& [sid, sw] : model.switches)
       if (sw.isTremulant && notRegistration.count(sid) == 0 && tremulants.count(sid) == 0)
         tremulants[sid].add(0);
+    // A sampled tremulant has no tremulant row: its knob switches the
+    // tremulant's own recordings in, and Hauptwerk knows it by its
+    // assignment code, 1710 for the first manual's, 1720 for the second's.
+    // Alessandria, Giubiasco and Melcer play their tremulants this way, and
+    // no general stored them and no cancel put them in (#1235). The knob
+    // belongs to its manual's division.
+    for (const auto& [sid, sw] : model.switches) {
+      if (sw.asgnCode < 1700 || sw.asgnCode >= 1800 || tremulants.count(sid) != 0) continue;
+      const Id knob = player(sid);
+      if (tremulants.count(knob) != 0) continue;
+      Id div = 0;
+      const int manual = (sw.asgnCode - 1700) / 10;
+      for (const auto& [did, d] : model.divisions)
+        if (manual > 0 && d.manualNumber == manual) div = did;
+      tremulants[knob].add(div);
+    }
   }
 
   std::unordered_set<Id> taken;
@@ -538,8 +556,8 @@ bool PlayerCombinations::fireFrame(int oneBased, bool capturing,
 
 bool PlayerCombinations::stepNext(bool capturing, const Reader& isEngaged,
                                   std::vector<Change>& out) {
-  const int limit = capturing ? kMaxFrames : lastUsedFrame();
-  if (frame_ >= limit) return false;  // held at the end, never wrapped
+  (void)capturing;
+  if (frame_ >= kMaxFrames) return false;  // held at the end, never wrapped
   return fireFrame(frame_ + 1, capturing, isEngaged, out);
 }
 
@@ -681,3 +699,112 @@ bool PlayerCombinations::fromText(const std::string& text) {
 }
 
 } // namespace mp
+
+namespace mp {
+
+std::vector<PlayerCombinations::Suggestion> PlayerCombinations::suggestRegistrations(
+    const std::vector<Element>& elements, const std::function<int(Id)>& keyboardOf,
+    const std::function<bool(Id)>& isTremulant) {
+  const size_t n = elements.size();
+  std::vector<StopTraits> traits(n);
+  std::map<Id, int> stopsIn;  // manual division: its stops
+  Id pedal = 0;
+  for (size_t i = 0; i < n; ++i) {
+    const Element& e = elements[i];
+    if (e.kind != ElementKind::Stop) continue;
+    traits[i] = stopTraits(e.name);
+    const int kb = keyboardOf ? keyboardOf(e.divisionId) : -1;
+    if (kb == 0) pedal = e.divisionId;
+    else ++stopsIn[e.divisionId];
+  }
+  Id main = 0;
+  int most = 0;
+  for (const auto& [div, count] : stopsIn)
+    if (count > most) {
+      most = count;
+      main = div;
+    }
+  if (main == 0) return {};
+
+  const auto near = [](double a, double b) { return a > 0.0 && std::abs(a - b) < 0.05; };
+  const auto isFlute = [](ToneFamily f) { return f == ToneFamily::StoppedFlute || f == ToneFamily::OpenFlute; };
+  // The first stop of a division that fits, preferring stopped flutes: the
+  // softest of a kind is most often the first on the list.
+  const auto firstOf = [&](Id div, const std::function<bool(const StopTraits&)>& fits) -> int {
+    int best = -1;
+    for (size_t i = 0; i < n; ++i) {
+      if (elements[i].kind != ElementKind::Stop || elements[i].divisionId != div || !fits(traits[i])) continue;
+      if (best < 0) best = static_cast<int>(i);
+      if (traits[i].family == ToneFamily::StoppedFlute && traits[static_cast<size_t>(best)].family != ToneFamily::StoppedFlute)
+        best = static_cast<int>(i);
+    }
+    return best;
+  };
+  const auto allOf = [&](Id div, const std::function<bool(const StopTraits&)>& fits, std::vector<char>& drawn) {
+    for (size_t i = 0; i < n; ++i)
+      if (elements[i].kind == ElementKind::Stop && (div == 0 || elements[i].divisionId == div) && fits(traits[i]))
+        drawn[i] = 1;
+  };
+  const auto draw = [](int i, std::vector<char>& drawn) {
+    if (i >= 0) drawn[static_cast<size_t>(i)] = 1;
+  };
+  std::vector<Id> others;  // the manuals but the main one, in division order
+  for (const auto& [div, count] : stopsIn)
+    if (div != main) others.push_back(div);
+  const Id soft = others.empty() ? main : others.front();
+
+  std::vector<Suggestion> out;
+  std::vector<char> drawn(n, 0);
+  // PP
+  draw(firstOf(soft, [&](const StopTraits& t) { return t.family == ToneFamily::StoppedFlute && near(t.footage, 8); }),
+       drawn);
+  if (std::none_of(drawn.begin(), drawn.end(), [](char c) { return c != 0; }))
+    draw(firstOf(soft, [&](const StopTraits& t) { return isFlute(t.family) && near(t.footage, 8); }), drawn);
+  if (pedal != 0) draw(firstOf(pedal, [&](const StopTraits& t) { return isFlute(t.family) && near(t.footage, 16); }), drawn);
+  out.push_back({"PP", drawn});
+  // P
+  draw(firstOf(main, [&](const StopTraits& t) { return isFlute(t.family) && near(t.footage, 8); }), drawn);
+  if (pedal != 0) draw(firstOf(pedal, [&](const StopTraits& t) { return isFlute(t.family) && near(t.footage, 8); }), drawn);
+  out.push_back({"P", drawn});
+  // MF
+  draw(firstOf(main, [&](const StopTraits& t) { return t.family == ToneFamily::Principal && near(t.footage, 8); }), drawn);
+  draw(firstOf(main, [&](const StopTraits& t) { return isFlute(t.family) && near(t.footage, 4); }), drawn);
+  for (Id div : others)
+    draw(firstOf(div, [&](const StopTraits& t) {
+           return (t.family == ToneFamily::Principal || isFlute(t.family)) && near(t.footage, 4);
+         }),
+         drawn);
+  if (pedal != 0)
+    draw(firstOf(pedal, [&](const StopTraits& t) { return t.family == ToneFamily::Principal && near(t.footage, 8); }),
+         drawn);
+  out.push_back({"MF", drawn});
+  // F: the principal chorus, 8' to 2', on every manual; the pedal's 16'.
+  for (const auto& [div, count] : stopsIn)
+    allOf(div, [&](const StopTraits& t) {
+      return t.family == ToneFamily::Principal && (near(t.footage, 8) || near(t.footage, 4) || near(t.footage, 2));
+    }, drawn);
+  if (pedal != 0)
+    allOf(pedal, [&](const StopTraits& t) {
+      return (t.family == ToneFamily::Principal || isFlute(t.family)) && near(t.footage, 16);
+    }, drawn);
+  out.push_back({"F", drawn});
+  // Plein jeu: the mixtures and the principals' mutations, 16' principals.
+  allOf(0, [&](const StopTraits& t) {
+    return t.family == ToneFamily::Mixture || t.family == ToneFamily::Mutation ||
+           (t.family == ToneFamily::Principal && near(t.footage, 16));
+  }, drawn);
+  out.push_back({"Plein jeu", drawn});
+  // Tutti: every stop but celestes and percussion, every coupler.
+  std::vector<char> tutti(n, 0);
+  for (size_t i = 0; i < n; ++i) {
+    const Element& e = elements[i];
+    if (e.kind == ElementKind::Stop)
+      tutti[i] = traits[i].family != ToneFamily::Celeste && traits[i].family != ToneFamily::Percussion;
+    else
+      tutti[i] = !e.bassOrMelody && !(isTremulant && isTremulant(e.id));
+  }
+  out.push_back({"Tutti", tutti});
+  return out;
+}
+
+}  // namespace mp

@@ -95,12 +95,19 @@ private:
   // The level of ten generals in use, in the Simple view.
   juce::Label level_;
   bool simple_ = false;
+  // The stepper as levels of generals (#1246): always in the simple view, and
+  // by the style box in the other.
+  bool levels_ = false;
+  static constexpr int kStyleW = 170;
+  juce::ComboBox style_;
   juce::TextButton insertFrame_{TRANS("Insert")};
   juce::TextButton deleteFrame_{TRANS("Delete")};
 
   juce::Label generalsLabel_;
   juce::TextButton fewerGenerals_{"-"};
   juce::TextButton moreGenerals_{"+"};
+  // Ready-made registrations from the stop names (#1221).
+  juce::TextButton readyMade_{TRANS("Ready-made...")};
   std::vector<std::unique_ptr<PistonButton>> generals_;
 
   juce::Label divisionalsLabel_;

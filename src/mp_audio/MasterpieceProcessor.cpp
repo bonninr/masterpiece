@@ -1,4 +1,5 @@
 #include "MasterpieceProcessor.h"
+#include "../mp_control/ConsoleProfile.h"
 #include "DataFolder.h"
 #include "MidiPorts.h"
 #include "SystemMemory.h"
@@ -3732,6 +3733,9 @@ bool MasterpieceProcessor::writeGlobalFile() const {
     text << "scorepage " << page.kind << " " << page.channel << " " << page.forward << " " << page.back << "\n";
   if (midiFeedback_) text << "midifeedback 1\n";
   if (midiSendsHoldEcho_) text << "midisendsholdecho 1\n";
+  if (learnAlsoSends_) text << "learnalsosends 1\n";
+  if (stepperLevels_) text << "stepperlevels 1\n";
+  if (levelSize_ != 10) text << "levelsize " << levelSize_ << "\n";
   if (midiFeedbackOn_.load() != 127 || midiFeedbackOff_.load() != -1)
     text << "midifeedbackvalues " << midiFeedbackOn_.load() << " " << midiFeedbackOff_.load() << "\n";
   for (const auto& [role, channel] : defaultConsole_) {
@@ -3988,6 +3992,12 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       if (val.isNotEmpty()) midiOutputNames_.addIfNotAlreadyThere(val);  // opened by the application at start
     } else if (key == "midifeedback") {
       midiFeedback_ = val.getIntValue() != 0;
+    } else if (key == "stepperlevels") {
+      stepperLevels_ = val.getIntValue() != 0;
+    } else if (key == "levelsize") {
+      levelSize_ = std::clamp(val.getIntValue(), 1, kMaxLevelSize);
+    } else if (key == "learnalsosends") {
+      learnAlsoSends_ = val.getIntValue() != 0;
     } else if (key == "midisendsholdecho") {
       midiSendsHoldEcho_ = val.getIntValue() != 0;
     } else if (key == "midifeedbackvalues") {
@@ -6989,9 +6999,40 @@ bool MasterpieceProcessor::stepperPrev() {
   return true;
 }
 
+int MasterpieceProcessor::fillReadyMadeGenerals() {
+  const auto tremulant = [this](Id sw) {
+    const auto it = model_.switches.find(sw);
+    if (it == model_.switches.end()) return false;
+    if (it->second.isTremulant || (it->second.asgnCode >= 1700 && it->second.asgnCode < 1800)) return true;
+    for (const auto& [tid, t] : model_.tremulants)
+      if (t.controllingSwitchId == sw) return true;
+    auto name = it->second.name;
+    for (auto& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return name.find("trem") != std::string::npos;
+  };
+  const auto suggestions = PlayerCombinations::suggestRegistrations(
+      player_.elements(), [this](Id div) { return divisionKeyboard(model_, div); }, tremulant);
+  if (suggestions.empty()) return 0;
+  const AudioLock audio(*this);
+  const auto& elements = player_.elements();
+  int stored = 0, general = 1;
+  for (const auto& s : suggestions) {
+    while (general <= PlayerCombinations::kMaxGenerals && player_.generalSet(general)) ++general;
+    if (general > PlayerCombinations::kMaxGenerals) break;
+    player_.storeGeneral(general, [&](const PlayerCombinations::Element& e) {
+      const auto i = static_cast<size_t>(&e - elements.data());
+      return i < s.drawn.size() && s.drawn[i] != 0;
+    });
+    player_.setGeneralName(general, s.name);
+    ++stored;
+    ++general;
+  }
+  if (stored > 0) combinationsDirty_.store(true, std::memory_order_release);
+  return stored;
+}
+
 bool MasterpieceProcessor::stepperFirst() {
   if (player_.frame() == 1) return false;
-  if (player_.lastUsedFrame() < 1 && !captureMode()) return false;
   return stepperGoto(1);
 }
 
@@ -7002,9 +7043,10 @@ bool MasterpieceProcessor::stepperLast() {
 }
 
 bool MasterpieceProcessor::stepperJump(int frames) {
-  const int limit = captureMode() ? PlayerCombinations::kMaxFrames : player_.lastUsedFrame();
-  if (limit < 1) return false;
-  const int to = std::clamp(player_.frame() + frames, 1, limit);
+  // Every frame is there, set or not (#1245). Ten on is a level on: ten
+  // frames, or the level size when levels are shown (#1246).
+  if (std::abs(frames) == 10) frames = frames > 0 ? levelStep() : -levelStep();
+  const int to = std::clamp(player_.frame() + frames, 1, PlayerCombinations::kMaxFrames);
   if (to == player_.frame()) return false;
   return stepperGoto(to);
 }
@@ -7013,11 +7055,13 @@ bool MasterpieceProcessor::stepperDigit(int digit) {
   if (digit < 0 || digit > 9) return false;
   // As GrandOrgue's setter: a digit picks one of the ten frames the current
   // one is among, by the last figure of its number as shown (from 000).
+  // As levels (#1246): the general `digit` + 1 of the level shown, from a
+  // level of levelStep() frames.
+  const int n = levelStep();
+  if (digit >= n) return false;
   const int shown = PlayerCombinations::shownNumber(std::max(player_.frame(), 1));
-  const int to = shown - shown % 10 + digit + 1;
+  const int to = shown - shown % n + digit + 1;
   if (to > PlayerCombinations::kMaxFrames) return false;
-  const int last = player_.lastUsedFrame();
-  if (!captureMode() && (last < 1 || to > last)) return false;
   // The digit of the frame shown fires it again, as any piston does and as
   // GrandOrgue's setter does: with Set off it recalls the frame, so General
   // Cancel then 0 brings frame 000 back (#692); with Set on it stores into

@@ -1432,6 +1432,9 @@ void showSwitchMidiMenu(MasterpieceProcessor& proc, Id switchId,
   menu.addSeparator();
   // Everything at once: several messages, what the console is sent, a key.
   menu.addItem(7, TRANS("MIDI window..."));
+  // On and off in one go, and the lamp sent back if the player wants it
+  // (#1245): a console's tab learned without the MIDI window.
+  menu.addItem(8, TRANS("Learn on and off..."));
   menu.addSeparator();
   // The organ says whether this switch latches (a drawstop, a coupler) or is
   // held (a piston, a Set button), so the plain Learn follows it; the four
@@ -1455,6 +1458,10 @@ void showSwitchMidiMenu(MasterpieceProcessor& proc, Id switchId,
         if (choice == 6) choice = latching ? 1 : 2;
         if (choice == 7) {
           MidiEventDialog::show(proc, MidiTargetKind::Switch, switchId);
+          return;
+        }
+        if (choice == 8) {
+          MidiEventDialog::showLearnOnOff(proc, switchId);
           return;
         }
         switch (choice) {

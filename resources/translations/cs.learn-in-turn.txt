@@ -45,7 +45,6 @@
 "Add tab" = "Přidat registrový spínač"
 "Add this organ's mappings" = "Přidat přiřazení těchto varhan"
 "Map this organ..." = "Přiřadit tyto varhany..."
-"%1 mapped from the profile. Tick the matches below to map them too." = "Přiřazeno z profilu: %1. Zaškrtněte shody níže a přiřaďte i je."
 "Console profile..." = "Profil hracího stolu..."
 "Map from console profile..." = "Přiřadit z profilu hracího stolu..."
 "Related" = "Příbuzná"

@@ -628,6 +628,12 @@ public:
   // cancels it. `base` carries the switch's own settings.
   static std::vector<MidiBinding> bindingsForOnOff(const MidiBinding& base, const MidiSource& on,
                                                    int onValue, const MidiSource& off, int offValue);
+  // The send that gives a console back what it sent for that tab (#1245):
+  // its lamp or magnet follows the switch with the same messages. One
+  // message at two values is sent at those values; two messages go out as a
+  // hex send, each whole.
+  static MidiSend sendForOnOff(MidiTargetKind kind, Id targetId, const MidiSource& on, int onValue,
+                               const MidiSource& off, int offValue);
 
   // --- learn -------------------------------------------------------------
   // Arm a target, then feed it the next message that arrives. This is how a

@@ -30,6 +30,9 @@ public:
   // Map the strong matches without asking, as an organ opens. Returns how
   // many controls were mapped; the list then holds what is left.
   int applyStrong();
+  // What applyStrong mapped, one "tab -> control" each: shown to the player,
+  // who did not choose them (#1012).
+  const juce::StringArray& appliedStrong() const { return applied_; }
   // Map the ticked matches. Returns how many controls were mapped.
   int applyTicked();
 
@@ -55,6 +58,7 @@ private:
   ConsoleProfile profile_;
   std::vector<OrganControl> controls_;
   std::vector<ProfileMatch> matches_;
+  juce::StringArray applied_;
   std::vector<bool> ticks_;
 
   juce::Label title_;

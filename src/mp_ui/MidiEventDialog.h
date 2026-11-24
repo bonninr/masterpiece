@@ -29,6 +29,11 @@ public:
   // dialog treats like a switch and titles with `name`.
   static void show(MasterpieceProcessor& p, MidiTargetKind kind, Id id,
                    const juce::String& name = {});
+  // A stop learned in one step (#1245): the player moves the console's tab
+  // on and then off, and the switch answers both; with "Also light the
+  // console's lamp" ticked, it also sends them back. The right-click menu's
+  // "Learn on and off...".
+  static void showLearnOnOff(MasterpieceProcessor& p, Id switchId);
 
   // What a player calls the object (#346, #591): for a switch, the name the
   // set gives it, and where that is only a number, the stop or tremulant it

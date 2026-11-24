@@ -45,7 +45,6 @@
 "Add tab" = "Aggiungi placchetta"
 "Add this organ's mappings" = "Aggiungi le associazioni di questo organo"
 "Map this organ..." = "Associa questo organo..."
-"%1 mapped from the profile. Tick the matches below to map them too." = "%1 associati dal profilo. Spunta le corrispondenze qui sotto per associare anche quelle."
 "Console profile..." = "Profilo di consolle..."
 "Map from console profile..." = "Associa dal profilo di consolle..."
 "Related" = "Affine"

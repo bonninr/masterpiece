@@ -145,7 +145,7 @@ const FamilyWord kFamilyWords[] = {
     // Chorus reeds.
     {"trompet", ToneFamily::ChorusReed}, {"trumpet", ToneFamily::ChorusReed},
     {"tromba", ToneFamily::ChorusReed}, {"trombon", ToneFamily::ChorusReed},
-    {"posaune", ToneFamily::ChorusReed}, {"bombard", ToneFamily::ChorusReed},
+    {"posaun", ToneFamily::ChorusReed}, {"bombard", ToneFamily::ChorusReed},
     {"tuba", ToneFamily::ChorusReed}, {"clairon", ToneFamily::ChorusReed},
     {"clarion", ToneFamily::ChorusReed}, {"clarin", ToneFamily::ChorusReed},
     {"cornopean", ToneFamily::ChorusReed}, {"ophicleide", ToneFamily::ChorusReed},
@@ -182,7 +182,7 @@ const FamilyWord kFamilyWords[] = {
     {"gedakt", ToneFamily::StoppedFlute}, {"gedekt", ToneFamily::StoppedFlute},
     {"gedact", ToneFamily::StoppedFlute}, {"stopped", ToneFamily::StoppedFlute},
     {"stopt", ToneFamily::StoppedFlute}, {"lieblich", ToneFamily::StoppedFlute},
-    {"rohrflot", ToneFamily::StoppedFlute}, {"rohrflut", ToneFamily::StoppedFlute},
+    {"rohrfloit", ToneFamily::StoppedFlute}, {"rohrflot", ToneFamily::StoppedFlute}, {"rohrflut", ToneFamily::StoppedFlute},
     {"roerfluit", ToneFamily::StoppedFlute}, {"rohrfluit", ToneFamily::StoppedFlute},
     {"chimneyflute", ToneFamily::StoppedFlute}, {"cheminee", ToneFamily::StoppedFlute},
     {"subbas", ToneFamily::StoppedFlute}, {"soubasse", ToneFamily::StoppedFlute},
@@ -207,7 +207,7 @@ const FamilyWord kFamilyWords[] = {
     {"contrebasse", ToneFamily::String}, {"geigen", ToneFamily::String},
     {"string", ToneFamily::String}, {"dolce", ToneFamily::String},
     // Open flutes.
-    {"flot", ToneFamily::OpenFlute}, {"flut", ToneFamily::OpenFlute},
+    {"floit", ToneFamily::OpenFlute}, {"flot", ToneFamily::OpenFlute}, {"flut", ToneFamily::OpenFlute},
     {"flaut", ToneFamily::OpenFlute}, {"fluit", ToneFamily::OpenFlute},
     {"fluyt", ToneFamily::OpenFlute}, {"hohl", ToneFamily::OpenFlute},
     {"spitz", ToneFamily::OpenFlute}, {"gemsh", ToneFamily::OpenFlute},
@@ -292,7 +292,19 @@ std::string foldName(const std::string& name) {
 
 StopTraits stopTraits(const std::string& name) {
   StopTraits t;
-  auto words = tokens(foldName(name));
+  // A footage written against the name is read as one: Lemmer's "2117_Prestant8"
+  // and "Fluit4d" are an 8' and a 4' (#1245). The code before the name is
+  // a number too long to be a footage.
+  const std::string folded = foldName(name);
+  std::string spaced;
+  for (size_t i = 0; i < folded.size(); ++i) {
+    const auto digit = [](char c) { return c >= '0' && c <= '9'; };
+    const auto letter = [](char c) { return c >= 'a' && c <= 'z'; };
+    if (i > 0 && ((letter(folded[i - 1]) && digit(folded[i])) || (digit(folded[i - 1]) && letter(folded[i]))))
+      spaced += ' ';
+    spaced += folded[i];
+  }
+  auto words = tokens(spaced);
   // Ranks first, so "Mixtur 4 fach" does not read as a 4'.
   static const std::set<std::string> rankWords{"fach", "f", "fache", "rangs", "rang", "rgs", "rg", "rks",
                                                "ranks", "rank", "st", "sterk", "fila", "file", "ch",
@@ -501,8 +513,15 @@ std::vector<ProfileMatch> matchProfile(const std::vector<ConsoleTab>& tabs,
     const ToneFamily ft = stopTraits(tabs[t].label).family;
     for (size_t c = 0; c < controls.size(); ++c) {
       if (controlUsed[c] || controls[c].kind != ConsoleTabKind::Stop) continue;
+      // Only a stop on a keyboard, at a pitch, whose name says what it is: a
+      // blower's knob, a bird call or a switch named for nothing is never
+      // offered by sound (#1245).
+      const StopTraits tc = stopTraits(controls[c].label);
+      if (controls[c].keyboard < 0 || tc.footage <= 0.0 || tc.family == ToneFamily::Unknown ||
+          tc.family == ToneFamily::Percussion)
+        continue;
       const double s = matchScore(tabs[t], controls[c]);
-      if (s <= 0.0 || familyCloseness(ft, stopTraits(controls[c].label).family) < kRelatedSound) continue;
+      if (s <= 0.0 || familyCloseness(ft, tc.family) < kRelatedSound) continue;
       near.push_back({t, c, s, false, true});
     }
   }

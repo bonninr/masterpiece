@@ -1545,6 +1545,134 @@ void MidiEventDialog::show(MasterpieceProcessor& p, MidiTargetKind kind, Id id,
   launchDialog(o);
 }
 
+namespace {
+
+// The one-step learn (#1245): what the MIDI window's "Learn on and off" does,
+// on its own, with the lamp's send made from what was heard.
+class LearnOnOffContent final : public juce::Component, private juce::Timer {
+public:
+  LearnOnOffContent(MasterpieceProcessor& p, Id switchId) : proc_(p), id_(switchId) {
+    addAndMakeVisible(step_);
+    step_.setFont(juce::Font(juce::FontOptions(16.0f, juce::Font::bold)));
+    step_.setColour(juce::Label::textColourId, juce::Colours::white);
+    step_.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(note_);
+    note_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+    note_.setJustificationType(juce::Justification::centredTop);
+    addAndMakeVisible(alsoSend_);
+    alsoSend_.setButtonText(TRANS("Also light the console's lamp with the same messages"));
+    alsoSend_.setTooltip(TRANS("Sends the console what it sent for this tab, so its lamp or magnet follows the stop. "
+                               "Kept for the next stops learned."));
+    alsoSend_.setToggleState(proc_.learnAlsoSends(), juce::dontSendNotification);
+    alsoSend_.onClick = [this] { proc_.setLearnAlsoSends(alsoSend_.getToggleState()); };
+    addAndMakeVisible(again_);
+    again_.onClick = [this] { start(); };
+    addAndMakeVisible(close_);
+    close_.onClick = [this] {
+      juce::Component::SafePointer<juce::DialogWindow> dw(findParentComponentOfClass<juce::DialogWindow>());
+      juce::MessageManager::callAsync([dw] {
+        if (dw != nullptr) dw->closeButtonPressed();
+      });
+    };
+    setSize(460, 210);
+    start();
+  }
+  ~LearnOnOffContent() override {
+    if (listening_) proc_.cancelMidiListen();
+  }
+
+  void resized() override {
+    auto r = getLocalBounds().reduced(14);
+    step_.setBounds(r.removeFromTop(30));
+    note_.setBounds(r.removeFromTop(64));
+    alsoSend_.setBounds(r.removeFromTop(28));
+    auto buttons = r.removeFromBottom(30);
+    close_.setBounds(buttons.removeFromRight(110));
+    buttons.removeFromRight(8);
+    again_.setBounds(buttons.removeFromRight(130));
+  }
+
+private:
+  void start() {
+    proc_.beginMidiListenPair();
+    listening_ = true;
+    shown_ = -1;
+    again_.setButtonText(TRANS("Learn again"));
+    again_.setEnabled(false);
+    note_.setText(TRANS("Move the stop on the console: on first, then off. The messages it sends are learned for "
+                        "this stop, in place of the ones it had."),
+                  juce::dontSendNotification);
+    startTimerHz(20);
+  }
+
+  void timerCallback() override {
+    MidiSource on, off;
+    int onValue = 0, offValue = 0;
+    if (proc_.takeHeardMidiPair(on, onValue, off, offValue)) {
+      listening_ = false;
+      stopTimer();
+      MidiBinding base;
+      const auto sw = proc_.organModel().switches.find(id_);
+      base.latching = sw == proc_.organModel().switches.end() || sw->second.latching;
+      const auto rows = MidiMap::bindingsForOnOff(base, on, onValue, off, offValue);
+      proc_.setObjectBindings(MidiTargetKind::Switch, id_, rows);
+      juce::StringArray what;
+      for (const auto& b : rows) what.add(MidiEventDialog::describeBinding(b));
+      juce::String text = TRANS("Learned: %1").replace("%1", what.joinIntoString(", "));
+      if (alsoSend_.getToggleState()) {
+        // The send made from the pair replaces an earlier one made this way
+        // for the same messages; other sends stay.
+        const MidiSend made = MidiMap::sendForOnOff(MidiTargetKind::Switch, id_, on, onValue, off, offValue);
+        auto sends = proc_.midiMap().sendsFor(MidiTargetKind::Switch, id_);
+        sends.erase(std::remove_if(sends.begin(), sends.end(),
+                                   [&](const MidiSend& s) {
+                                     return s.kind == made.kind && s.channel == made.channel &&
+                                            s.number == made.number && s.sysExOn == made.sysExOn;
+                                   }),
+                    sends.end());
+        sends.push_back(made);
+        proc_.setObjectSends(MidiTargetKind::Switch, id_, sends);
+        text << "\n" << TRANS("The console is sent the same, to light its lamp.");
+      }
+      step_.setText(TRANS("Done"), juce::dontSendNotification);
+      note_.setText(text, juce::dontSendNotification);
+      again_.setEnabled(true);
+      return;
+    }
+    if (!proc_.midiListening()) {
+      listening_ = false;
+      stopTimer();
+      again_.setEnabled(true);
+      return;
+    }
+    if (const int step = proc_.midiListenPairStep(); step != shown_) {
+      shown_ = step;
+      step_.setText(step == 0 ? TRANS("Move it on...") : TRANS("Now move it off..."), juce::dontSendNotification);
+    }
+  }
+
+  MasterpieceProcessor& proc_;
+  Id id_;
+  bool listening_ = false;
+  int shown_ = -1;
+  juce::Label step_, note_;
+  juce::ToggleButton alsoSend_;
+  juce::TextButton again_, close_{TRANS("Close")};
+};
+
+}  // namespace
+
+void MidiEventDialog::showLearnOnOff(MasterpieceProcessor& p, Id switchId) {
+  juce::DialogWindow::LaunchOptions o;
+  o.content.setOwned(new LearnOnOffContent(p, switchId));
+  o.dialogTitle = objectName(p, MidiTargetKind::Switch, switchId) + " - " + TRANS("Learn on and off");
+  o.dialogBackgroundColour = kBg;
+  o.escapeKeyTriggersCloseButton = true;
+  o.useNativeTitleBar = true;
+  o.resizable = false;
+  launchDialog(o);
+}
+
 std::unique_ptr<juce::Component> MidiEventDialog::makeSendPanel(MasterpieceProcessor& p,
                                                                 MidiTargetKind kind, Id id) {
   return std::make_unique<SendPanel>(p, kind, id);

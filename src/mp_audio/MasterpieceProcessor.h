@@ -1882,6 +1882,44 @@ public:
     writeGlobalFile();
   }
   bool midiSendsHoldEcho() const { return midiSendsHoldEcho_; }
+  // Learn on and off (#1245) also makes the send that gives the console back
+  // what it sent for the tab, so its lamp or magnet follows. Off by default:
+  // a console that echoes what it receives would loop. Kept in the general
+  // settings.
+  void setLearnAlsoSends(bool on) {
+    if (learnAlsoSends_ == on) return;
+    learnAlsoSends_ = on;
+    writeGlobalFile();
+  }
+  bool learnAlsoSends() const { return learnAlsoSends_; }
+  // The stepper as levels of generals (#1246), as English consoles have it:
+  // the frames read N at a time, each N a level; - and + step through the
+  // generals, level up and down move N, and the digits pick a general of the
+  // level. Off, the frames are GrandOrgue's sequencer, ten to a level. The
+  // simple view always shows levels. Both kept in the general settings.
+  bool stepperLevels() const { return stepperLevels_; }
+  void setStepperLevels(bool on) {
+    if (stepperLevels_ == on) return;
+    stepperLevels_ = on;
+    writeGlobalFile();
+  }
+  static constexpr int kMaxLevelSize = 10;
+  int levelSize() const { return levelSize_; }
+  void setLevelSize(int n) {
+    n = std::clamp(n, 1, kMaxLevelSize);
+    if (levelSize_ == n) return;
+    levelSize_ = n;
+    writeGlobalFile();
+  }
+  // How many frames a level holds now: the level size with levels shown,
+  // ten as the sequencer has them.
+  int levelStep() const { return stepperLevels_ || simpleMode() ? levelSize_ : 10; }
+  // Ready-made registrations (#1221): PP, P, MF, F, Plein jeu and Tutti,
+  // built from this organ's stop names (PlayerCombinations::
+  // suggestRegistrations), stored in the generals not yet set, from the
+  // first of them, each named. A general already set is never touched.
+  // Returns how many were stored. Message thread.
+  int fillReadyMadeGenerals();
   // The values the echo sends (#1185). A pad grid takes a Note On's velocity
   // as a colour: lit in one colour, dark in a dimmer one. `lit` 1..127, 127
   // by default; `dark` 0..127, or -1 for a Note Off, the default. A
@@ -3030,6 +3068,9 @@ private:
   void routeEchoes();
   bool midiFeedback_ = false;
   bool midiSendsHoldEcho_ = false;
+  bool learnAlsoSends_ = false;
+  bool stepperLevels_ = false;
+  int levelSize_ = 10;
   // The echo's values for a lit and a dark button (#1185): 1..127, and
   // 0..127 or -1 for a Note Off.
   std::atomic<int> midiFeedbackOn_{127};
