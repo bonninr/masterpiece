@@ -66,7 +66,7 @@ void removeTouchLook() {
 bool isMobilePackage(const juce::String& fileName) {
   if (!kMobile) return true;
   const auto n = fileName.toLowerCase();
-  return n.endsWith(".rar") || n.endsWith(".orgue");
+  return n.endsWith(".rar") || n.endsWith(".orgue") || n.endsWith("_hauptwerk_rar");
 }
 
 juce::File importedOrgansFolder() {
