@@ -976,7 +976,6 @@ countries: cz
 "Estimated from the sample files, at the settings on the Loading tab. The choices here are saved for this organ and take effect when it is loaded again." = "Odhadnuto ze souborů vzorků při nastavení na kartě Načítání. Volby zde se ukládají pro tyto varhany a projeví se při dalším načtení."
 "A correction for the room and the speakers, on the whole organ" = "Korekce pro místnost a reproduktory, pro celé varhany"
 "Outputs" = "Výstupy"
-"Equalizer" = "Ekvalizér"
 "Quality" = "Kvalita"
 "Best: as recorded, all in memory" = "Nejlepší: jak nahráno, vše v paměti"
 "High: as recorded, compressed, releases streamed" = "Vysoká: jak nahráno, komprimováno, doznění streamováno"

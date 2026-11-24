@@ -67,20 +67,24 @@ void ScorePlayer::process(juce::MidiBuffer& midi, int numSamples) {
     // first, as note-offs at the start of this block.
     releaseHeld(midi);
     restart_ = false;
-    pos_ = std::llround(startAt_ * sampleRate_);
+    pos_ = static_cast<double>(std::llround(startAt_ * sampleRate_));
     index_ = static_cast<size_t>(
         std::lower_bound(events_.begin(), events_.end(), startAt_,
                          [](const Event& e, double t) { return e.seconds < t; }) -
         events_.begin());
   }
 
-  const int64_t blockEnd = pos_ + numSamples;
+  // The block covers its length times the speed of the score as written;
+  // an event lands in it where that time falls, the speed taken out again.
+  const double speed = speed_.load(std::memory_order_relaxed);
+  const double blockEnd = pos_ + numSamples * speed;
   while (index_ < events_.size()) {
     const Event& e = events_[index_];
     // Rounded: 0.02 s at 48 kHz is 959.99... in floating point, and sample 960.
-    const int64_t at = std::llround(e.seconds * sampleRate_);
+    const double at = static_cast<double>(std::llround(e.seconds * sampleRate_));
     if (at >= blockEnd) break;
-    const int offset = static_cast<int>(std::clamp<int64_t>(at - pos_, 0, numSamples - 1));
+    const int offset =
+        static_cast<int>(std::clamp<int64_t>(std::llround((at - pos_) / speed), 0, numSamples - 1));
     const int ch = std::clamp<int>(e.channel, 1, 16);
     auto& count = held_[static_cast<size_t>((ch - 1) * 128 + (e.note & 127))];
     if (e.on) {
@@ -98,7 +102,7 @@ void ScorePlayer::process(juce::MidiBuffer& midi, int numSamples) {
     ++index_;
   }
   pos_ = blockEnd;
-  position_.store(static_cast<double>(pos_) / sampleRate_, std::memory_order_release);
+  position_.store(pos_ / sampleRate_, std::memory_order_release);
 
   if (index_ >= events_.size()) {
     // The end of the score: a final chord that the file never lets go of is

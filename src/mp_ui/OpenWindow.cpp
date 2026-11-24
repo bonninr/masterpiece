@@ -20,7 +20,7 @@ juce::String formatOf(const juce::File& f) {
   if (ext == ".organ" || ext == ".orgue") return "GrandOrgue";
   if (ext == ".disposition") return "jOrgan";
   if (ext.endsWith("hauptwerk_xml")) return "Hauptwerk";
-  if (ext == ".rar") return TRANS("package");
+  if (ext == ".rar" || ext.endsWith("_hauptwerk_rar")) return TRANS("package");
   return {};
 }
 }  // namespace

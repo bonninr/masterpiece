@@ -15417,6 +15417,8 @@ public:
     MP_CHECK(savaria.size() == 1, "another organ is not pulled in");
     MP_CHECK(mp::isOrganArchive("x.RAR") && !mp::isOrganArchive("x.Organ_Hauptwerk_xml"),
              "archives are known by extension");
+    MP_CHECK(mp::isOrganArchive("BartonSeriesv2.0.CompPkg_Hauptwerk_rar"),
+             "and a newer Hauptwerk package, \"_Hauptwerk_rar\" with no dot before the rar (#1243)");
     fs::remove_all(dir, ec);
   }
 };

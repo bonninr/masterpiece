@@ -10,9 +10,19 @@
 
 #include <functional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 
 namespace mp {
+
+// The ranks a player hears as the organ's noises, not its pipework: a rank of
+// the Noise table or a noise effect (Rank::noiseEffect), and a rank that only
+// the action sounds, every stop row that plays it an action noise
+// (StopRankEntry::isActionNoise): a blower that runs while its stop is drawn,
+// a drawstop's clicks, a key's thump. Lemmer, Cheltenham, St Davids and
+// Wildervank put their blower in a Noises division this way, tuned like a
+// pipe (#1245).
+std::unordered_set<Id> noiseRanks(const OrganModel& m);
 
 // The working pressure a compartment settles to and its pressure now, in
 // inches of water, from the running wind solver.

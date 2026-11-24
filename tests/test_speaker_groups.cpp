@@ -632,6 +632,22 @@ public:
     p.setOutputSendLevel(2, 1, -4.5f);
     p.setOutputName(1, "Main mix");
     MP_CHECK(p.mixer().buses[1].sends == std::vector<int>{1}, "an output does not play into itself");
+    // A send back into an output that already plays into this one is refused,
+    // and the send made before stays: 2 into 1 is kept, 1 into 2 never made
+    // (#1245). The Outputs window shows that box greyed.
+    p.setOutputSends(1, {2});
+    MP_CHECK(p.mixer().buses[0].sends.empty() && p.mixer().buses[1].sends == std::vector<int>{1},
+             "a send back into output 2 is refused, 2 into 1 stays");
+    MP_CHECK(p.mixer().reaches(2, 1) && !p.mixer().reaches(1, 2), "output 2 reaches 1, and 1 does not reach 2");
+    {
+      mp::MasterpieceProcessor chain;
+      chain.setPairCount(3);
+      chain.setOutputSends(1, {2});
+      chain.setOutputSends(2, {3});
+      chain.setOutputSends(3, {1, 2});
+      MP_CHECK(chain.mixer().buses[2].sends.empty() && chain.mixer().reaches(1, 3),
+               "output 3, fed by 1 through 2, sends into neither of them");
+    }
     MP_CHECK(p.saveGlobalDefaults(), "the global file is written");
     const auto text = global.file.loadFileAsString();
     MP_CHECK(text.contains("buses 1:0,1 2:2,3>1@-4.5") && text.contains("busname 1 Main mix"),

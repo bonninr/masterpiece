@@ -150,7 +150,6 @@ On Debian and Ubuntu the jackd2 package writes this file as `audio.conf.disabled
 | **Outputs** | **1 output** to **64 outputs**. Lowering the count folds ranks that pointed at a removed pair back to **Pair 1**. | 1 | At once for notes started afterwards |
 | Status line | `N rank(s), M pair(s)`; when something is wrong it adds `X unrouted, Y stale` | | |
 | Outputs line | Each pair's device channels, such as `Pair 2: 3-4`, and `the device gives N outputs: the pairs past them play on 1-2` when the device has fewer channels than the pairs name | | |
-| **Spread ranks evenly** | Assigns the ranks in rank-number order to the pairs in turn, so that the routing is audible straight away | | At once |
 | **All to pair 1** | Puts every rank on **Pair 1** | | At once |
 | **Save for this organ** | Writes the organ's settings file, including the routes | | At once |
 | **Output EQ...** | One output's ten-band EQ at a time, chosen in the box at the top: a correction for the speaker on that output, as the voicing EQ is for the whole organ. It acts after what the output sends to the other outputs, which have their own, and before its meter. Off or flat, the output is not filtered. | Off | At once |
@@ -161,7 +160,7 @@ A rank is routed when a note starts, so notes already sounding keep the pair the
 
 ### A subwoofer, or a speaker of several ways
 
-The crossover splits the organ into bands in the program, so no crossover is needed between the interface and the amplifiers. Nothing is decided for you: each band is an output of its own, fed by the output that carries the ranks.
+The crossover splits the organ into bands in the program, so no crossover is needed between the interface and the amplifiers. Nothing is decided for you: each band is an output of its own, fed by the output that carries the ranks. An output plays into others through its sends; one that already plays into this output, itself or through others, cannot be sent back to, so no loop is made: its box in **Outputs...** is greyed.
 
 A subwoofer under a stereo pair, crossing at 80 Hz:
 

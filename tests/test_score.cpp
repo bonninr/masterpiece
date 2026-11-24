@@ -368,6 +368,23 @@ public:
     for (const auto& p : late)
       if (p.on) ++ons;
     MP_CHECK(ons == 1, "and nothing from before it, got " + std::to_string(ons) + " note-ons");
+
+    // At another tempo (#1012): at half speed the note written at 10 ms
+    // starts at sample 960 and lets go at 1920; at double speed at 240 and
+    // 480. The position stays in the score's own time.
+    player.setSpeed(0.5);
+    player.play({{0.010, 6, 62, true}, {0.020, 6, 62, false}}, 0.0);
+    auto slow = drive(player, 12);
+    MP_CHECK(slow.size() == 2 && slow[0].at == 960 && slow[1].at == 1920,
+             "at half speed the note plays from 960 to 1920, got " +
+                 (slow.size() == 2 ? std::to_string(slow[0].at) + " to " + std::to_string(slow[1].at) : std::string("?")));
+    player.setSpeed(2.0);
+    player.play({{0.010, 6, 62, true}, {0.020, 6, 62, false}}, 0.0);
+    auto fast = drive(player, 12);
+    MP_CHECK(fast.size() == 2 && fast[0].at == 240 && fast[1].at == 480, "at double speed from 240 to 480");
+    player.setSpeed(10.0);
+    MP_CHECK(player.speed() == mp::ScorePlayer::kMaxSpeed, "the speed stays within four times the score's");
+    player.setSpeed(1.0);
   }
 };
 static ScorePlayerTest g_scorePlayer;

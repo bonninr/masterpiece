@@ -238,6 +238,12 @@ private:
   juce::TextButton zoomOut_{"-"}, zoomIn_{"+"}, zoomReset_{"100%"};
   juce::TextButton twoUp_{TRANS("Two pages")};
   juce::TextButton play_{TRANS("Play")};
+  // The playing's tempo (#1012): the score's own, from its first tempo mark,
+  // and any number typed or stepped. The tempo marks that follow keep their
+  // proportion: the whole score plays at the same ratio to what is written.
+  juce::Slider tempo_{juce::Slider::IncDecButtons, juce::Slider::TextBoxLeft};
+  double scoreBpm_ = 120.0;
+  void showTempo();
   juce::TextButton manuals_{TRANS("Manuals...")};
   juce::TextButton invert_{TRANS("Invert")};
   juce::TextButton detach_{TRANS("Detach")};

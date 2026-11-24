@@ -12,6 +12,7 @@
 #pragma once
 #include <juce_audio_basics/juce_audio_basics.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -41,6 +42,15 @@ public:
   // Length of the list handed to play(), in seconds.
   double lengthSeconds() const { return length_.load(std::memory_order_acquire); }
 
+  // How fast the score plays against its own tempo marks: 1 as written, 0.5
+  // at half speed (#1012). The marks still act: a ritardando slows the
+  // playing as written, scaled by this. Any thread; heard from the next block.
+  static constexpr double kMinSpeed = 0.25, kMaxSpeed = 4.0;
+  void setSpeed(double speed) {
+    speed_.store(std::clamp(speed, kMinSpeed, kMaxSpeed), std::memory_order_relaxed);
+  }
+  double speed() const { return speed_.load(std::memory_order_relaxed); }
+
   // Sorts as play() wants: by time, note-offs first at the same moment, so a
   // repeated note sounds again.
   static void orderEvents(std::vector<Event>& events);
@@ -60,7 +70,10 @@ private:
 
   // Audio thread only.
   double sampleRate_ = 48000.0;
-  int64_t pos_ = 0;
+  // Where the playing is, in samples of the score as written: a block moves
+  // it on by its length times the speed. Whole numbers at speed 1.
+  double pos_ = 0.0;
+  std::atomic<double> speed_{1.0};
   size_t index_ = 0;
   // How many of the playing's notes hold each key, by channel and note: two
   // staves given the same manual share keys, and a key goes up only when the

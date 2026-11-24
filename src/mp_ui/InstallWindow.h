@@ -66,6 +66,9 @@ private:
   void updateSummary();
   void chooseFolder();
   void start();
+  // The first install asks where organs go before anything is written: the
+  // folder offered and the room on its drive, or another folder (#1245).
+  void askWhere();
   void finishInstall(bool ok, const juce::String& error);
   void finishUninstall(bool ok, const juce::String& error);
   void setBusy(bool busy, const juce::String& what = {});

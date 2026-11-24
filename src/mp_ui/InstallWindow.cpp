@@ -321,7 +321,14 @@ void InstallPanel::setAction(int row, bool act) {
 }
 
 void InstallPanel::updateSummary() {
-  folderLabel_.setText(TRANS("Organs folder: %1").replace("%1", root().getFullPathName()), juce::dontSendNotification);
+  {
+    const int64_t room = freeBytesAt(root().getFullPathName().toStdString());
+    folderLabel_.setText(room >= 0 ? TRANS("Organs folder: %1 (%2 free)")
+                                         .replace("%1", root().getFullPathName())
+                                         .replace("%2", sizeText(room))
+                                   : TRANS("Organs folder: %1").replace("%1", root().getFullPathName()),
+                         juce::dontSendNotification);
+  }
   int count = 0;
   int64_t bytes = 0;
   juce::StringArray broken;
@@ -338,11 +345,23 @@ void InstallPanel::updateSummary() {
       }
   }
   juce::String text;
+  // A drive without room for what is ticked takes no install: the player is
+  // sent to Change... for a folder on another drive, before anything is
+  // written (#1245).
+  bool room = true;
   if (mode_ == Mode::Install) {
     const int64_t free = freeBytesAt(root().getFullPathName().toStdString());
-    text = TRANS("Installs %1 component(s), %2").replace("%1", juce::String(count)).replace("%2", sizeText(bytes));
-    if (free >= 0) text << TRANS(", with %1 free on that drive").replace("%1", sizeText(free));
-    summary_.setColour(juce::Label::textColourId, free >= 0 && free < bytes ? kWarn : kDim);
+    room = free < 0 || free >= bytes;
+    if (room) {
+      text = TRANS("Installs %1 component(s), %2").replace("%1", juce::String(count)).replace("%2", sizeText(bytes));
+      if (free >= 0) text << TRANS(", with %1 free on that drive").replace("%1", sizeText(free));
+    } else {
+      text = TRANS("Installs %1 component(s), %2, but that drive has %3 free: Change... picks a folder on another drive")
+                 .replace("%1", juce::String(count))
+                 .replace("%2", sizeText(bytes))
+                 .replace("%3", sizeText(free));
+    }
+    summary_.setColour(juce::Label::textColourId, room ? kDim : kWarn);
   } else if (!rows_.empty()) {
     text = TRANS("Removes %1 component(s), %2").replace("%1", juce::String(count)).replace("%2", sizeText(bytes));
     if (!broken.isEmpty())
@@ -350,7 +369,7 @@ void InstallPanel::updateSummary() {
     summary_.setColour(juce::Label::textColourId, broken.isEmpty() ? kDim : kWarn);
   }
   summary_.setText(text, juce::dontSendNotification);
-  go_.setEnabled(!busy_ && count > 0 && (mode_ == Mode::Uninstall || archive_ != nullptr));
+  go_.setEnabled(!busy_ && count > 0 && (mode_ == Mode::Uninstall || (archive_ != nullptr && room)));
 }
 
 void InstallPanel::chooseFolder() {
@@ -385,8 +404,36 @@ void InstallPanel::chooseFolder() {
 
 // ---------------------------------------------------------------- doing
 
+void InstallPanel::askWhere() {
+  const int64_t free = freeBytesAt(root().getFullPathName().toStdString());
+  juce::String text = TRANS("Organs are installed in %1").replace("%1", root().getFullPathName());
+  if (free >= 0) text << TRANS(", with %1 free on that drive").replace("%1", sizeText(free));
+  text << ".\n\n" << TRANS("Install them there, or choose a folder on another drive? Organs installed in "
+                           "earlier folders stay where they are and are still listed.");
+  juce::Component::SafePointer<InstallPanel> safe(this);
+  auto* box = new juce::AlertWindow(TRANS("Where to install"), text, juce::MessageBoxIconType::QuestionIcon, this);
+  box->addButton(TRANS("Install here"), 1, juce::KeyPress(juce::KeyPress::returnKey));
+  box->addButton(TRANS("Choose a folder..."), 2);
+  box->addButton(TRANS("Cancel"), 0, juce::KeyPress(juce::KeyPress::escapeKey));
+  box->enterModalState(true, juce::ModalCallbackFunction::create([safe](int result) {
+                         if (safe == nullptr) return;
+                         if (result == 1) {
+                           safe->proc_.confirmOrgansFolder();
+                           safe->start();
+                         } else if (result == 2) {
+                           safe->chooseFolder();
+                         }
+                       }),
+                       true);
+}
+
 void InstallPanel::start() {
   if (busy_) return;
+  // Asked once, on a desktop, before the first install writes anything.
+  if (mode_ == Mode::Install && !kMobile && !proc_.organsFolderConfirmed()) {
+    askWhere();
+    return;
+  }
   std::vector<InstallComponent> chosen;
   for (const auto& r : rows_)
     if (r.act) chosen.push_back(r.offered);

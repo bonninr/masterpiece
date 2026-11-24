@@ -126,7 +126,7 @@ std::string stemOf(const std::string& fileName) {
   static const std::regex volume(R"(\.part\d+\.rar$|\.r\d\d$)");
   s = std::regex_replace(s, volume, "");
   if (endsWith(s, ".rar")) s.resize(s.size() - 4);
-  static const std::regex suffix(R"(\.(custom)?organ\.comppkg\.hauptwerk.*$|\.comppkg\.hauptwerk.*$)");
+  static const std::regex suffix(R"(\.(custom)?organ\.comppkg[._]hauptwerk.*$|\.comppkg[._]hauptwerk.*$)");
   s = std::regex_replace(s, suffix, "");
   static const std::regex lead(R"(^\d{1,3}[_ -])");
   s = std::regex_replace(s, lead, "");
@@ -985,7 +985,9 @@ namespace {
 
 bool isOrganArchive(const std::string& path) {
   const std::string p = lower(path);
-  return endsWith(p, ".rar") || endsWith(p, ".orgue");
+  // Hauptwerk's newer packages end in "_Hauptwerk_rar", with no dot before
+  // the rar: "BartonSeriesv2.0.CompPkg_Hauptwerk_rar" (#1243).
+  return endsWith(p, ".rar") || endsWith(p, ".orgue") || endsWith(p, "_hauptwerk_rar");
 }
 
 namespace {
