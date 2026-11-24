@@ -1,3 +1,4 @@
+#include "Mobile.h"
 #include "Console.h"
 #include "../mp_core/Utf8Path.h"
 #include "ManualDialog.h"
@@ -1452,7 +1453,7 @@ void showSwitchMidiMenu(MasterpieceProcessor& proc, Id switchId,
   menu.addSeparator();
   menu.addItem(5, TRANS("Clear mapping"), mapped);
 
-  menu.showMenuAsync(
+  showMenu(menu,
       juce::PopupMenu::Options().withTargetScreenArea(area),
       [&proc, switchId, latching, after = std::move(after)](int choice) {
         if (choice == 6) choice = latching ? 1 : 2;
@@ -1648,7 +1649,7 @@ void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
   menu.addItem(4, TRANS("Open position: where the pedal is now"), !existing.empty());
   menu.addItem(5, TRANS("Use the pedal's whole travel"), !existing.empty());
   menu.addItem(2, TRANS("Clear mapping"), mapped);
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(area),
+  showMenu(menu, juce::PopupMenu::Options().withTargetScreenArea(area),
                      [&proc, controlId, after = std::move(after)](int choice) {
                        if (choice == 6) {
                          MidiEventDialog::show(proc, MidiTargetKind::ContinuousControl,

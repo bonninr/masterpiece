@@ -707,7 +707,7 @@ void CombinationsPanel::showMidiMenu(PistonButton& b, MidiTargetKind kind,
   }
 
   const juce::String name = b.getButtonText();
-  menu.showMenuAsync(
+  showMenu(menu,
       juce::PopupMenu::Options().withTargetComponent(&b),
       [this, kind, targetId, name](int choice) {
         switch (choice) {

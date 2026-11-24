@@ -120,7 +120,7 @@ void PageWindow::showMenu() {
   menu.addItem(2, TRANS("Borderless"), true, borderless_);
   menu.addSeparator();
   menu.addItem(3, TRANS("Close"));
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),
+  mp::ui::showMenu(menu, juce::PopupMenu::Options().withTargetComponent(this),
                      [safe = juce::Component::SafePointer<PageWindow>(this)](int c) {
                        if (safe == nullptr || c == 0) return;
                        if (c == 1) safe->fitWindowToPage();

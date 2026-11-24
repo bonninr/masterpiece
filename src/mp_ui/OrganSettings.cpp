@@ -1,3 +1,4 @@
+#include "Mobile.h"
 #include "OrganSettings.h"
 #include "MidiEventDialog.h"
 #include "MixerStrip.h"
@@ -1001,7 +1002,7 @@ void VoicingEqPanel::presetMidiMenu() {
     item += 10;
   }
   juce::Component::SafePointer<VoicingEqPanel> self(this);
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&midiPreset_),
+  showMenu(menu, juce::PopupMenu::Options().withTargetComponent(&midiPreset_),
                      [self, targets](int choice) {
                        if (self == nullptr || choice <= 0) return;
                        const auto& t = targets[static_cast<size_t>((choice - 1) / 10)];

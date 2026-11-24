@@ -1462,7 +1462,7 @@ void ScorePanel::addMarkMenu(const std::string& note, juce::Rectangle<int> scree
   // Also Ctrl+Z; here for a touch screen, which has no keys.
   menu.addSeparator();
   menu.addItem(3, TRANS("Undo the last change to the marks"), !undo_.empty());
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(screenArea),
+  showMenu(menu, juce::PopupMenu::Options().withTargetScreenArea(screenArea),
                      [safe = juce::Component::SafePointer<ScorePanel>(this), note](int chosen) {
                        if (safe == nullptr || chosen == 0) return;
                        if (chosen == 3) {

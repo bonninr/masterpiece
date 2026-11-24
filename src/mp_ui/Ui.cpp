@@ -1372,7 +1372,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
       juce::PopupMenu menu;
       menu.addItem(1, TRANS("Rename %1...").replace("%1", panels_[static_cast<size_t>(panel)]->title()));
       menu.addItem(2, TRANS("Delete %1").replace("%1", panels_[static_cast<size_t>(panel)]->title()));
-      menu.showMenuAsync(juce::PopupMenu::Options(), [this, panel](int choice) {
+      showMenu(menu, juce::PopupMenu::Options(), [this, panel](int choice) {
         if (choice == 1 && panel < static_cast<int>(panels_.size()))
           panels_[static_cast<size_t>(panel)]->askForTitle();
         else if (choice == 2) deletePanel(panel);
@@ -1391,7 +1391,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
       for (int l = 0; l < console_.layoutCount(); ++l)
         menu.addItem(10 + l, TRANS("Detach, %1").replace("%1", layoutName(l)));
     if (open) menu.addItem(2, TRANS("Close window"));
-    menu.showMenuAsync(juce::PopupMenu::Options(), [this, page](int choice) {
+    showMenu(menu, juce::PopupMenu::Options(), [this, page](int choice) {
       if (choice == 1) openPageWindow(page);
       if (choice == 2) closePageWindow(pageWindowFor(page));
       if (choice >= 10) openPageWindow(page, {}, choice - 10);
@@ -1913,7 +1913,7 @@ void MasterpieceEditor::chooseDefinition(const juce::Array<juce::File>& definiti
     menu.addItem(i + 1, order[i].getFileNameWithoutExtension() +
                             (order[i] == last ? "  " + TRANS("(last opened)") : juce::String()));
   juce::Component::SafePointer<MasterpieceEditor> self(this);
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&top_),
+  showMenu(menu, juce::PopupMenu::Options().withTargetComponent(&top_),
                      [self, order, graphicsOnly](int choice) {
                        if (self == nullptr) return;
                        if (choice < 1 || choice > order.size()) {
@@ -3254,7 +3254,7 @@ void MasterpieceEditor::showFileMenu() {
 #endif
   }
 #endif
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&fileMenu_),
+  showMenu(menu, juce::PopupMenu::Options().withTargetComponent(&fileMenu_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this), versions](int c) {
                        if (safe == nullptr || c == 0) return;
                        if (c == 1) safe->showOpenMenu();
@@ -3305,7 +3305,7 @@ void MasterpieceEditor::showOrganMenu() {
   }
   menu.addSeparator();
   menu.addItem(8, TRANS("All notes off"));
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&organMenu_),
+  showMenu(menu, juce::PopupMenu::Options().withTargetComponent(&organMenu_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this), organTabs](int c) {
                        if (safe == nullptr || c == 0) return;
                        if (c == 1 && safe->onOrganSettings) safe->onOrganSettings();
@@ -3384,7 +3384,7 @@ void MasterpieceEditor::showViewMenu() {
     menu.addSubMenu(TRANS("Console layout"), layouts);
   }
   // The tool windows beside the console are in the Window menu.
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&viewMenu_),
+  showMenu(menu, juce::PopupMenu::Options().withTargetComponent(&viewMenu_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
                        if (safe == nullptr || c == 0) return;
                        if (c >= 1000) safe->panelItemChosen(c);
@@ -3426,7 +3426,7 @@ void MasterpieceEditor::showWindowMenu() {
   menu.addItem(23, TRANS("Metronome"), true, metronomeWindow_ != nullptr && metronomeWindow_->isVisible());
   menu.addItem(22, TRANS("Tuner"), true, tunerWindow_ != nullptr && tunerWindow_->isVisible());
   menu.addItem(14, TRANS("Split keyboard"), true, splitWindow_ != nullptr && splitWindow_->isVisible());
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&windowMenu_),
+  showMenu(menu, juce::PopupMenu::Options().withTargetComponent(&windowMenu_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
                        if (safe == nullptr || c == 0) return;
                        if (c == 19) safe->toggleCouplers();
@@ -3458,7 +3458,7 @@ void MasterpieceEditor::showSettingsMenu() {
                                      "Console display", "Remote control"}
                  : juce::StringArray{"General", "Performance", "Console display"};
   for (int i = 0; i < tabs.size(); ++i) menu.addItem(40 + i, TRANS(tabs[i]) + "...");
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton_),
+  showMenu(menu, juce::PopupMenu::Options().withTargetComponent(&settingsButton_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this), tabs](int c) {
                        if (safe == nullptr || c < 40 || c - 40 >= tabs.size()) return;
                        if (safe->onSettingsTab) safe->onSettingsTab(TRANS(tabs[c - 40]));
@@ -3475,7 +3475,7 @@ void MasterpieceEditor::showHelpMenu() {
   menu.addItem(4, TRANS("Diagnostics..."), juce::JUCEApplicationBase::isStandaloneApp());
   menu.addSeparator();
   menu.addItem(5, TRANS("About Masterpiece"));
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&helpMenu_),
+  showMenu(menu, juce::PopupMenu::Options().withTargetComponent(&helpMenu_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
                        if (safe == nullptr || c == 0) return;
                        if (c == 1) juce::URL(kDocumentationUrl).launchInDefaultBrowser();

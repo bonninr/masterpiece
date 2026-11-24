@@ -26,6 +26,7 @@ public:
   void drawRotarySlider(juce::Graphics& g, int x, int y, int w, int h, float pos, float startAngle,
                         float endAngle, juce::Slider& s) override;
   int getSliderThumbRadius(juce::Slider& s) override;
+  juce::PopupMenu::Options getOptionsForComboBoxPopupMenu(juce::ComboBox& box, juce::Label& label) override;
   juce::Label* createSliderTextBox(juce::Slider& s) override;
   // A box on a strip: a small font and a narrow arrow, so a name such as
   // "Default" fits the strip's width.
