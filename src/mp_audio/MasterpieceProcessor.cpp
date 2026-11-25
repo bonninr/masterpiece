@@ -6743,6 +6743,13 @@ void MasterpieceProcessor::setGeneralName(int n, const juce::String& name) {
   combinationsDirty_.store(true, std::memory_order_release);
 }
 
+void MasterpieceProcessor::clearGeneral(int n) {
+  const AudioLock audio(*this);
+  if (!player_.generalSet(n) && player_.generalName(n).empty()) return;
+  player_.clearGeneral(n);
+  combinationsDirty_.store(true, std::memory_order_release);
+}
+
 void MasterpieceProcessor::pressGeneral(int n) {
   const AudioLock audio(*this);
   const auto read = [this](const PlayerCombinations::Element& e) {
@@ -7026,6 +7033,8 @@ int MasterpieceProcessor::fillReadyMadeGenerals() {
     if (general > PlayerCombinations::kMaxGenerals) break;
     player_.storeGeneral(general, [&](const PlayerCombinations::Element& e) {
       const auto i = static_cast<size_t>(&e - elements.data());
+      // What the suggestion leaves alone keeps its state as it is now.
+      if (i < s.kept.size() && s.kept[i] != 0) return playerElementEngaged(e);
       return i < s.drawn.size() && s.drawn[i] != 0;
     });
     player_.setGeneralName(general, s.name);

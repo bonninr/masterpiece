@@ -40,6 +40,8 @@ public:
     for (const char* n : {"Gedackt 8", "Salicional 8", "Vox coelestis 8", "Principal 4", "Nasard 2 2/3", "Oboe 8"})
       stop(2, n);
     for (const char* n : {"Subbass 16", "Octavbass 8", "Posaune 16"}) stop(3, n);
+    // The blower, a stop of no family (#1221).
+    stop(3, "Blower");
     sw("II/I");
     sw("Tremulant");
     const auto keyboardOf = [](mp::Id div) { return div == 3 ? 0 : static_cast<int>(div); };
@@ -58,6 +60,14 @@ public:
       return s;
     };
     MP_CHECK(levels[0].name == "PP" && levels[5].name == "Tutti", "named PP to Tutti");
+    // #1221: the blower is left as it is, the Principal is not.
+    const auto at = [&](const char* name) {
+      for (size_t i = 0; i < els.size(); ++i)
+        if (els[i].name == name) return i;
+      return els.size();
+    };
+    MP_CHECK(levels[0].kept.size() == els.size() && levels[0].kept[at("Blower")] && !levels[0].kept[at("Principal 8")],
+             "PP leaves the blower as it is, and sets the Principal");
     MP_CHECK(drawn(0) == "Gedackt 8|Subbass 16|", "PP: the Swell's Gedackt, the Subbass; got " + drawn(0));
     MP_CHECK(drawn(1) == "Rohrflöte 8|Gedackt 8|Subbass 16|", "P: the Great's Rohrflöte too; got " + drawn(1));
     MP_CHECK(drawn(2) == "Principal 8|Rohrflöte 8|Spitzflöte 4|Gedackt 8|Principal 4|Subbass 16|Octavbass 8|",

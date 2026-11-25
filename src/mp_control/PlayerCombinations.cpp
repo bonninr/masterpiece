@@ -536,6 +536,15 @@ void PlayerCombinations::unlightDivisions(Id divisionId) {
 
 // A general describes the whole console, so it replaces every lit piston; a
 // divisional describes one division, so it only unlights the general.
+void PlayerCombinations::clearGeneral(int n) {
+  if (n < 1 || n > kMaxGenerals) return;
+  Registration& r = generals_[static_cast<size_t>(n)];
+  r.set = false;
+  std::fill(r.drawn.begin(), r.drawn.end(), 0);
+  if (static_cast<size_t>(n) < generalNames_.size()) generalNames_[static_cast<size_t>(n)].clear();
+  if (litGeneral_ == n) litGeneral_ = 0;
+}
+
 void PlayerCombinations::lightGeneral(int n) {
   unlight();
   litGeneral_ = n;
@@ -725,11 +734,13 @@ std::vector<PlayerCombinations::Suggestion> PlayerCombinations::suggestRegistrat
   const size_t n = elements.size();
   std::vector<StopTraits> traits(n);
   std::map<Id, int> stopsIn;  // manual division: its stops
+  std::vector<char> kept(n, 0);
   Id pedal = 0;
   for (size_t i = 0; i < n; ++i) {
     const Element& e = elements[i];
     if (e.kind != ElementKind::Stop) continue;
     traits[i] = stopTraits(e.name);
+    if (traits[i].family == ToneFamily::Unknown) kept[i] = 1;
     const int kb = keyboardOf ? keyboardOf(e.divisionId) : -1;
     if (kb == 0) pedal = e.divisionId;
     else ++stopsIn[e.divisionId];
@@ -778,11 +789,11 @@ std::vector<PlayerCombinations::Suggestion> PlayerCombinations::suggestRegistrat
   if (std::none_of(drawn.begin(), drawn.end(), [](char c) { return c != 0; }))
     draw(firstOf(soft, [&](const StopTraits& t) { return isFlute(t.family) && near(t.footage, 8); }), drawn);
   if (pedal != 0) draw(firstOf(pedal, [&](const StopTraits& t) { return isFlute(t.family) && near(t.footage, 16); }), drawn);
-  out.push_back({"PP", drawn});
+  out.push_back({"PP", drawn, kept});
   // P
   draw(firstOf(main, [&](const StopTraits& t) { return isFlute(t.family) && near(t.footage, 8); }), drawn);
   if (pedal != 0) draw(firstOf(pedal, [&](const StopTraits& t) { return isFlute(t.family) && near(t.footage, 8); }), drawn);
-  out.push_back({"P", drawn});
+  out.push_back({"P", drawn, kept});
   // MF
   draw(firstOf(main, [&](const StopTraits& t) { return t.family == ToneFamily::Principal && near(t.footage, 8); }), drawn);
   draw(firstOf(main, [&](const StopTraits& t) { return isFlute(t.family) && near(t.footage, 4); }), drawn);
@@ -794,7 +805,7 @@ std::vector<PlayerCombinations::Suggestion> PlayerCombinations::suggestRegistrat
   if (pedal != 0)
     draw(firstOf(pedal, [&](const StopTraits& t) { return t.family == ToneFamily::Principal && near(t.footage, 8); }),
          drawn);
-  out.push_back({"MF", drawn});
+  out.push_back({"MF", drawn, kept});
   // F: the principal chorus, 8' to 2', on every manual; the pedal's 16'.
   for (const auto& [div, count] : stopsIn)
     allOf(div, [&](const StopTraits& t) {
@@ -804,13 +815,13 @@ std::vector<PlayerCombinations::Suggestion> PlayerCombinations::suggestRegistrat
     allOf(pedal, [&](const StopTraits& t) {
       return (t.family == ToneFamily::Principal || isFlute(t.family)) && near(t.footage, 16);
     }, drawn);
-  out.push_back({"F", drawn});
+  out.push_back({"F", drawn, kept});
   // Plein jeu: the mixtures and the principals' mutations, 16' principals.
   allOf(0, [&](const StopTraits& t) {
     return t.family == ToneFamily::Mixture || t.family == ToneFamily::Mutation ||
            (t.family == ToneFamily::Principal && near(t.footage, 16));
   }, drawn);
-  out.push_back({"Plein jeu", drawn});
+  out.push_back({"Plein jeu", drawn, kept});
   // Tutti: every stop but celestes and percussion, every coupler.
   std::vector<char> tutti(n, 0);
   for (size_t i = 0; i < n; ++i) {
@@ -820,7 +831,7 @@ std::vector<PlayerCombinations::Suggestion> PlayerCombinations::suggestRegistrat
     else
       tutti[i] = !e.bassOrMelody && !(isTremulant && isTremulant(e.id));
   }
-  out.push_back({"Tutti", tutti});
+  out.push_back({"Tutti", tutti, kept});
   return out;
 }
 
