@@ -446,7 +446,7 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
         f.prepare(spec);
         // Start where the shoe actually is, so loading an organ with the
         // swell open does not ramp audibly through the first block.
-        f.snapTo(controls_.shutterFor(model_.enclosures.at(busEnclosures_[bus][m])));
+        f.snapTo(net().shutterFor(model_.enclosures.at(busEnclosures_[bus][m])));
       }
     }
   }
@@ -487,7 +487,7 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   // alone settles with every valve open, which filled the chests of an organ
   // whose blower is off (#1028).
   for (size_t i = 0; i < wind_.controlValves().size(); ++i)
-    wind_.setControlValve(i, controls_.readingOf(wind_.controlValves()[i].controlId));
+    wind_.setControlValve(i, net().readingOf(wind_.controlValves()[i].controlId));
   wind_.settleWith(engagedSwitches_);
   convolver_.prepare(spec);
   voicingEq_.configure(voicingEqSettings_, sampleRate);
@@ -1167,7 +1167,7 @@ void MasterpieceProcessor::applyEnclosures(int bus, size_t slot, juce::dsp::Audi
   for (size_t m = 0; m < boxes.size(); ++m) {
     const auto encIt = model_.enclosures.find(boxes[m]);
     if (encIt == model_.enclosures.end() || slot >= filters[m].size()) continue;
-    filters[m][slot].processBlock(block, encIt->second, controls_.shutterFor(encIt->second),
+    filters[m][slot].processBlock(block, encIt->second, net().shutterFor(encIt->second),
                                   graph_.engineSwitch);
   }
 }
@@ -1280,10 +1280,10 @@ void MasterpieceProcessor::advanceWind(int numFrames) {
   // The valves the organ opens with a continuous control, such as a blower's
   // own (#1028).
   for (size_t i = 0; i < wind_.controlValves().size(); ++i)
-    wind_.setControlValve(i, controls_.readingOf(wind_.controlValves()[i].controlId));
+    wind_.setControlValve(i, net().readingOf(wind_.controlValves()[i].controlId));
   // And the controls a switch-built regulator reads from outside it (#1121).
   for (size_t i = 0; i < wind_.relayInputs().size(); ++i)
-    wind_.setRelayInput(i, controls_.value(wind_.relayInputs()[i]));
+    wind_.setRelayInput(i, net().value(wind_.relayInputs()[i]));
   wind_.advance(static_cast<double>(numFrames) / sampleRate_,
                 graph_.engineSwitch, engagedSwitches_);
   // The switch-built regulator's switches as the solver moved them (#1121):
@@ -1295,15 +1295,15 @@ void MasterpieceProcessor::advanceWind(int numFrames) {
       for (size_t i = 0; i < n; ++i) {
         const Id id = wind_.relaySwitchId(i);
         const bool on = wind_.relaySwitchOn(i);
-        if (switches_.engaged(id) == on) continue;
-        switches_.set(id, on);
+        if (net().engaged(id) == on) continue;
+        net().set(id, on);
         again = mirrored = true;
       }
       if (!again) break;
     }
     for (size_t i = 0; i < n; ++i) wind_.relaySwitchMirrored(i);
     if (mirrored) {
-      engagedSwitches_ = switches_.engagedSwitches();
+      engagedSwitches_ = net().engagedSwitches();
       shownStale_ = true;
     }
   }
@@ -1338,10 +1338,10 @@ void MasterpieceProcessor::advanceWind(int numFrames) {
 // as the step 65 stopped it at 95 of 127 (#546).
 void MasterpieceProcessor::publishWindPressures() {
   for (size_t i = 0; i < windGauges_.size(); ++i)
-    controls_.setExact(windGauges_[i].second, 63.5 + wind_.pressureFor(windGauges_[i].first) * 0.5,
-                       windGaugeWake_[i]);
+    net().setExact(windGauges_[i].second, 63.5 + wind_.pressureFor(windGauges_[i].first) * 0.5,
+                   windGaugeWake_[i]);
   for (const auto& [compartment, control] : windBoards_)
-    controls_.setExact(control, wind_.extensionFor(compartment));
+    net().setExact(control, wind_.extensionFor(compartment));
 }
 
 // The ranks and divisions in id order, as the control API lists them, each
@@ -2002,7 +2002,7 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
                 setSwitchEngaged(a.targetId, true);
                 setSwitchEngaged(a.targetId, false);
               } else {
-                setSwitchEngaged(a.targetId, !switches_.engaged(a.targetId));
+                setSwitchEngaged(a.targetId, !net().engaged(a.targetId));
               }
               return;
             }
@@ -3107,7 +3107,7 @@ juce::String MasterpieceProcessor::rememberedStateLines() const {
 
   for (const auto& [id, c] : model_.continuousControls) {
     if (!c.rememberState || derived.count(id) != 0) continue;
-    const int v = controls_.value(id);
+    const int v = net().value(id);
     if (v == c.defaultValue) continue;  // nothing to say
     text << "control " << juce::String(id) << " " << juce::String(v) << "\n";
   }
@@ -3118,11 +3118,11 @@ juce::String MasterpieceProcessor::rememberedStateLines() const {
   // what the organ starts with.
   std::vector<Id> kept;
   for (const auto& [id, s] : model_.switches)
-    if (s.rememberState && s.latching && switches_.engaged(id) != s.defaultEngaged)
+    if (s.rememberState && s.latching && net().engaged(id) != s.defaultEngaged)
       kept.push_back(id);
   std::sort(kept.begin(), kept.end());
   for (Id id : kept)
-    text << "switch " << juce::String(id) << " " << (switches_.engaged(id) ? 1 : 0) << "\n";
+    text << "switch " << juce::String(id) << " " << (net().engaged(id) ? 1 : 0) << "\n";
   return text;
 }
 
@@ -3172,8 +3172,8 @@ bool MasterpieceProcessor::saveCurrentState() {
   snapshotStates_.clear();
   snapshotStops_.clear();
   for (const auto& [id, s] : model_.switches)
-    if (s.latching && switches_.engaged(id) != s.defaultEngaged)
-      snapshotStates_.emplace_back(id, switches_.engaged(id));
+    if (s.latching && net().engaged(id) != s.defaultEngaged)
+      snapshotStates_.emplace_back(id, net().engaged(id));
   std::sort(snapshotStates_.begin(), snapshotStates_.end());
   snapshotStops_.assign(engagedStops_.begin(), engagedStops_.end());
   std::sort(snapshotStops_.begin(), snapshotStops_.end());
@@ -3716,6 +3716,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (cacheWhilePlaying_.load()) text << "cachewhileplaying 1\n";
   text << "samplecache " << static_cast<int>(cacheMode_) << "\n";
   if (setOffAfterStore_.load()) text << "setoffafterstore 1\n";
+  if (useEventNetwork_.load()) text << "eventnetwork 1\n";
   if (leaveBassAndMelody_) text << "pistonsleavebass 1\n";
   if (pistonsStayLit_) text << "pistonsstaylit 1\n";
   if (!showPlayedKeys_.load()) text << "showkeys 0\n";
@@ -3944,6 +3945,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       combinationsOnTop_ = val.getIntValue() != 0;
     } else if (key == "combinationsview") {
       combinationsView_ = juce::jlimit(0, 2, val.getIntValue());
+    } else if (key == "eventnetwork") {
+      useEventNetwork_.store(val.getIntValue() != 0);
     } else if (key == "setoffafterstore") {
       setOffAfterStore_.store(val.getIntValue() != 0);
     } else if (key == "pistonsleavebass") {
@@ -7197,8 +7200,8 @@ void MasterpieceProcessor::fireCombination(Id comboId) {
 void MasterpieceProcessor::setControlValue(Id controlId, int value) {
   const AudioLock audio(*this);
   markRememberedStateMoved();
-  controls_.setValue(controlId, value);
-  controls_.propagate(controlId, &engagedSwitches_);
+  net().setValue(controlId, value);
+  net().propagate(controlId, &engagedSwitches_);
   fireMovedStages();
 }
 
@@ -7212,7 +7215,7 @@ void MasterpieceProcessor::fireMovedStages() {
   // pedal drives control 51, "Crescendo pedal (extension)", through a linkage,
   // and setting 51 directly is undone by the next propagate.
   for (auto& [id, previous] : stageValues_) {
-    const int now = controls_.value(id);
+    const int now = net().value(id);
     if (now == previous) continue;
     // A switch-built regulator's own controls move its switches inside the
     // wind solver, which the console's switches mirror (#1121).
@@ -7408,7 +7411,7 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   const AudioLock audio(*this);
   // The couplers' inputs this move reaches are moved after it, not inside it.
   const CoupledScope coupled(*this);
-  if (switches_.engaged(switchId) == engaged) return; // no edge, no noise
+  if (net().engaged(switchId) == engaged) return; // no edge, no noise
   if (!applyingPistons_) {
     const auto own = registrationSwitches_.find(switchId);
     if (own != registrationSwitches_.end()) player_.registrationMoved(own->second);
@@ -7422,7 +7425,7 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   // Set what the player set, then let the organ's own wiring decide what that
   // means. On a wired console the two are different switches: Lemmer's "Pedaal
   // koppel" is 1006 and every key action that reads it looks at 10101.
-  switches_.set(switchId, engaged);
+  net().set(switchId, engaged);
   markRememberedStateMoved();
   // The setter and the pistons the wiring moved. Klais Szikszo draws its own
   // Set, GC and cancels, each linked to the organ's real switch (Set 12, GC
@@ -7432,7 +7435,7 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   // switches, and the list is the network's own.
   std::array<Id, 8> wiredPistons{};
   size_t wiredCount = 0;
-  for (const auto& [movedId, nowEngaged] : switches_.lastChanges()) {
+  for (const auto& [movedId, nowEngaged] : net().lastChanges()) {
     if (movedId == switchId) continue;
     if (movedId == setterSwitchId_ && setterSwitchId_ != 0)
       combinations_.setCaptureMode(nowEngaged);
@@ -7444,7 +7447,7 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   if (swapsRanks) previousSwitches_ = engagedSwitches_;
   const bool keysHeld = !soundingNotes_.empty();
   if (keysHeld) heldFlowBefore_ = engagedSwitches_;
-  engagedSwitches_ = switches_.engagedSwitches();
+  engagedSwitches_ = net().engagedSwitches();
   shownStale_ = true;
   // A coupler drawn or pushed in while keys are down reaches, or stops
   // reaching, the divisions it couples at once, as on a console with
@@ -7460,7 +7463,7 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   // Buckeburg the keys play every division through them, and the tremulant
   // reached only the keys pressed after it (#1116).
   if (swapsRanks && (!soundingNotes_.empty() || !divisionInputNotes_.empty()) && !stopsLeaveHeldNotes())
-    for (const auto& [movedId, nowEngaged] : switches_.lastChanges()) {
+    for (const auto& [movedId, nowEngaged] : net().lastChanges()) {
       (void)nowEngaged;
       const auto alt = alternateStopsBySwitch_.find(movedId);
       if (alt == alternateStopsBySwitch_.end()) continue;
@@ -7495,7 +7498,7 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
 
   // Every switch whose RESOLVED state moved — which on a wired console is
   // usually more than the one clicked.
-  for (const auto& [movedId, nowEngaged] : switches_.lastChanges()) {
+  for (const auto& [movedId, nowEngaged] : net().lastChanges()) {
     (void)nowEngaged;
     // Every stop the moved switch controls, and every stop it STANDS for
     // whether or not the wiring reaches it: on Friesach the knob and the
@@ -9011,7 +9014,7 @@ bool MasterpieceProcessor::stopSourcesEngaged(Id stopId) const {
   const auto it = stopSources_.find(stopId);
   if (it == stopSources_.end()) return false;
   for (Id sw : it->second)
-    if (switches_.engaged(sw)) return true;
+    if (net().engaged(sw)) return true;
   return false;
 }
 
@@ -9201,15 +9204,15 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // The organ's timed linkages move by the time this block covers: a stop's
   // action delay, a tremulant starting, a swell shutter catching up with its
   // shoe, a pipe's detune gliding as its key goes down (#811).
-  if (timeLinkages_.exchange(false, std::memory_order_acq_rel)) controls_.setTimed(true);
-  if (getSampleRate() > 0.0) controls_.advance(buffer.getNumSamples() / getSampleRate());
-  controls_.propagate(0, &engagedSwitches_);
+  if (timeLinkages_.exchange(false, std::memory_order_acq_rel)) net().setTimed(true);
+  if (getSampleRate() > 0.0) net().advance(buffer.getNumSamples() / getSampleRate());
+  net().propagate(0, &engagedSwitches_);
   if (stagesReady_.load(std::memory_order_acquire)) fireMovedStages();
   // A pallet switch that was engaged before the organ went live never moved
   // while pallets listened, so its pipes are opened here, once.
   if (palletsOpenEngaged_.exchange(false, std::memory_order_acq_rel))
     for (const auto& [switchId, pipes] : palletPipes_)
-      if (switches_.engaged(switchId)) palletMoved(switchId, true);
+      if (net().engaged(switchId)) palletMoved(switchId, true);
   if (lampsAfterLoad_.exchange(false, std::memory_order_acq_rel)) sendLampsAfterLoad();
   emitSends();
   emitPistonLamps();
@@ -9816,7 +9819,11 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   couplers_.reset(model_);
   buildCouplerInputs();
   buildProgramCouplers();
-  switches_.reset(model_);
+  // The network the organ plays through, legacy or event, for this load.
+  network_ = useEventNetwork_.load(std::memory_order_relaxed) || eventNetworkFromEnvironment()
+                 ? static_cast<OrganNetwork*>(&eventNetwork_)
+                 : static_cast<OrganNetwork*>(&legacyNetwork_);
+  net().resetSwitches(model_);
   // Where the player left the switches the organ remembers, set as the player
   // would so their wiring follows: Nancy's "start blower on organ load" is
   // read by the controls that start the blower further down.
@@ -9829,16 +9836,16 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     const auto it = model_.switches.find(id);
     if (it == model_.switches.end() || !it->second.rememberState || !it->second.latching)
       continue;
-    switches_.set(id, on);
+    net().set(id, on);
   }
   // The state the player saved with saveCurrentState(): applied whatever the
   // organ marks as remembered, since the player asked for exactly this.
   for (const auto& [id, on] : snapshotStates_) {
     const auto it = model_.switches.find(id);
-    if (it != model_.switches.end() && it->second.latching) switches_.set(id, on);
+    if (it != model_.switches.end() && it->second.latching) net().set(id, on);
   }
   for (Id id : snapshotStops_) engagedStops_.insert(id);
-  engagedSwitches_ = switches_.engagedSwitches();
+  engagedSwitches_ = net().engagedSwitches();
   shownStale_ = true;
   buildPalletIndex();
 
@@ -9851,7 +9858,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   // A switch-built regulator's start-up runs in time once the organ is live
   // (#1121).
   const std::unordered_set<Id> windStart = WindSolver::relayStartControls(model_);
-  controls_.reset(model_, windStart.empty() ? nullptr : &windStart);
+  net().resetControls(model_, windStart.empty() ? nullptr : &windStart);
 
   // Now, and not before: reset() has just put every control at the organ's
   // default, so positions restored from the player's file go on top of it.
@@ -9861,7 +9868,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     const auto it = model_.continuousControls.find(id);
     if (it == model_.continuousControls.end() || !it->second.rememberState)
       continue;
-    controls_.setValue(id, v);
+    net().setValue(id, v);
   }
   // Settle the whole graph once, WITH the switch states.
   //
@@ -9871,7 +9878,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   // switch 49 is engaged and its partner while it is not, swapping two levels
   // between the normal and tremmed scaling controls. Without this call both
   // sit at their declared defaults and the crossfade never happens.
-  controls_.propagate(0, &engagedSwitches_);
+  net().propagate(0, &engagedSwitches_);
 
   // Pistons. The organ's own setter is the switch Hauptwerk assigns code 12,
   // "Comb. Master Capture"; an organ without one leaves capture to the UI.
@@ -10052,7 +10059,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   stageScratch_.reserve(64);
   stageValues_.clear();
   for (Id id : stages_.stagedControls())
-    stageValues_.emplace_back(id, controls_.value(id));
+    stageValues_.emplace_back(id, net().value(id));
   // In the order their delays end. At load the delays settle at once, and a
   // set's start-up can rely on which comes first: Alessandria's "Blower init
   // 1" (a 50 ms ramp) has to land before "Blower init 2" (100 ms), which
@@ -10128,7 +10135,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   phases.mark("model: stages");
   loadProgress_.beginPhase(LoadProgress::Phase::WiringConsole);
   for (size_t i = 0; i < wind_.controlValves().size(); ++i)
-    wind_.setControlValve(i, controls_.readingOf(wind_.controlValves()[i].controlId));
+    wind_.setControlValve(i, net().readingOf(wind_.controlValves()[i].controlId));
   wind_.settleWith(engagedSwitches_);
   if (wind_.active())
     juce::Logger::writeToLog(
@@ -10916,9 +10923,9 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     for (Id stopId : lockedStops_)
       if (const auto it = model_.stops.find(stopId); it != model_.stops.end())
         hold(it->second.controllingSwitchId);
-    switches_.holdOff(std::move(held));
+    net().holdOff(std::move(held));
     for (Id stopId : lockedStops_) engagedStops_.erase(stopId);
-    engagedSwitches_ = switches_.engagedSwitches();
+    engagedSwitches_ = net().engagedSwitches();
     shownStale_ = true;
     stopsChanged_.store(true, std::memory_order_release);
   }
@@ -11801,7 +11808,7 @@ void MasterpieceProcessor::advanceLayerLevels(int numFrames) {
                          ? 1.0f - static_cast<float>(std::exp(-numFrames / (kSmoothSeconds * sampleRate_)))
                          : 1.0f;
   for (size_t i = 0; i < layerLevelControls_.size(); ++i) {
-    const auto target = static_cast<float>(controls_.normalised(layerLevelControls_[i]));
+    const auto target = static_cast<float>(net().normalised(layerLevelControls_[i]));
     float g = layerLevelGains_[i] + (target - layerLevelGains_[i]) * step;
     if (std::fabs(target - g) < 1.0e-4f) g = target;
     layerLevelGains_[i] = g;
@@ -11817,7 +11824,7 @@ void MasterpieceProcessor::advancePitchControls() {
     return;
   }
   for (size_t i = 0; i < pitchControlIds_.size(); ++i)
-    pitchControlValues_[i] = controls_.value(pitchControlIds_[i]);
+    pitchControlValues_[i] = net().value(pitchControlIds_[i]);
   voices_.setPitchControls(pitchControlValues_.data(), static_cast<int>(pitchControlValues_.size()));
 }
 
@@ -11870,7 +11877,7 @@ void MasterpieceProcessor::sendLampsAfterLoad() {
   if (!midiFeedback_ || (midiOut_ == nullptr && !outgoingProbe)) return;
   for (const auto& b : midiMap_.bindings()) {
     if (b.targetKind != MidiTargetKind::Switch || midiMap_.hasSends(MidiTargetKind::Switch, b.targetId)) continue;
-    addEcho(echoBuffer(b.source.deviceId), b.source, switches_.engaged(b.targetId));
+    addEcho(echoBuffer(b.source.deviceId), b.source, net().engaged(b.targetId));
   }
 }
 
@@ -11903,7 +11910,7 @@ void MasterpieceProcessor::holdEchoOf(const MidiSource& source) {
     const MidiSend& s = sends[i];
     if (s.targetKind == MidiTargetKind::Switch && s.kind == source.kind && s.number == source.number &&
         s.channel == source.channel)
-      sentValues_[i] = switches_.engaged(s.targetId) ? 1 : 0;
+      sentValues_[i] = net().engaged(s.targetId) ? 1 : 0;
   }
 }
 
@@ -11918,14 +11925,14 @@ void MasterpieceProcessor::emitSends(bool sysExOnly) {
     if (sysExOnly && s.kind != MidiSourceKind::SysEx) continue;
     int now;
     if (s.targetKind == MidiTargetKind::Switch)
-      now = switches_.engaged(s.targetId) ? 1 : 0;
+      now = net().engaged(s.targetId) ? 1 : 0;
     // The recorder's lamps: lit while it records, and while it plays.
     else if (s.targetKind == MidiTargetKind::RecorderRecord)
       now = recorder_.isRecording() ? 1 : 0;
     else if (s.targetKind == MidiTargetKind::RecorderPlay)
       now = recorder_.isPlaying() ? 1 : 0;
     else if (s.targetKind == MidiTargetKind::ContinuousControl)
-      now = controls_.value(s.targetId);
+      now = net().value(s.targetId);
     else if (s.targetKind == MidiTargetKind::MasterVolume)
       now = masterVolumeForMidi();
     else if (const int lamp = pistonLamp(s.targetKind, s.targetId); lamp >= 0)

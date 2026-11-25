@@ -16,6 +16,8 @@
 #include "../mp_control/PedalCoupling.h"
 #include "../mp_control/LcdPanel.h"
 #include "../mp_control/WindSolver.h"
+#include "../mp_control/EventNetwork.h"
+#include "../mp_control/LegacyNetwork.h"
 #include "../mp_control/SwitchNetwork.h"
 #include "../mp_core/Temperament.h"
 #include "../mp_core/Perspectives.h"
@@ -422,14 +424,14 @@ public:
     if (layer.ampScalingControlId == 0) return 1.0f;
     if (model_.continuousControls.count(layer.ampScalingControlId) == 0)
       return 1.0f;
-    return static_cast<float>(controls_.normalised(layer.ampScalingControlId));
+    return static_cast<float>(net().normalised(layer.ampScalingControlId));
   }
 
   // The value a layer's attack or release rows are chosen by. A layer naming no
   // control, or one the definition does not hold, asks for the top row.
   int selectionValue(Id controlId) const {
     if (controlId == 0 || model_.continuousControls.count(controlId) == 0) return 127;
-    return controls_.value(controlId);
+    return net().value(controlId);
   }
 
   // The same answers the voice engine uses, for tools that want to report on
@@ -510,7 +512,7 @@ public:
   // Switches latch, so there is one state and this is it. Moving one travels
   // through the organ's own wiring; see SwitchNetwork.
   bool switchEngaged(Id switchId) const;
-  const SwitchNetwork& switchNetwork() const { return switches_; }
+  const OrganNetwork& switchNetwork() const { return *network_; }
   // The switch a PLAYER would move to change this one: the drawn knob at the
   // top of the wiring, or the switch itself when nothing feeds it. Engaging an
   // internal node directly leaves the knob out and the organ inconsistent —
@@ -721,7 +723,7 @@ public:
   bool stepperInsertFrame();
   bool stepperDeleteFrame();
   int continuousControlValue(Id controlId) const {
-    return controls_.value(controlId);
+    return net().value(controlId);
   }
 
   // MIDI mapping. The player's console is not the organ's, so this is edited by
@@ -1115,6 +1117,17 @@ public:
     setOffAfterStore_.store(on, std::memory_order_relaxed);
     writeGlobalFile();
   }
+  // Whether organs play through the event network (Hauptwerk's object model,
+  // event-driven: EventNetwork) instead of the legacy one. Off by default;
+  // read at the next load. MP_EVENT_NETWORK=1 turns it on for one run
+  // without saving it. The program's, for every organ.
+  bool useEventNetwork() const { return useEventNetwork_.load(std::memory_order_relaxed); }
+  void setUseEventNetwork(bool on) {
+    useEventNetwork_.store(on, std::memory_order_relaxed);
+    writeGlobalFile();
+  }
+  // The network the loaded organ plays through.
+  OrganNetwork::Kind networkKind() const { return network_->kind(); }
   // Whether the player's pistons and sequencer leave the bass and melody
   // couplers alone: not stored, not recalled (PlayerCombinations). Off by
   // default. The program's, for every organ.
@@ -2645,7 +2658,7 @@ private:
   int detuneControlValue(const PipeLayer& layer) const {
     if (graph_.engineSwitch.simpleWavOnly || layer.pitchControlId == 0)
       return 0;
-    return controls_.value(layer.pitchControlId);
+    return net().value(layer.pitchControlId);
   }
 
   // The middle of that control's travel, which is where "no detuning" sits.
@@ -2884,7 +2897,7 @@ private:
   // stay silent behind a drawn picture. Built at load; read on the audio
   // thread, never written there.
   std::unordered_map<Id, std::vector<Id>> stopsBySwitch_;
-  ContinuousControlBank controls_;
+  // The continuous controls live in the network (network_ below).
   VoiceEngine voices_;
   SampleLibrary samples_;
   std::vector<Id> preloadStops_;
@@ -2969,7 +2982,14 @@ private:
   // drives anything directly: it drives an internal node, and everything else
   // reads that. `engagedSwitches_` is the network's answer, kept as a set
   // because the key-flow walk consults it on the audio thread.
-  SwitchNetwork switches_;
+  // Legacy or event (OrganNetwork), chosen at load from useEventNetwork_ or
+  // MP_EVENT_NETWORK=1. Both live as long as the processor, so the audio
+  // thread never reads one that is gone.
+  LegacyNetwork legacyNetwork_;
+  EventNetwork eventNetwork_;
+  OrganNetwork* network_ = &legacyNetwork_;
+  OrganNetwork& net() { return *network_; }
+  const OrganNetwork& net() const { return *network_; }
   std::unordered_set<Id> engagedSwitches_;
   std::string organRootDir_;
   juce::File organRootOverride_;
@@ -3351,7 +3371,7 @@ private:
   void applySettingsLine(const juce::String& key, const juce::String& val,
                          EngineSwitch& sw);
   // Control positions read from the organ's file, held until the bank exists.
-  // loadSettingsFor runs at the top of loadOrgan, but controls_.reset() is
+  // loadSettingsFor runs at the top of loadOrgan, but net().resetControls() is
   // much further down and would wipe anything set before it — so these wait
   // and are applied on the far side of it.
   std::vector<std::pair<Id, int>> pendingControlValues_;
@@ -3569,6 +3589,7 @@ private:
   std::atomic<int> soundingVoices_{0};
   // Read on the audio thread, where console and MIDI pistons are pressed.
   std::atomic<bool> setOffAfterStore_{false};
+  std::atomic<bool> useEventNetwork_{false};
   bool leaveBassAndMelody_ = false;
   bool pistonsStayLit_ = false;
   std::atomic<bool> showPlayedKeys_{true};
