@@ -72,4 +72,54 @@ public:
 };
 static PlayerTremulantsTest g_playerTremulants;
 
+// A stop on a switch no player can move is the organ's wiring, not its
+// registration (#1218): Alessandria's "GO Tuba 8'" stands on the hidden
+// "NoiseSwitch", engaged at load, and the first general cancel pushed it in.
+class PlayerHiddenStopTest final : public mp::test::Test {
+public:
+  PlayerHiddenStopTest() : Test("functional.control.player-hidden-stop", Category::Functional) {}
+  void run() override {
+    mp::OrganModel m;
+    m.divisions[5].divisionId = 5;
+    m.divisions[5].name = "Noises";
+    m.divisions[1].divisionId = 1;
+    m.divisions[1].manualNumber = 1;
+    mp::Switch knob;
+    knob.switchId = 10;
+    knob.name = "Principale 8";
+    m.switches[10] = knob;
+    mp::Switch hidden;
+    hidden.switchId = 10001;
+    hidden.name = "NoiseSwitch";
+    hidden.defaultEngaged = true;
+    hidden.clickable = false;
+    hidden.accessibleForInput = false;
+    m.switches[10001] = hidden;
+    m.stops[100].stopId = 100;
+    m.stops[100].name = "Principale 8";
+    m.stops[100].divisionId = 1;
+    m.stops[100].controllingSwitchId = 10;
+    m.stops[25].stopId = 25;
+    m.stops[25].name = "GO Tuba 8'";
+    m.stops[25].divisionId = 5;
+    m.stops[25].controllingSwitchId = 10001;
+
+    const auto elements = mp::PlayerCombinations::collect(m, nullptr);
+    const auto has = [&](mp::Id stop) {
+      return std::any_of(elements.begin(), elements.end(), [&](const auto& e) {
+        return e.kind == mp::PlayerCombinations::ElementKind::Stop && e.id == stop;
+      });
+    };
+    MP_CHECK(has(100), "the drawn stop is registration");
+    MP_CHECK(!has(25), "the stop on a hidden switch is not");
+    mp::PlayerCombinations pc;
+    pc.reset(elements, mp::PlayerCombinations::divisionsOf(m, elements));
+    std::vector<mp::PlayerCombinations::Change> out;
+    pc.generalCancel(out);
+    MP_CHECK(std::none_of(out.begin(), out.end(), [](const auto& c) { return c.id == 25; }),
+             "a general cancel leaves the hidden stop alone");
+  }
+};
+static PlayerHiddenStopTest g_playerHiddenStop;
+
 }  // namespace

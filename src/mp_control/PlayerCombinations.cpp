@@ -126,10 +126,26 @@ std::vector<PlayerCombinations::Element> PlayerCombinations::collect(
     notRegistration.insert(player(stop.controllingSwitchId));
   }
 
+  // A registration holds only what a player can move (#1218): a switch no
+  // click, no MIDI and no picture reaches is the organ's own wiring.
+  // Alessandria routes its fifth division through a stop of that kind,
+  // "GO Tuba 8'" on the hidden "NoiseSwitch"; the first general cancel
+  // pushed it in, and on a blower started by hand that took the blower
+  // with it.
+  auto playerCanMove = [&](Id sw) {
+    const auto it = model.switches.find(sw);
+    return it != model.switches.end() &&
+           (it->second.clickable || it->second.accessibleForInput || it->second.dispInstanceId != 0);
+  };
+  auto moved = [&](const Stop& stop) {
+    return playerCanMove(stop.controllingSwitchId) || playerCanMove(player(stop.controllingSwitchId));
+  };
+
   // Stops, in the stop list's order.
   std::vector<std::pair<Id, Id>> stops;  // (division, stop)
   for (const auto& [id, stop] : model.stops)
-    if (!isEffect(model, stop) && !onBlower(stop)) stops.emplace_back(stop.divisionId, id);
+    if (!isEffect(model, stop) && !onBlower(stop) && (stop.controllingSwitchId == 0 || moved(stop)))
+      stops.emplace_back(stop.divisionId, id);
   std::sort(stops.begin(), stops.end());
   auto cancelStateOf = [&](Id sw) {
     const auto it = model.switches.find(sw);
@@ -280,6 +296,7 @@ std::vector<PlayerCombinations::Element> PlayerCombinations::collect(
 
   std::unordered_set<Id> taken;
   auto addSwitch = [&](Id sw, Id div) {
+    if (!playerCanMove(sw) && !playerCanMove(player(sw))) return;
     if (!taken.insert(sw).second) return;
     Element e;
     e.kind = ElementKind::Switch;
