@@ -347,8 +347,13 @@ void ConsoleView::rebuild() {
   // Vasvar keeps five at x=1230 on a 1016-wide page -- and widening the
   // canvas to take them in showed them floating beside the organ. Only what
   // misses the screen entirely goes: a piece that overlaps its edge stays.
-  const int screenW = model.consoleWidthPx[drawLayout_];
-  const int screenH = model.consoleHeightPx[drawLayout_];
+  // A page with a screen of its own (a GrandOrgue panel) is that size, and
+  // what its images reach past it is cut, as GrandOrgue shows it: Alkmaar's
+  // 700 x 400 panels lie on a far larger BackgroundBlack.png, and the page
+  // took the image's size, the panel small in a corner of black (#1220).
+  const bool ownScreen = pageIt->second.widthPx > 0 && pageIt->second.heightPx > 0;
+  const int screenW = ownScreen ? pageIt->second.widthPx : model.consoleWidthPx[drawLayout_];
+  const int screenH = ownScreen ? pageIt->second.heightPx : model.consoleHeightPx[drawLayout_];
   if (screenW > 0 && screenH > 0) {
     const juce::Rectangle<int> screen(0, 0, screenW, screenH);
     auto off = [&screen](const juce::Rectangle<int>& b) { return !b.intersects(screen); };
@@ -365,6 +370,7 @@ void ConsoleView::rebuild() {
     for (const auto& i : items_) extent_ = extent_.getUnion(i.bounds);
     for (const auto& t : texts_) extent_ = extent_.getUnion(t.bounds);
     for (const auto& k : keys_) extent_ = extent_.getUnion(k.bounds);
+    if (ownScreen) extent_ = extent_.getIntersection(screen);
   }
 
   // What can be drawn: a GrandOrgue panel laid out for a screen smaller than

@@ -2185,6 +2185,10 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       auto pg = out.row("DisplayPage");
       Emitter::set(pg, "PageID", page);
       Emitter::set(pg, "Name", pageName);
+      // The panel's own screen: GrandOrgue shows the panel at that size and
+      // clips what its images reach past it (#1220).
+      Emitter::set(pg, "MasterpieceScreenWidth", lay.m.screenW);
+      Emitter::set(pg, "MasterpieceScreenHeight", lay.m.screenH);
     };
 
     buildPanel(1, newFormat ? "Panel000" : "Organ", newFormat ? "Panel000" : "", true,

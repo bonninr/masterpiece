@@ -1041,6 +1041,11 @@ struct TextInstance {
 struct DisplayPage {
   Id pageId = 0;
   std::string name;
+  // The screen this page was drawn for, when it declares one of its own: a
+  // GrandOrgue panel's DispScreenSizeHoriz and DispScreenSizeVert. The page
+  // is that size, as GrandOrgue shows it, whatever its images reach (#1220).
+  // 0 when the page takes the organ's console screen.
+  int widthPx = 0, heightPx = 0;
   std::vector<ImageSetInstance> instances;
   std::vector<TextInstance> texts;
 };

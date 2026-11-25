@@ -2155,6 +2155,8 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     DisplayPage page;
     page.pageId = fieldInt(row, "PageID", "a", 0);
     page.name = field(row, "Name", "b");
+    page.widthPx = fieldInt(row, "MasterpieceScreenWidth", nullptr, 0);
+    page.heightPx = fieldInt(row, "MasterpieceScreenHeight", nullptr, 0);
     if (page.pageId != 0) outModel.displayPages[page.pageId] = std::move(page);
   });
 
