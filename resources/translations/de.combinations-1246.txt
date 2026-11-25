@@ -1,5 +1,4 @@
 "Sequencer" = "Sequenzer"
-"Levels of %1 generals" = "Ebenen zu %1 Generalkombinationen"
 "The stepper as GrandOrgue's sequencer, frames 000 to 998, or as levels of generals: - and + step through the generals, the level buttons move a level, and the numbered buttons pick a general of the level" = "Der Stepper als GrandOrgues Sequenzer, Schritte 000 bis 998, oder als Ebenen von Generalkombinationen: - und + gehen durch die Generalkombinationen, die Ebenentasten um eine Ebene, und die nummerierten Tasten wählen eine Generalkombination der Ebene"
 "Frame %1, empty" = "Schritt %1, leer"
 "Level %1, general %2" = "Ebene %1, Generalkombination %2"

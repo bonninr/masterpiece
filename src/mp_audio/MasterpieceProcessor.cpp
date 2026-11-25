@@ -3741,6 +3741,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (learnAlsoSends_) text << "learnalsosends 1\n";
   if (stepperLevels_) text << "stepperlevels 1\n";
   if (levelSize_ != 10) text << "levelsize " << levelSize_ << "\n";
+  if (levelsFromZero_) text << "levelsfromzero 1\n";
   if (midiFeedbackOn_.load() != 127 || midiFeedbackOff_.load() != -1)
     text << "midifeedbackvalues " << midiFeedbackOn_.load() << " " << midiFeedbackOff_.load() << "\n";
   for (const auto& [role, channel] : defaultConsole_) {
@@ -3999,6 +4000,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       midiFeedback_ = val.getIntValue() != 0;
     } else if (key == "stepperlevels") {
       stepperLevels_ = val.getIntValue() != 0;
+    } else if (key == "levelsfromzero") {
+      levelsFromZero_ = val.getIntValue() != 0;
     } else if (key == "levelsize") {
       levelSize_ = std::clamp(val.getIntValue(), 1, kMaxLevelSize);
     } else if (key == "learnalsosends") {

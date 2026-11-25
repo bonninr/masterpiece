@@ -272,8 +272,10 @@ CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
   // read as levels of generals, as English consoles have them.
   addChildComponent(style_);
   style_.addItem(TRANS("Sequencer"), 1);
-  for (int n = 1; n <= MasterpieceProcessor::kMaxLevelSize; ++n)
-    style_.addItem(TRANS("Levels of %1 generals").replace("%1", juce::String(n)), n + 1);
+  // Levels in one entry, numbered as the console's pistons are (#1259); how
+  // many generals a level holds is set beside it, as the divisionals are.
+  style_.addItem(TRANS("Levels, numbered from 1"), 2);
+  style_.addItem(TRANS("Levels, numbered from 0"), 3);
   style_.setTooltip(TRANS("The stepper as GrandOrgue's sequencer, frames 000 to 998, or as levels of generals: "
                           "- and + step through the generals, the level buttons move a level, and the numbered "
                           "buttons pick a general of the level"));
@@ -281,7 +283,21 @@ CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
     const int id = style_.getSelectedId();
     if (id <= 0) return;
     proc_.setStepperLevels(id > 1);
-    if (id > 1) proc_.setLevelSize(id - 1);
+    if (id > 1) proc_.setLevelsFromZero(id == 3);
+    applyView();
+  };
+  for (auto* b : {&fewerLevel_, &moreLevel_}) addChildComponent(*b);
+  addChildComponent(levelSize_);
+  levelSize_.setJustificationType(juce::Justification::centred);
+  levelSize_.setColour(juce::Label::textColourId, kText);
+  fewerLevel_.setTooltip(TRANS("Fewer generals in each level"));
+  moreLevel_.setTooltip(TRANS("More generals in each level"));
+  fewerLevel_.onClick = [this] {
+    proc_.setLevelSize(proc_.levelSize() - 1);
+    applyView();
+  };
+  moreLevel_.onClick = [this] {
+    proc_.setLevelSize(proc_.levelSize() + 1);
     applyView();
   };
   applyView();
@@ -292,8 +308,14 @@ void CombinationsPanel::applyView() {
   simple_ = proc_.simpleMode();
   levels_ = simple_ || proc_.stepperLevels();
   const int perLevel = proc_.levelStep();
-  style_.setSelectedId(proc_.stepperLevels() ? proc_.levelSize() + 1 : 1, juce::dontSendNotification);
+  style_.setSelectedId(proc_.stepperLevels() ? (proc_.levelsFromZero() ? 3 : 2) : 1, juce::dontSendNotification);
   style_.setVisible(!simple_ && sequencerShown());
+  const bool sized = !simple_ && proc_.stepperLevels() && sequencerShown();
+  for (juce::Component* c : std::initializer_list<juce::Component*>{&fewerLevel_, &moreLevel_, &levelSize_})
+    c->setVisible(sized);
+  levelSize_.setText(TRANS("%1 a level").replace("%1", juce::String(proc_.levelSize())), juce::dontSendNotification);
+  fewerLevel_.setEnabled(proc_.levelSize() > 1);
+  moreLevel_.setEnabled(proc_.levelSize() < MasterpieceProcessor::kMaxLevelSize);
   const bool frames = !levels_ && sequencerShown();
   for (juce::Component* c :
        std::initializer_list<juce::Component*>{&stepFirst_, &stepLast_, &frame_, &insertFrame_, &deleteFrame_})
@@ -331,9 +353,10 @@ void CombinationsPanel::applyView() {
   for (int i = 0; i < 10; ++i) {
     // Levels number their generals from 1; the sequencer's digits are the
     // last figure of a frame, from 0.
-    digits_[static_cast<size_t>(i)]->setButtonText(juce::String(levels_ ? i + 1 : i));
+    const int shown = levels_ && !proc_.levelsFromZero() ? i + 1 : i;
+    digits_[static_cast<size_t>(i)]->setButtonText(juce::String(shown));
     digits_[static_cast<size_t>(i)]->setTooltip(
-        levels_ ? TRANS("General %1 of this level").replace("%1", juce::String(i + 1))
+        levels_ ? TRANS("General %1 of this level").replace("%1", juce::String(shown))
                 : TRANS("The frame ending in %1, among the ten shown").replace("%1", juce::String(i)));
   }
   const int w = std::max(getWidth(), preferredWidth());
@@ -435,6 +458,7 @@ int CombinationsPanel::preferredWidth() const {
   int w = levels_ ? 56 + kGap + 56 + 12 + 48 + 48 + 110 + 48 + 48
                   : 56 + kGap + 56 + 12 + 34 + 40 + 34 + 110 + 34 + 40 + 34 + kGap * 2 + 56 + 56;
   if (!simple_) w += kGap * 2 + kStyleW;
+  if (!simple_ && proc_.stepperLevels()) w += 26 + 26 + 70;
   if (!simple_)
     w = std::max(w, kDivisionLabelW + std::min(pc.generalCount(), generalsPerRow()) * (generalW() + kGap));
   if (!divisions_.empty()) {
@@ -455,6 +479,11 @@ void CombinationsPanel::resized() {
   generalCancel_.setBounds(row.removeFromLeft(56).reduced(1));
   row.removeFromLeft(12);
   if (!simple_) style_.setBounds(row.removeFromRight(kStyleW).reduced(1));
+  if (fewerLevel_.isVisible()) {
+    moreLevel_.setBounds(row.removeFromRight(26).reduced(1));
+    levelSize_.setBounds(row.removeFromRight(70));
+    fewerLevel_.setBounds(row.removeFromRight(26).reduced(1));
+  }
   if (levels_) {
     stepBack10_.setBounds(row.removeFromLeft(48).reduced(1));
     stepPrev_.setBounds(row.removeFromLeft(48).reduced(1));
@@ -612,7 +641,8 @@ void CombinationsPanel::refreshState() {
   }
   level_.setText(pc.frame() >= 1 ? TRANS("Level %1, general %2")
                                        .replace("%1", juce::String(base / perLevel + 1))
-                                       .replace("%2", juce::String(pc.frame() - base))
+                                       .replace("%2", juce::String(pc.frame() - base -
+                                                                    (proc_.levelsFromZero() ? 1 : 0)))
                                  : TRANS("Level %1").replace("%1", juce::String(base / perLevel + 1)),
                  juce::dontSendNotification);
   stepPrev_.setEnabled(pc.frame() > 1);
