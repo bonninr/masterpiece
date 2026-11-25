@@ -7632,6 +7632,12 @@ void MasterpieceProcessor::NetworkSink::pipeMoved(Id rankId, Id pipeId, bool on,
   }
 }
 
+void MasterpieceProcessor::NetworkSink::divisionNote(Id divisionId, int midiNote, bool on, double) {
+  if (!owner->hasKeyNoises_ || !owner->palletsLive_.load(std::memory_order_acquire)) return;
+  owner->playKeyNoises(static_cast<int>(divisionId), midiNote,
+                       on ? StopRankEntry::kOnEngage : StopRankEntry::kOnDisengage, owner->palletVelocity_);
+}
+
 bool MasterpieceProcessor::fireConsoleFunction(Id switchId) {
   const auto it = consoleFunctions_.find(switchId);
   if (it == consoleFunctions_.end()) return false;

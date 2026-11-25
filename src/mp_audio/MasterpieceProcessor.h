@@ -3006,6 +3006,10 @@ private:
     MasterpieceProcessor* owner = nullptr;
     void switchMoved(Id switchId, bool engaged, double time) override;
     void pipeMoved(Id rankId, Id pipeId, bool on, double time, const Pipe* pipe) override;
+    // A division's note played or let go: its key action noises, the
+    // StopRank rows that sound on the key's edges (#998), as the legacy key
+    // walk plays them.
+    void divisionNote(Id divisionId, int midiNote, bool on, double time) override;
   };
   NetworkSink networkSink_;
   static constexpr size_t kNetworkMoves = 8192;
