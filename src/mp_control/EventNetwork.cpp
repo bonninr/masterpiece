@@ -58,12 +58,12 @@ EventNetwork::EventNetwork() {
 
 // ---------------------------------------------------------------- the queue
 
-void EventNetwork::push(double time, Ev kind, int32_t target, int32_t value) {
+void EventNetwork::push(double time, Ev kind, int32_t target, int32_t value, double order) {
   if (queue_.size() >= queueCap_) {
     ++dropped_;
     return;
   }
-  queue_.push_back({time, seq_++, kind, target, value});
+  queue_.push_back({time, seq_++, kind, target, value, order});
   std::push_heap(queue_.begin(), queue_.end(), Later{});
 }
 
@@ -112,6 +112,11 @@ void EventNetwork::handle(const Event& e) {
     case Ev::EvalDouble: evalDouble(e.target); return;
     case Ev::WillisStep: willisStep(e.target); return;
     case Ev::InertiaTick: inertiaTick(e.target); return;
+    case Ev::LandLink: {
+      const Link& k = links_[static_cast<size_t>(e.target)];
+      if (linkLive(e.target)) writeControl(k.dst, k.target);
+      return;
+    }
   }
 }
 
@@ -591,6 +596,14 @@ void EventNetwork::evalLink(int32_t l) {
   if (k.isTimed()) {
     if (!timed_) {
       if (k.waitsForTime) return;
+      // NetworkRules::rampOrder: settled at once, but landing after this
+      // instant's other events, in the order of the ramps' own times.
+      if (rules_.rampOrder) {
+        k.target = target;
+        const double ramp = k.type == 2 ? k.msPerStep : 1000.0 / std::sqrt(k.accel);
+        push(now_, Ev::LandLink, l, 0, ramp);
+        return;
+      }
     } else {
       k.target = target;
       if (!k.scheduled) {
@@ -737,10 +750,9 @@ void EventNetwork::advance(double seconds) {
 
 
 // NetworkRules::startPulse and timedStart. A start signal is an internal
-// control -- nothing drives it, nothing draws it -- that the organ moves once
-// as it comes up: one with stage switches goes to its top; one feeding a
-// timed linkage or a staged control goes from the end it rests at to the
-// other. Ids in order, so the trace is stable.
+// control -- nothing drives it, nothing draws it -- with stage switches on it,
+// which the organ moves to its top once as it comes up. Ids in order, so the
+// trace is stable.
 void EventNetwork::startUp() {
   if (model_ == nullptr) return;
   if (rules_.timedStart) timed_ = true;
@@ -755,19 +767,21 @@ void EventNetwork::startUp() {
     if (driven[i] != 0) continue;
     const auto cc = model_->continuousControls.find(controlId_[i]);
     if (cc == model_->continuousControls.end() || cc->second.imageSetInstanceId != 0) continue;
-    if (staged(c)) {
-      writeControl(c, hi_[i]);
-      continue;
-    }
-    bool feedsStart = false;
-    for (const int32_t* l = linksBySource_.begin(c); l != linksBySource_.end(c) && !feedsStart; ++l) {
-      const Link& k = links_[static_cast<size_t>(*l)];
-      feedsStart = k.isTimed() || staged(k.dst);
-    }
-    if (!feedsStart || lo_[i] == hi_[i]) continue;
-    if (val_[i] == lo_[i]) writeControl(c, hi_[i]);
-    else if (val_[i] == hi_[i]) writeControl(c, lo_[i]);
+    if (staged(c)) writeControl(c, hi_[i]);
   }
+  // NetworkRules::namedStartPair: the "Hidden OffToOn" / "Hidden OnToOff"
+  // pair, put at rest and then moved once, whatever drives it, as the legacy
+  // start-up does. Keyed by a name convention: unresolved.
+  if (rules_.namedStartPair)
+    for (const bool start : {false, true})
+      for (size_t i = 0; i < n; ++i) {
+        const auto cc = model_->continuousControls.find(controlId_[i]);
+        if (cc == model_->continuousControls.end() || cc->second.imageSetInstanceId != 0) continue;
+        const auto c = static_cast<int32_t>(i);
+        if (cc->second.name.rfind("Hidden OffToOn", 0) == 0) writeControl(c, start ? hi_[i] : lo_[i]);
+        else if (cc->second.name.rfind("Hidden OnToOff", 0) == 0) writeControl(c, start ? lo_[i] : hi_[i]);
+        run(now_);
+      }
   run(now_);
 }
 // ---------------------------------------------------------------- keys

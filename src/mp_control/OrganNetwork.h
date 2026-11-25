@@ -45,7 +45,7 @@ public:
 // General rules on top of the literal object model: behaviour sample sets by
 // well-known publishers rely on and Hauptwerk evidently has, written as rules
 // for every organ, never keyed by an organ's id or name. Each can be switched
-// off on its own for A/B (MP_NETWORK_RULES="-startPulse,-timedStart").
+// off on its own for A/B (MP_NETWORK_RULES="-startPulse,-rampOrder,+timedStart").
 struct NetworkRules {
   // LoadSettle: at load every wire is judged once against the switches'
   // defaults. A firing wire asserts its engage action; one that does not fire
@@ -53,20 +53,33 @@ struct NetworkRules {
   // wire holds a unison-off's destination on). Off: nothing is asserted
   // until a switch moves.
   bool loadSettle = true;
-  // StartPulse: once loaded, the organ's start signal fires. Every control
-  // that no linkage drives and no image draws moves: to its top when stage
-  // switches hang on it (Nancy's __DelayBlower, Alessandria's blower init,
-  // #1183), and from one end of its range to the other when it feeds a timed
-  // linkage or a staged control (the "Hidden OffToOn"/"OnToOff" pair of
-  // Nancy, Friesach and Oloron, #263). Replaces the legacy name match.
+  // StartPulse: once loaded, the organ's start signal fires: every control
+  // with stage switches that no linkage drives and no image draws moves to
+  // its top (Nancy's __DelayBlower, Alessandria's blower init, #1183).
+  // Widening it to "any undriven, undrawn control feeding a delay moves end
+  // to end" was tried and rejected on the Sherborne trace: it moved
+  // "fixed Value 0" and every pipe delay with it.
   bool startPulse = true;
-  // TimedStart: the start pulse travels through timed linkages in time, as
-  // at power-on, rather than settling at once. Ramps then land in the order
-  // of their own times, which the legacy engine imitates by sorting the
-  // staged controls by ramp time (#1183).
-  bool timedStart = true;
+  // NamedStartPair: the "Hidden OffToOn"/"Hidden OnToOff" pair of Nancy,
+  // Friesach and Oloron (#263) put at rest, then moved once, as the legacy
+  // start-up does. Keyed by a name convention, so unresolved: no structural
+  // rule found yet that picks the pair and nothing else.
+  bool namedStartPair = true;
+  // RampOrder: until the organ is live, a timed linkage settles at once, but
+  // lands after the other moves of its instant, in the order of its own ramp
+  // time (Willis ms per step; inertia 1/sqrt(accel)), and what it sets off
+  // follows before the next one lands. Alessandria's "Blower init 1" (50 ms)
+  // lands before "Blower init 2" (100 ms), which releases it (#1183); the
+  // legacy engine sorts its staged controls by ramp time for the same end.
+  bool rampOrder = true;
+  // TimedStart (off by default): the start pulse travels through the timed
+  // linkages in time instead. Rejected on the traces: Friesach's
+  // "DelayedStop" ramps then cross their stages after load and draw every
+  // stop, Sherborne's pipe delays open pallets with no key down.
+  bool timedStart = false;
 
-  // All on, less those MP_NETWORK_RULES turns off.
+  // The defaults, less those MP_NETWORK_RULES turns off ("-name") and plus
+  // those it turns on ("+name").
   static NetworkRules fromEnvironment();
 };
 

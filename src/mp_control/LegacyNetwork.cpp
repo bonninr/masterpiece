@@ -26,7 +26,10 @@ NetworkRules NetworkRules::fromEnvironment() {
   auto off = [&s](const char* name) { return s.find(std::string("-") + name) != std::string::npos; };
   r.loadSettle = !off("loadSettle");
   r.startPulse = !off("startPulse");
-  r.timedStart = !off("timedStart");
+  r.namedStartPair = !off("namedStartPair");
+  r.rampOrder = !off("rampOrder");
+  // Off by default: "+timedStart" turns it on.
+  r.timedStart = s.find("+timedStart") != std::string::npos;
   return r;
 }
 const char* organNetworkName(OrganNetwork::Kind kind) {

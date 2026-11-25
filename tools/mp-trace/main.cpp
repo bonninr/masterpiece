@@ -12,6 +12,7 @@
 //   the legacy network wrote, "+" lines only the event network wrote. --all
 //   compares every kind of line; without it, switches, controls and pipes.
 // --network list prints the keyboards and stops a script can name.
+// mp-trace --diff <a.trace> <b.trace> [--all] compares two saved traces.
 // Exit status: 0, or 1 when ab found a difference, 2 on a usage or load error.
 #include "../../src/mp_control/TraceSimulator.h"
 #include "../../src/mp_core/OdfLoader.h"
@@ -33,12 +34,34 @@ namespace {
 int usage() {
   std::fprintf(stderr,
                "usage: mp-trace <definition> <script> [--network legacy|event|ab|list] "
-               "[--engine processor|network] [--all] [--frames <n>] [--tick <ms>]\n");
+               "[--engine processor|network] [--all] [--frames <n>] [--tick <ms>]\n"
+               "       mp-trace --diff <a.trace> <b.trace> [--all]\n");
   return 2;
 }
+
+// mp-trace --diff <a.trace> <b.trace> [--all]: two saved traces compared as
+// --network ab compares them.
+int diffFiles(int argc, char** argv) {
+  auto read = [](const char* path, std::vector<std::string>& out) {
+    std::ifstream in(path);
+    for (std::string line; std::getline(in, line);) out.push_back(line);
+    return static_cast<bool>(in.eof());
+  };
+  std::vector<std::string> a, b;
+  if (argc < 4 || !read(argv[2], a) || !read(argv[3], b)) return usage();
+  const bool all = argc > 4 && std::strcmp(argv[4], "--all") == 0;
+  const auto d = mp::diffTraces(a, b, all ? std::vector<std::string>{}
+                                          : std::vector<std::string>{"switch", "control", "pipe"});
+  for (const auto& line : d.lines) std::cout << line << "\n";
+  std::cout << "# " << a.size() << " lines and " << b.size() << " lines; " << d.onlyA << " only in the first, "
+            << d.onlyB << " only in the second\n";
+  return d.same() ? 0 : 1;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
+  if (argc >= 2 && std::strcmp(argv[1], "--diff") == 0) return diffFiles(argc, argv);
   if (argc < 3) return usage();
   const std::string odf = argv[1];
   const std::string scriptPath = argv[2];

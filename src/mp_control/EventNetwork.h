@@ -115,20 +115,25 @@ public:
 
 private:
   // ---- the queue ----
-  enum class Ev : uint8_t { SetSwitch, ToggleSwitch, EvalLink, EvalDouble, WillisStep, InertiaTick };
+  enum class Ev : uint8_t { SetSwitch, ToggleSwitch, EvalLink, EvalDouble, WillisStep, InertiaTick, LandLink };
   struct Event {
     double time = 0.0;
     uint64_t seq = 0;
     Ev kind = Ev::SetSwitch;
     int32_t target = -1;
     int32_t value = 0;
+    // Within one instant: 0 for every ordinary event; a timed linkage landing
+    // at load carries its ramp time (NetworkRules::rampOrder).
+    double order = 0.0;
   };
   struct Later {
     bool operator()(const Event& a, const Event& b) const {
-      return a.time > b.time || (a.time == b.time && a.seq > b.seq);
+      if (a.time != b.time) return a.time > b.time;
+      if (a.order != b.order) return a.order > b.order;
+      return a.seq > b.seq;
     }
   };
-  void push(double time, Ev kind, int32_t target, int32_t value = 0);
+  void push(double time, Ev kind, int32_t target, int32_t value = 0, double order = 0.0);
   // Run every event due at or before `until`, then settle the keys and pipes.
   void run(double until);
   void handle(const Event& e);
