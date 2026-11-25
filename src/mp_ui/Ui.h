@@ -592,6 +592,8 @@ private:
   // The Couplers window's Extra couplers button: turns them on or off for
   // this organ and loads it again.
   void toggleProgramCouplers();
+  // Its Bass and melody couplers button (#1242): the same, for those alone.
+  void toggleBassCouplers();
   // What shows the tooltips the controls carry. Without one, none of them ever
   // appeared. On the desktop rather than in the editor, so the combinations
   // window's are shown too. A dialog shows its own (DesktopTooltips).

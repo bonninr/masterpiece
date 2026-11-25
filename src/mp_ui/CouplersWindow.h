@@ -29,6 +29,7 @@ public:
   // The extra couplers are built with the organ, so turning them on or off
   // loads it again; the window asks its owner to do that.
   std::function<void()> onExtraCouplers;
+  std::function<void()> onBassCouplers;
 
   // Follow the engine: a coupler drawn on the console, by a piston or from
   // MIDI shows here too. On the panel's own timer.
@@ -49,6 +50,7 @@ private:
 
   MasterpieceProcessor& proc_;
   juce::ToggleButton extra_{TRANS("Extra couplers")};
+  juce::ToggleButton bass_{TRANS("Bass and melody couplers")};
   juce::Label note_;
   std::vector<std::unique_ptr<juce::Label>> headers_;
   struct Entry {

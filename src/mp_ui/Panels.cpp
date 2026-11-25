@@ -284,7 +284,7 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
     PanelSection program;
     program.kind = PanelSection::Kind::Program;
     program.key = "program";
-    program.title = TRANS("Extra couplers").toStdString();
+    program.title = (p.programCouplers() ? TRANS("Extra couplers") : TRANS("Bass and melody couplers")).toStdString();
     for (const auto& pc : p.programCouplerList()) {
       PanelElement e;
       e.kind = PanelElement::Kind::Switch;

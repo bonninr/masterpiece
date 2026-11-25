@@ -2257,6 +2257,14 @@ public:
     if (sessionLoading_) sessionLoading_->programCouplers = on;
   }
   bool programCouplers() const { return programCouplers_; }
+  // The bass and melody couplers alone (#1242), without the pair and
+  // octave couplers: off by default, saved with the organ, applied at its
+  // load as the extras are.
+  void setBassCouplers(bool on) {
+    bassCouplers_ = on;
+    if (sessionLoading_) sessionLoading_->bassCouplers = on;
+  }
+  bool bassCouplers() const { return bassCouplers_; }
   // A GrandOrgue set's tremulant pitch and swell filter (#833), chosen on
   // the same tab: off by default, saved with the organ, applied at its load
   // (OdfLoader::Options).
@@ -3289,6 +3297,7 @@ private:
   int64_t preloadHead_ = 0;
   // Whether the program couplers are offered. Off by default.
   bool programCouplers_ = false;
+  bool bassCouplers_ = false;
   // A GrandOrgue set's tremulant pitch and swell filter (#833). Off by
   // default; grandOrgueSet_ is the loaded definition's kind.
   bool goTremulantPitch_ = false, goSwellFilter_ = false;
@@ -3674,6 +3683,7 @@ private:
     // The program couplers: chosen on the same tab, and lost with the rest
     // when the organ's own settings are read again at the load.
     bool programCouplers = false;
+    bool bassCouplers = false;
     bool goTremulantPitch = false, goSwellFilter = false;
     EngineSwitch engine;
     // The rest of the tab's choices the organ's file also holds (#591): the

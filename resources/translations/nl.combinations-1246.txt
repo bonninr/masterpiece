@@ -19,3 +19,5 @@
 "Fill" = "Vullen"
 "%1 mapped from the profile: %2." = "%1 toegewezen uit het profiel: %2."
 "Tick the matches below to map them too." = "Vink de overeenkomsten hieronder aan om ze ook toe te wijzen."
+"Bass and melody couplers" = "Bas- en melodiekoppels"
+"The lowest key held on a manual plays the pedal; the highest key held plays another manual. Included in the extra couplers. Turning them on or off loads the organ again." = "De laagste ingedrukte toets op een klavier speelt het pedaal, de hoogste een ander klavier. Inbegrepen in de extra koppels. Aan- of uitzetten laadt het orgel opnieuw."

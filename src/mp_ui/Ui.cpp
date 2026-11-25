@@ -229,7 +229,8 @@ void StopJamb::rebuild() {
   // The program couplers, in a section of their own after the organ's own.
   if (!proc_.programCouplerList().empty()) {
     auto header = std::make_unique<juce::Label>();
-    header->setText(TRANS("Extra couplers"), juce::dontSendNotification);
+    header->setText(proc_.programCouplers() ? TRANS("Extra couplers") : TRANS("Bass and melody couplers"),
+                    juce::dontSendNotification);
     header->setFont(juce::Font(juce::FontOptions(15.0f, juce::Font::bold)));
     header->setColour(juce::Label::textColourId, juce::Colours::orange);
     addAndMakeVisible(*header);
@@ -243,7 +244,7 @@ void StopJamb::rebuild() {
       e.divisionId = 0;  // a group of its own
       e.playable = true;
       e.name = juce::String(it != model.switches.end() ? it->second.name : std::string());
-      e.division = TRANS("Extra couplers");
+      e.division = proc_.programCouplers() ? TRANS("Extra couplers") : TRANS("Bass and melody couplers");
       e.button = std::make_unique<StopButton>(e.name);
       e.button->setClickingTogglesState(true);
       e.button->setToggleState(proc_.shownSwitchEngaged(pc.switchId),
@@ -2204,6 +2205,7 @@ void MasterpieceEditor::toggleCouplers() {
   if (couplersWindow_ == nullptr) {
     couplersWindow_ = std::make_unique<CouplersWindow>(proc_);
     couplersWindow_->panel().onExtraCouplers = [this] { toggleProgramCouplers(); };
+    couplersWindow_->panel().onBassCouplers = [this] { toggleBassCouplers(); };
     // Beside the main window, at its top right, where it hides the least.
     const auto b = getScreenBounds();
     if (!kMobile)
@@ -3208,6 +3210,12 @@ void MasterpieceEditor::toggleProgramCouplers() {
   // The organ's own setting, the one on Organ settings > Loading, saved for
   // this organ before it is loaded again with it.
   proc_.setProgramCouplers(!proc_.programCouplers());
+  proc_.saveSettings();
+  reloadOrgan();
+}
+
+void MasterpieceEditor::toggleBassCouplers() {
+  proc_.setBassCouplers(!proc_.bassCouplers());
   proc_.saveSettings();
   reloadOrgan();
 }

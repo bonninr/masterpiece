@@ -19,3 +19,5 @@
 "Fill" = "Llenar"
 "%1 mapped from the profile: %2." = "%1 asignados desde el perfil: %2."
 "Tick the matches below to map them too." = "Marque abajo las coincidencias para asignarlas también."
+"Bass and melody couplers" = "Acoplamientos de bajo y de melodía"
+"The lowest key held on a manual plays the pedal; the highest key held plays another manual. Included in the extra couplers. Turning them on or off loads the organ again." = "La tecla más grave pulsada en un teclado toca el pedal; la más aguda toca otro teclado. Incluidos en los acoplamientos adicionales. Activarlos o desactivarlos vuelve a cargar el órgano."
