@@ -15,9 +15,10 @@ constexpr double kInertiaSubStep = 0.001;
 constexpr int kInertiaSubSteps = 5;
 // Keyboards chain through key actions; a file can loop them.
 constexpr int kMaxKeyDepth = 8;
-// Willis: the delay to the next one-step move, msPerStep with one step left.
-double willisDelay(double msPerStep, double target, double pos) {
-  return msPerStep / std::max(1.0, std::abs(target - pos)) / 1000.0;
+// Willis: the delay to the next one-step move. An even ramp, the whole range
+// of 127 steps in msPerStep (as ContinuousControlBank has it since #1121).
+double willisDelay(double msPerStep) {
+  return msPerStep / 127.0 / 1000.0;
 }
 // No condition, and a condition naming a switch the organ does not declare
 // (read as disengaged, as SwitchNetwork reads it).
@@ -182,9 +183,12 @@ void EventNetwork::resetSwitches(const OrganModel& model) {
     w.condWhen = l.conditionWhenEngaged;
     w.engage = static_cast<uint8_t>(l.engageAction);
     w.disengage = static_cast<uint8_t>(l.disengageAction);
+    if (const auto d = model.switches.find(l.destSwitchId); d != model.switches.end()) w.dstLatching = d->second.latching;
     const auto wi = static_cast<int32_t>(wires_.size());
     bySrc.emplace_back(w.src, wi);
-    if (w.cond >= 0) byCond.emplace_back(w.cond, wi);
+    // ReevaluateIfCondSwitchChangesState: with N the condition is read only
+    // when the source moves, so the condition switch does not re-judge it.
+    if (w.cond >= 0 && l.reevaluateOnCondition) byCond.emplace_back(w.cond, wi);
     wires_.push_back(w);
   }
   wiresBySource_.build(n, bySrc);
@@ -392,6 +396,9 @@ void EventNetwork::judgeWire(int32_t w) {
     return;
   }
   const int code = now ? x.engage : x.disengage;
+  // NetworkRules::code7Momentary: a wire stopping with a 7 releases a
+  // momentary destination and leaves a latching one where it is.
+  if (!now && code == 7 && rules_.code7Momentary && x.dstLatching) return;
   if (engages(code)) push(now_, Ev::SetSwitch, x.dst, 1);
   else if (disengages(code)) push(now_, Ev::SetSwitch, x.dst, 0);
 }
@@ -456,7 +463,8 @@ int32_t EventNetwork::controlSlot(Id id) const {
 
 void EventNetwork::resetControls(const OrganModel& model, const std::unordered_set<Id>* waitForTime) {
   model_ = &model;
-  timed_ = false;
+  // NetworkRules::timedStart: timed linkages run in time from the load.
+  timed_ = rules_.timedStart;
   movingCount_ = 0;
   const std::vector<Id> ids = sortedIds(model.continuousControls);
   const size_t n = ids.size();
@@ -612,7 +620,7 @@ void EventNetwork::evalLink(int32_t l) {
         if (k.pos == target) return;
         k.scheduled = true;
         ++movingCount_;
-        if (k.type == 2) push(now_ + willisDelay(k.msPerStep, k.target, k.pos), Ev::WillisStep, l);
+        if (k.type == 2) push(now_ + willisDelay(k.msPerStep), Ev::WillisStep, l);
         else push(now_ + kInertiaTick, Ev::InertiaTick, l);
       }
       return;
@@ -621,23 +629,26 @@ void EventNetwork::evalLink(int32_t l) {
   writeControl(k.dst, target);
 }
 
-// Willis, as its field names it ("increment speed in milliseconds per step
-// with one step difference"): the destination moves one step at a time toward
-// where the source last sent it, at a speed proportional to the distance left,
-// one step per msPerStep with one step to go. Each step is one event, due
-// msPerStep / distance after the last.
+// Willis: an even ramp toward where the source last sent it, the whole range
+// of 127 steps in msPerStep, one event per step. Read as its field name has
+// it (one step per msPerStep with one step left, faster with more), the
+// Sherborne trace opened its pipe delays four times late and the first key
+// sounded nothing; ContinuousControlBank came to the even ramp on Rotterdam's
+// bellows (#1121).
 void EventNetwork::willisStep(int32_t l) {
   Link& k = links_[static_cast<size_t>(l)];
   k.scheduled = false;
   --movingCount_;
   if (!linkLive(l)) return;
-  const double left = k.target - k.pos;
-  k.pos = std::abs(left) <= 1.0 ? k.target : k.pos + (left > 0 ? 1.0 : -1.0);
+  const double goal = std::clamp(k.target, static_cast<double>(lo_[static_cast<size_t>(k.dst)]),
+                                 static_cast<double>(hi_[static_cast<size_t>(k.dst)]));
+  const double left = goal - k.pos;
+  k.pos = std::abs(left) <= 1.0 ? goal : k.pos + (left > 0 ? 1.0 : -1.0);
   writeControl(k.dst, k.pos);
-  if (k.pos != k.target) {
+  if (k.pos != goal) {
     k.scheduled = true;
     ++movingCount_;
-    push(now_ + willisDelay(k.msPerStep, k.target, k.pos), Ev::WillisStep, l);
+    push(now_ + willisDelay(k.msPerStep), Ev::WillisStep, l);
   }
 }
 
@@ -653,13 +664,26 @@ void EventNetwork::inertiaTick(int32_t l) {
   --movingCount_;
   if (!linkLive(l)) return;
   bool rest = std::sqrt(k.accel) * kInertiaSubStep > 1.0 || k.damping * kInertiaSubStep > 1.0;
+  const double lo = lo_[static_cast<size_t>(k.dst)], hi = hi_[static_cast<size_t>(k.dst)];
+  const double goal = std::clamp(k.target, lo, hi);
   for (int i = 0; i < kInertiaSubSteps && !rest; ++i) {
-    k.vel += (k.accel * (k.target - k.pos) - k.damping * k.vel) * kInertiaSubStep;
+    // Damping taken implicitly, so a heavy one cannot overshoot the step.
+    k.vel = (k.vel + k.accel * (goal - k.pos) * kInertiaSubStep) / (1.0 + k.damping * kInertiaSubStep);
     k.pos += k.vel * kInertiaSubStep;
-    rest = std::abs(k.target - k.pos) < 1e-2 && std::abs(k.vel) < 5e-2;
+    // The ends of the control's range are walls: a shutter that reaches
+    // fully open stops there, and does not ring back through its range.
+    if (k.pos <= lo) {
+      k.pos = lo;
+      if (k.vel < 0.0) k.vel = 0.0;
+    }
+    if (k.pos >= hi) {
+      k.pos = hi;
+      if (k.vel > 0.0) k.vel = 0.0;
+    }
+    rest = std::abs(goal - k.pos) < 1e-2 && std::abs(k.vel) < 5e-2;
   }
   if (rest) {
-    k.pos = k.target;
+    k.pos = goal;
     k.vel = 0.0;
   }
   writeControl(k.dst, k.pos);

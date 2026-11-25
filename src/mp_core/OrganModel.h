@@ -395,6 +395,11 @@ struct SwitchLinkage {
   // codes plus sourceWhenEngaged expresses, with no special cases.
   int engageAction = 1;
   int disengageAction = 2;
+  // ReevaluateIfCondSwitchChangesState: whether the condition switch moving
+  // re-judges the wire (Y), or the condition is read only when the source
+  // moves (N). Alessandria writes N on 218 of its wires. Only the event
+  // network reads it.
+  bool reevaluateOnCondition = true;
 };
 
 struct Division {

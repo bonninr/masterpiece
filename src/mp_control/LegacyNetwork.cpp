@@ -25,13 +25,14 @@ NetworkRules NetworkRules::fromEnvironment() {
   const std::string s(v);
   auto off = [&s](const char* name) { return s.find(std::string("-") + name) != std::string::npos; };
   r.loadSettle = !off("loadSettle");
+  r.code7Momentary = !off("code7Momentary");
   r.startPulse = !off("startPulse");
-  r.namedStartPair = !off("namedStartPair");
+  r.namedStartPair = s.find("+namedStartPair") != std::string::npos;
   r.rampOrder = !off("rampOrder");
-  // Off by default: "+timedStart" turns it on.
-  r.timedStart = s.find("+timedStart") != std::string::npos;
+  r.timedStart = !off("timedStart");
   return r;
 }
+
 const char* organNetworkName(OrganNetwork::Kind kind) {
   return kind == OrganNetwork::Kind::Event ? "event" : "legacy";
 }

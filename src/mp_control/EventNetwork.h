@@ -18,17 +18,21 @@
 //   engaged, and only then.
 //
 //   SwitchLinkage: a wire fires while its source (and its condition, if any)
-//   is in the state it names. On the edge where it starts firing it applies
+//   is in the state it names; a condition switch moving re-judges it unless
+//   the wire says ReevaluateIfCondSwitchChangesState=N. On the edge where it
+//   starts firing it applies
 //   its engage action, on the edge where it stops its disengage action:
 //   1 and 4 engage, 2 and 7 disengage, 3 toggles, anything else does nothing.
+//   (NetworkRules::code7Momentary: a wire stopping with a 7 leaves a latching
+//   destination alone.)
 //   No OR of parallel wires, no mirrors, no momentary-to-latching exception:
 //   the last action applied wins.
 //
 //   ContinuousControlLinkage: while its condition holds, a change of its
 //   source sets its destination to (source' + increment) * coefficient.
-//   Type 1 at once; type 2 (Willis) moves the destination one step at a time,
-//   at a speed proportional to the distance left (willisMsPerStep per step
-//   with one step to go: the field's own name); type 3 (inertia) moves it
+//   Type 1 at once; type 2 (Willis) ramps the destination evenly, one step
+//   per event, the whole 127-step range in willisMsPerStep milliseconds;
+//   type 3 (inertia) moves it
 //   as a damped mass, 5 ms events of 1 ms sub-steps. Double linkages add,
 //   subtract or multiply, at once.
 //
@@ -48,8 +52,8 @@
 //   * Codes 4 and 7 act as 1 and 2; whatever else Hauptwerk means by them is
 //     not modelled.
 //   * ContinuousControlBank's pinned twins and change-only linkages into
-//     drawn controls; Willis integrated per block there, one event per step
-//     here.
+//     drawn controls. Willis is the same even ramp, integrated per block
+//     there, one event per step here.
 //   * Key actions: ActionTypeCode 1 from a keyboard only; no pizzicato,
 //     reiteration, bass/melody, division sources, effect codes, and no
 //     every-division fallback for a keyboard with no key actions.
@@ -149,6 +153,7 @@ private:
     int32_t src = -1, dst = -1, cond = -1;
     bool srcWhen = true, condWhen = true;
     uint8_t engage = 1, disengage = 2;
+    bool dstLatching = true;
   };
 
   // ---- controls ----

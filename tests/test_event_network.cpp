@@ -186,11 +186,13 @@ public:
         "switch actions",
         list("Switch", sw(1, "follow src") + sw(2, "follow dst") + sw(3, "reversible", false) + sw(4, "reversed") +
                            sw(5, "inverting src") + sw(6, "inverting dst") + sw(7, "gated src") + sw(8, "gated dst") +
-                           sw(9, "gate")) +
-            list("SwitchLinkage", link(1, 2) + link(3, 4, 3, 7) + link(5, 6, 7, 4) + link(7, 8, 1, 2, 9))));
+                           sw(9, "gate") + sw(10, "reset button", false) + sw(11, "setting") +
+                           sw(12, "piston trigger", false)) +
+            list("SwitchLinkage", link(1, 2) + link(3, 4, 3, 7) + link(5, 6, 7, 4) + link(7, 8, 1, 2, 9) +
+                                      link(10, 11, 1, 7) + link(10, 12, 1, 7))));
     mp::EventNetwork n;
     loadNetwork(n, m);
-    MP_CHECK(n.linkageCount() == 4, "four wires");
+    MP_CHECK(n.linkageCount() == 6, "six wires");
 
     n.set(1, true);
     MP_CHECK(n.engaged(2), "1/2: the destination follows the source in");
@@ -217,6 +219,12 @@ public:
     MP_CHECK(n.engaged(8), "gated: opening the gate fires the wire");
     n.set(9, false);
     MP_CHECK(!n.engaged(8), "gated: closing it stops the wire, which disengages");
+
+    n.set(10, true);
+    MP_CHECK(n.engaged(11) && n.engaged(12), "1/7: a momentary button engages both");
+    n.set(10, false);
+    MP_CHECK(n.engaged(11), "code7Momentary: letting go leaves the latching setting");
+    MP_CHECK(!n.engaged(12), "code7Momentary: and releases the momentary trigger");
   }
 };
 EventSwitchActionsTest g_eventSwitchActions;
@@ -237,10 +245,10 @@ public:
     n.setValue(1, 5);
     MP_CHECK(n.value(2) == 0, "Willis: nothing moves at once");
     MP_CHECK(n.moving(), "Willis: on its way");
-    n.advance(0.005);
-    MP_CHECK(n.value(2) == 2, "Willis: faster with more to go, two steps in 5 ms (2 + 2.5 ms): " + std::to_string(n.value(2)));
-    n.advance(0.020);
-    MP_CHECK(n.value(2) == 5, "Willis: the last step takes the full 10 ms, arrived by 25 ms: " + std::to_string(n.value(2)));
+    n.advance(0.0002);
+    MP_CHECK(n.value(2) == 2, "Willis: an even ramp, 127 steps in 10 ms, two in 0.2 ms: " + std::to_string(n.value(2)));
+    n.advance(0.001);
+    MP_CHECK(n.value(2) == 5, "Willis: arrived within 1.2 ms: " + std::to_string(n.value(2)));
     for (int i = 0; i < 500; ++i) n.advance(0.01);
     MP_CHECK(n.value(3) == 5, "inertia: settled on the source in 5 s: " + std::to_string(n.value(3)));
     MP_CHECK(!n.moving(), "and nothing is moving");
