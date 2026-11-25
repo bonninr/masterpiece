@@ -114,6 +114,7 @@ std::vector<std::string> runTrace(const OrganModel& model, OrganNetwork::Kind ki
   Recorder rec(model, options.sounding);
   net->setListener(&rec);
   net->setDrivesStages(true);
+  net->setRules(NetworkRules::fromEnvironment());
 
   // Loaded as the processor loads it: switches, then controls settled with
   // the switch state, then the timed linkages live from the first block.
@@ -121,8 +122,10 @@ std::vector<std::string> runTrace(const OrganModel& model, OrganNetwork::Kind ki
   const std::unordered_set<Id> windStart = WindSolver::relayStartControls(model);
   net->resetControls(model, windStart.empty() ? nullptr : &windStart);
   net->propagate(0, &net->engagedSwitches());
-  net->setTimed(true);
+  // Started before the timed linkages go live, as the processor starts it at
+  // load and times them from its first block.
   net->startUp();
+  net->setTimed(true);
 
   std::vector<Id> switches, controls;
   for (const auto& kv : model.switches) switches.push_back(kv.first);

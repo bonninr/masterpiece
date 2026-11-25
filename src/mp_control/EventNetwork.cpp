@@ -465,6 +465,7 @@ void EventNetwork::resetControls(const OrganModel& model, const std::unordered_s
   model_ = &model;
   // NetworkRules::timedStart: timed linkages run in time from the load.
   timed_ = rules_.timedStart;
+  inertiaTimed_ = false;
   movingCount_ = 0;
   const std::vector<Id> ids = sortedIds(model.continuousControls);
   const size_t n = ids.size();
@@ -602,7 +603,7 @@ void EventNetwork::evalLink(int32_t l) {
   const double s = reading_[static_cast<size_t>(k.src)];
   const double target = ((k.invert ? 127.0 - s : s) + k.increment) * k.coefficient;
   if (k.isTimed()) {
-    if (!timed_) {
+    if (!(k.type == 2 ? timed_ : inertiaTimed_)) {
       if (k.waitsForTime) return;
       // NetworkRules::rampOrder: settled at once, but landing after this
       // instant's other events, in the order of the ramps' own times.
@@ -779,7 +780,6 @@ void EventNetwork::advance(double seconds) {
 // trace is stable.
 void EventNetwork::startUp() {
   if (model_ == nullptr) return;
-  if (rules_.timedStart) timed_ = true;
   if (!rules_.startPulse) return run(now_);
   const size_t n = controlId_.size();
   std::vector<uint8_t> driven(n, 0);

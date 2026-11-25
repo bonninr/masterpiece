@@ -93,7 +93,10 @@ public:
   double normalised(Id controlId) const override;
   double shutterFor(const Enclosure& e) const override;
   void propagate(Id pinned, const std::unordered_set<Id>* engagedSwitches) override;
-  void setTimed(bool on) override { timed_ = on; }
+  void setTimed(bool on) override {
+    timed_ = on;
+    inertiaTimed_ = on;
+  }
   bool timed() const override { return timed_; }
   void advance(double seconds) override;
   bool moving() const override { return movingCount_ > 0; }
@@ -217,7 +220,10 @@ private:
   size_t queueCap_ = 0;
   size_t dropped_ = 0;
   bool ranAway_ = false;
+  // Willis ramps in time (from the load, NetworkRules::timedStart), and
+  // inertia linkages in time (once the organ is live).
   bool timed_ = false;
+  bool inertiaTimed_ = false;
   bool drivesStages_ = false;
   NetworkRules rules_;
   bool recording_ = false;  // a set() or holdOff() is filling changes_

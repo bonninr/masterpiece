@@ -71,15 +71,17 @@ struct NetworkRules {
   // to end" was tried and rejected on the Sherborne trace: it moved
   // "fixed Value 0" and every pipe delay with it.
   bool startPulse = true;
-  // TimedStart: timed linkages are timed from the load: a Willis or inertia
-  // linkage moves its destination from the control's default in time, as at
-  // power-on, instead of settling at once. This is the start signal of the
-  // sets at hand, structurally: Alessandria's "Hidden On" (127) drives
-  // "Hidden OffToOn" (0) through a stiff inertia linkage, the pair rises,
-  // the "__DelayInit" ramps follow in their own times (50 ms, 100 ms), and
-  // "Blower init 1" lands before "Blower init 2" with no sorting (#1183).
-  // An earlier run that rejected it also had a widened StartPulse; on its
-  // own it matched the legacy start-up on Sherborne.
+  // TimedStart: Willis ramps run in time from the load, from their
+  // destination's default, as at power-on; inertia linkages settle at once
+  // until the organ is live. This is the start signal of the sets at hand,
+  // structurally: "Hidden On" (127) drives "Hidden OffToOn" (0) through a
+  // stiff inertia linkage, so the pair stands at its end state at once, and
+  // the delays it feeds ramp in their own times: Alessandria's
+  // "__DelayInit" ramps (50 ms, 100 ms) land "Blower init 1" before
+  // "Blower init 2" with no sorting (#1183), while Sherborne's pipe delays,
+  // fed by "Hidden OnToOff" falling, stay shut. Timing the inertia pair too
+  // opened every Sherborne pallet at load; timing nothing left Alessandria's
+  // blower off.
   bool timedStart = true;
   // NamedStartPair (off): the legacy start-up's name match on the "Hidden
   // OffToOn"/"Hidden OnToOff" pair (#263), put at rest and moved at once.
