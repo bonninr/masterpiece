@@ -6468,6 +6468,11 @@ LogPanel::LogPanel(MasterpieceProcessor& p) : proc_(p) {
                             "when it is newer. Nothing about you is sent."));
   updates_.onClick = [this] { proc_.setUpdateCheckEnabled(updates_.getToggleState()); };
   addAndMakeVisible(updates_);
+  network_.setToggleState(proc_.useEventNetwork(), juce::dontSendNotification);
+  network_.setTooltip(TRANS("A new model of the organ's wiring, to compare with the one in use. Takes effect "
+                            "when an organ is next loaded."));
+  network_.onClick = [this] { proc_.setUseEventNetwork(network_.getToggleState()); };
+  addAndMakeVisible(network_);
 }
 
 void LogPanel::resized() {
@@ -6485,6 +6490,7 @@ void LogPanel::resized() {
   midi_.setBounds(r.removeFromTop(28));
   releases_.setBounds(r.removeFromTop(28));
   updates_.setBounds(r.removeFromTop(28));
+  network_.setBounds(r.removeFromTop(28));
   r.removeFromTop(8);
   report_.setBounds(r);
 }

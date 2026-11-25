@@ -295,6 +295,7 @@ std::string keysOrgan() {
           list("KeyAction", keyAction(1, 1, false) + keyAction(1, 2, true, 30) + keyAction(2, 2, false)) +
           list("KeyboardKey", keyboardKey(2, 60, 40)) +
           list("Switch", sw(30, "Sw/Gt") + sw(31, "Open Diapason") + sw(32, "Gamba") + sw(40, "Sw key 60", false) +
+                             sw(50, "Swell to Great 4' (program)") +
                              sw(41, "pallet", false)) +
           list("SwitchLinkage", link(40, 41)) + list("Rank", rank(1, "Diapason") + rank(2, "Gamba") + rank(3, "Pallet")) +
           list("Pipe_SoundEngine01", pipe(101, 1, 60) + pipe(201, 2, 60) + pipe(301, 3, 60, 41)) +
@@ -329,6 +330,37 @@ public:
   }
 };
 EventKeysToPipesTest g_eventKeysToPipes;
+
+// The program's own couplers: a key action the organ never declared, from the
+// keyboard played, behind a switch of the program's; a bass coupler carries
+// the lowest key held only.
+class EventProgramCouplersTest final : public mp::test::Test {
+public:
+  EventProgramCouplersTest() : Test("functional.network.event-program-couplers", Category::Functional) {}
+  void run() override {
+    const auto m = load(keysOrgan());
+    for (const int extreme : {0, 1}) {
+      mp::EventNetwork n;
+      loadNetwork(n, m);
+      n.setProgramCouplers({{50, 1, 2, 12, extreme}});
+      n.set(32, true);  // the Gamba, on the Swell
+      n.keyDown(1, 48, 100);
+      MP_CHECK(n.soundingPipes() == 0, "the coupler not drawn: nothing on the Swell");
+      n.set(50, true);
+      MP_CHECK(n.soundingPipes() == 1, "drawn under the held key: the Swell an octave up, its Gamba C4");
+      n.keyDown(1, 41, 100);
+      if (extreme == 0)
+        MP_CHECK(n.soundingPipes() == 1, "a second key below: no Swell pipe at its note, still one");
+      else
+        MP_CHECK(n.soundingPipes() == 0, "bass: a lower key takes the coupler from C3, which had C4");
+      n.keyUp(1, 41);
+      MP_CHECK(n.soundingPipes() == 1, "and gives it back when it lets go");
+      n.keyUp(1, 48);
+      MP_CHECK(n.soundingPipes() == 0, "all keys up, silent");
+    }
+  }
+};
+EventProgramCouplersTest g_eventProgramCouplers;
 
 class EventDivisionInputsTest final : public mp::test::Test {
 public:

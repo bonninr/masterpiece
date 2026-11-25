@@ -796,6 +796,7 @@ private:
   juce::ToggleButton midi_{TRANS("Log every MIDI message and what became of it")};
   juce::ToggleButton releases_{TRANS("Log every key release: the release played, its length and start")};
   juce::ToggleButton updates_{TRANS("Check for updates daily")};
+  juce::ToggleButton network_{TRANS("Play organs through the event network (test)")};
 };
 
 // The control API and the web console it serves (src/mp_api): on or off, the

@@ -53,6 +53,7 @@ EventNetwork::EventNetwork() {
   doublesByControl_.build(0, {});
   stageRowsByControl_.build(0, {});
   actionsByKeyboard_.build(0, {});
+  programByKeyboard_.build(0, {});
   stopRanksByDivision_.build(0, {});
   pipesByPallet_.build(0, {});
 }
@@ -225,7 +226,10 @@ void EventNetwork::resetSwitches(const OrganModel& model) {
   actions_.clear();
   std::vector<std::pair<int32_t, int32_t>> byKb;
   for (const KeyAction& a : model.keyActions) {
-    if (a.actionType != 1) continue;
+    // Keys (1), and the bass (2) and melody (3) actions, which carry only the
+    // lowest or the highest key held. Pizzicato, reiteration and the rest:
+    // not modelled.
+    if (a.actionType < 1 || a.actionType > 3) continue;
     const auto src = keyboardSlot_.find(static_cast<Id>(a.sourceKeyboard));
     if (src == keyboardSlot_.end()) continue;
     Action x;
@@ -243,11 +247,14 @@ void EventNetwork::resetSwitches(const OrganModel& model) {
     x.first = a.firstSourceNote;
     x.num = a.numKeys;
     x.inc = a.midiIncrement;
+    x.type = a.actionType;
     if (x.cond >= 0) soundSwitch_[static_cast<size_t>(x.cond)] = 1;
     byKb.emplace_back(src->second, static_cast<int32_t>(actions_.size()));
     actions_.push_back(x);
   }
   actionsByKeyboard_.build(kbs.size(), byKb);
+  programCouplers_.clear();
+  programByKeyboard_.build(kbs.size(), {});
 
   // Division inputs.
   inputs_.clear();
@@ -830,19 +837,47 @@ void EventNetwork::keyUp(Id keyboardId, int midiNote) {
   run(now_);
 }
 
-void EventNetwork::walkKey(int32_t kb, int note, int depth) {
+void EventNetwork::setProgramCouplers(const std::vector<ProgramCouplerSpec>& couplers) {
+  programCouplers_.clear();
+  std::vector<std::pair<int32_t, int32_t>> byKb;
+  for (const ProgramCouplerSpec& s : couplers) {
+    const auto kb = keyboardSlot_.find(s.keyboard);
+    const auto div = divisionSlot_.find(s.srcDivision);
+    const int32_t sw = switchSlot(s.switchId);
+    if (kb == keyboardSlot_.end() || div == divisionSlot_.end() || sw < 0) continue;
+    soundSwitch_[static_cast<size_t>(sw)] = 1;  // drawing it re-sounds the keys held
+    byKb.emplace_back(kb->second, static_cast<int32_t>(programCouplers_.size()));
+    programCouplers_.push_back({sw, div->second, s.shift, s.extreme});
+  }
+  programByKeyboard_.build(keyHeld_.size() / kNotes, byKb);
+}
+
+void EventNetwork::walkKey(int32_t kb, int note, int depth, int extreme) {
   ++keyDownNext_[static_cast<size_t>(kb) * kNotes + static_cast<size_t>(note)];
+  auto live = [this](int32_t cond, bool when) {
+    if (cond == kNoCondition) return true;
+    return (cond >= 0 && on_[static_cast<size_t>(cond)] != 0) == when;
+  };
+  // The program's own couplers start at the keyboard played, and only there.
+  if (depth == 0)
+    for (const int32_t* p = programByKeyboard_.begin(kb); p != programByKeyboard_.end(kb); ++p) {
+      const ProgramCoupler& c = programCouplers_[static_cast<size_t>(*p)];
+      if (on_[static_cast<size_t>(c.sw)] == 0) continue;
+      if (c.extreme != 0 && (extreme & c.extreme) == 0) continue;
+      const int to = note + c.shift;
+      if (to < 0 || to >= kNotes) continue;
+      ++divKeyedNext_[static_cast<size_t>(c.srcDiv) * kNotes + static_cast<size_t>(to)];
+    }
   if (depth >= kMaxKeyDepth) return;
   for (const int32_t* a = actionsByKeyboard_.begin(kb); a != actionsByKeyboard_.end(kb); ++a) {
     const Action& x = actions_[static_cast<size_t>(*a)];
     if (x.num > 0 && (note < x.first || note >= x.first + x.num)) continue;
-    if (x.cond != kNoCondition) {
-      const bool c = x.cond >= 0 && on_[static_cast<size_t>(x.cond)] != 0;
-      if (c != x.condWhen) continue;
-    }
+    if (!live(x.cond, x.condWhen)) continue;
+    if (x.type == 2 && (extreme & kLowest) == 0) continue;
+    if (x.type == 3 && (extreme & kHighest) == 0) continue;
     const int to = note + x.inc;
     if (to < 0 || to >= kNotes) continue;
-    if (x.destKb >= 0) walkKey(x.destKb, to, depth + 1);
+    if (x.destKb >= 0) walkKey(x.destKb, to, depth + 1, extreme);
     else ++divKeyedNext_[static_cast<size_t>(x.destDiv) * kNotes + static_cast<size_t>(to)];
   }
 }
@@ -855,9 +890,17 @@ void EventNetwork::settleSounding() {
   std::fill(keyDownNext_.begin(), keyDownNext_.end(), 0);
   std::fill(divKeyedNext_.begin(), divKeyedNext_.end(), 0);
   const auto keyboards = static_cast<int32_t>(keyHeld_.size() / kNotes);
-  for (int32_t kb = 0; kb < keyboards; ++kb)
+  for (int32_t kb = 0; kb < keyboards; ++kb) {
+    const uint8_t* held = keyHeld_.data() + static_cast<size_t>(kb) * kNotes;
+    int lowest = -1, highest = -1;
     for (int n = 0; n < kNotes; ++n)
-      if (keyHeld_[static_cast<size_t>(kb) * kNotes + static_cast<size_t>(n)] != 0) walkKey(kb, n, 0);
+      if (held[n] != 0) {
+        if (lowest < 0) lowest = n;
+        highest = n;
+      }
+    for (int n = lowest; n >= 0 && n <= highest; ++n)
+      if (held[n] != 0) walkKey(kb, n, 0, (n == lowest ? kLowest : 0) | (n == highest ? kHighest : 0));
+  }
 
   // A key down, played or coupled, engages its key switch.
   for (size_t k = 0; k < keyDown_.size(); ++k) {

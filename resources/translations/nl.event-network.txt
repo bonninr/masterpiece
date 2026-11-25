@@ -1,0 +1,2 @@
+"Play organs through the event network (test)" = "Orgels bespelen via het gebeurtenisnetwerk (test)"
+"A new model of the organ's wiring, to compare with the one in use. Takes effect when an organ is next loaded." = "Een nieuw model van de bedrading van het orgel, om te vergelijken met het gebruikte. Geldt vanaf de volgende keer dat een orgel wordt geladen."

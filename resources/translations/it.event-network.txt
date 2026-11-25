@@ -1,0 +1,2 @@
+"Play organs through the event network (test)" = "Suonare gli organi attraverso la rete di eventi (prova)"
+"A new model of the organ's wiring, to compare with the one in use. Takes effect when an organ is next loaded." = "Un nuovo modello del cablaggio dell'organo, da confrontare con quello in uso. Ha effetto al prossimo caricamento di un organo."

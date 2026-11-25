@@ -99,6 +99,20 @@ struct NetworkRules {
   static NetworkRules fromEnvironment();
 };
 
+// A coupler of the program's own (the player's couplers, bass and melody
+// couplers, #722, #1242), as a key action the organ never declared: a key
+// played on `keyboard` sounds `srcDivision` at its note plus `shift` while
+// `switchId` is engaged. `extreme` limits it to the lowest (1) or highest (2)
+// key held on that keyboard; 0 carries every key. Not chained: it starts at
+// the keyboard played, as a console's couplers do.
+struct ProgramCouplerSpec {
+  Id switchId = 0;
+  Id keyboard = 0;
+  Id srcDivision = 0;
+  int shift = 0;
+  int extreme = 0;
+};
+
 class OrganNetwork {
 public:
   enum class Kind { Legacy, Event };
@@ -152,6 +166,9 @@ public:
   virtual void keyUp(Id keyboardId, int midiNote) = 0;
   // Every key up at once (a panic).
   virtual void releaseAllKeys() = 0;
+  // The program's own couplers (ProgramCouplerSpec), after resetSwitches().
+  // The legacy network's are the processor's CouplerMatrix's.
+  virtual void setProgramCouplers(const std::vector<ProgramCouplerSpec>& couplers) { (void)couplers; }
   // Report every pipe speaking now as starting: for a listener that was not
   // ready to start voices when they began (the organ loading).
   virtual void replaySounding() {}

@@ -9932,6 +9932,19 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     eventKeys_.reserve(256);
   }
   net().resetSwitches(model_);
+  // The program's own couplers, in event mode: each a key action from every
+  // keyboard whose own division it couples to (CouplerMatrix's depth-0 rule).
+  if (eventMode()) {
+    std::vector<ProgramCouplerSpec> specs;
+    for (const auto& [kb, keyboard] : model_.keyboards) {
+      (void)keyboard;
+      const Id own = couplers_.primaryDivisionFor(kb);
+      if (own == 0) continue;
+      for (const auto& c : programCouplersList_)
+        if (c.destDivision == own) specs.push_back({c.switchId, kb, c.srcDivision, c.shift, c.extreme});
+    }
+    net().setProgramCouplers(specs);
+  }
   // Where the player left the switches the organ remembers, set as the player
   // would so their wiring follows: Nancy's "start blower on organ load" is
   // read by the controls that start the blower further down.

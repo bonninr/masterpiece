@@ -109,6 +109,7 @@ public:
   void keyDown(Id keyboardId, int midiNote, int velocity) override;
   void keyUp(Id keyboardId, int midiNote) override;
   void releaseAllKeys() override;
+  void setProgramCouplers(const std::vector<ProgramCouplerSpec>& couplers) override;
   void replaySounding() override;
 
   double now() const override { return now_; }
@@ -195,11 +196,15 @@ private:
 
   // ---- keys, divisions, pipes ----
   void settleSounding();
-  void walkKey(int32_t kb, int note, int depth);
+  // `extreme`: kLowest / kHighest when the key played is the lowest or the
+  // highest held on its keyboard (bass and melody couplers).
+  static constexpr int kLowest = 1, kHighest = 2;
+  void walkKey(int32_t kb, int note, int depth, int extreme);
   struct Action {
     int32_t destKb = -1, destDiv = -1, cond = -1;
     bool condWhen = true;
     int first = 0, num = 0, inc = 0;
+    int type = 1;  // ActionTypeCode: 1 every key, 2 the lowest held, 3 the highest
   };
   struct StopRankRef {
     int32_t stopSwitch = -1, rank = -1, altRank = -1, altSwitch = -1;
@@ -263,6 +268,12 @@ private:
   std::vector<Id> divisionId_;
   std::vector<Action> actions_;
   Csr actionsByKeyboard_;
+  struct ProgramCoupler {
+    int32_t sw = -1, srcDiv = -1;
+    int shift = 0, extreme = 0;
+  };
+  std::vector<ProgramCoupler> programCouplers_;
+  Csr programByKeyboard_;
   std::vector<int32_t> keySwitch_;            // keyboard * 128 + note -> switch, -1
   std::vector<uint8_t> keyHeld_;              // played keys
   std::vector<uint16_t> keyDown_, keyDownNext_;   // played or coupled, per keyboard note
