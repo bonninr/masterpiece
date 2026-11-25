@@ -4,7 +4,6 @@
 "Frame %1, empty" = "Passo %1, vuoto"
 "Level %1, general %2" = "Livello %1, generale %2"
 "Press Set, then a general, to store what is drawn. - and + step through the generals, the level buttons through the levels. Right-click any piston to map it to your console." = "Premere Set, poi una generale, per memorizzare ciò che è inserito. - e + scorrono le generali, i pulsanti di livello i livelli. Clic destro su un pistoncino per assegnarlo alla consolle."
-"Learn on and off..." = "Impara inserito e disinserito..."
 "Also light the console's lamp with the same messages" = "Accendi anche la spia della consolle con gli stessi messaggi"
 "Sends the console what it sent for this tab, so its lamp or magnet follows the stop. Kept for the next stops learned." = "Rimanda alla consolle ciò che ha inviato per questo tirante, perché la sua spia o il suo magnete seguano il registro. Resta per i prossimi registri."
 "Learn again" = "Impara di nuovo"

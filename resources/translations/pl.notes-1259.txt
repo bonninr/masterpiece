@@ -1,0 +1,4 @@
+"Other versions of this organ" = "Inne wersje tych organów"
+"Learn on and off (two messages)..." = "Naucz włączenia i wyłączenia (dwa komunikaty)..."
+"Learn one message as" = "Ucz jednego komunikatu jako"
+"Install another package..." = "Zainstaluj kolejny pakiet..."

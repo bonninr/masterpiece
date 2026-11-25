@@ -1437,25 +1437,27 @@ void showSwitchMidiMenu(MasterpieceProcessor& proc, Id switchId,
     for (const auto& line : sendsAndKeys) menu.addSectionHeader(line);
   }
   menu.addSeparator();
-  // Everything at once: several messages, what the console is sent, a key.
-  menu.addItem(7, TRANS("MIDI window..."));
-  // On and off in one go, and the lamp sent back if the player wants it
-  // (#1245): a console's tab learned without the MIDI window.
-  menu.addItem(8, TRANS("Learn on and off..."));
-  menu.addSeparator();
-  // The organ says whether this switch latches (a drawstop, a coupler) or is
-  // held (a piston, a Set button), so the plain Learn follows it; the four
-  // ways remain for a console that sends something else (#53).
+  // The three ways to learn, in the order a player needs them (#1259): one
+  // message as the organ means it, a tab's two messages (on and off), and one
+  // message read another way. The organ says whether this switch latches (a
+  // drawstop, a coupler) or is held (a piston, a Set button), so the plain
+  // Learn follows it (#53).
   const auto sw = proc.organModel().switches.find(switchId);
   const bool latching = sw == proc.organModel().switches.end() || sw->second.latching;
   menu.addItem(6, latching ? TRANS("Learn") : TRANS("Learn (while held)"));
+  // On and off in one go, and the lamp sent back if the player wants it
+  // (#1245): a console's tab learned without the MIDI window.
+  menu.addItem(8, TRANS("Learn on and off (two messages)..."));
   juce::PopupMenu other;
   // A word or two each, the same as the MIDI window's "What it does".
   other.addItem(1, TRANS("Toggle"));
   other.addItem(2, TRANS("While held"));
   other.addItem(3, TRANS("Draw only"));
   other.addItem(4, TRANS("Cancel only"));
-  menu.addSubMenu(TRANS("Learn as"), other);
+  menu.addSubMenu(TRANS("Learn one message as"), other);
+  menu.addSeparator();
+  // Everything at once: several messages, what the console is sent, a key.
+  menu.addItem(7, TRANS("MIDI window..."));
   menu.addSeparator();
   menu.addItem(5, TRANS("Clear mapping"), mapped);
 

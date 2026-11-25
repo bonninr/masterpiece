@@ -23,6 +23,8 @@ public:
   // dialog. Either closes the window.
   OpenPanel(MasterpieceProcessor& p, std::function<void(const juce::File&)> open,
             std::function<void()> browse);
+  // Out of line: the rows are a type of the .cpp file.
+  ~OpenPanel() override;
   void resized() override;
   void paint(juce::Graphics& g) override;
   void visibilityChanged() override;
