@@ -5722,7 +5722,9 @@ bool MasterpieceProcessor::startVoicesForKey(Id keyboard, int midiNote,
     // the division's own input switch the way a key does, and the organ's
     // wiring opens the pipe from there.
     const bool coupled = engageCoupledInput(reached, noteId, velocity);
-    if (coupled) continue;
+    // A plain key's input (couplerSwitch 0) opens the pipes through the
+    // wiring; the stops still give the key's own noises.
+    if (coupled && reached.couplerSwitch != 0) continue;
     // A division played straight from the keys whose input switch still
     // carries pipes (key-action noises): the key closes that switch too.
     if (strike && !directInputs_.empty())
@@ -7779,6 +7781,48 @@ void MasterpieceProcessor::buildCouplerInputs() {
       }
     }
   }
+  // A division played through its inputs alone (#1228): its keys come by a
+  // plain key action, not by key switches, and its inputs lead through the
+  // wiring to pallets. Barritt's Sherborne plays every pipe so: the key's
+  // input, through the stop's node and a delay of its own, opens the pipe's
+  // pallet; the stops name only their action noises. Nothing pressed those
+  // inputs, and only the noises sounded. The key now closes the division's
+  // input as a coupler does.
+  std::unordered_set<Id> inputOnly;
+  {
+    std::unordered_set<Id> pallets;
+    for (const auto& [rankId, rank] : model_.ranks)
+      for (const Pipe& pipe : rank.pipes)
+        if (pipe.palletSwitchId != 0) pallets.insert(pipe.palletSwitchId);
+    if (!pallets.empty()) {
+      std::unordered_map<Id, std::vector<Id>> next;
+      for (const auto& l : model_.switchLinkages)
+        if (l.sourceSwitchId != l.destSwitchId) next[l.sourceSwitchId].push_back(l.destSwitchId);
+      std::unordered_map<Id, std::vector<Id>> inputsOf;
+      for (const auto& in : model_.divisionInputs)
+        if (in.switchId != 0) inputsOf[in.divisionId].push_back(in.switchId);
+      for (const auto& [division, inputs] : inputsOf) {
+        std::unordered_set<Id> seen(inputs.begin(), inputs.end());
+        std::vector<Id> todo(inputs.begin(), inputs.end());
+        bool reaches = false;
+        while (!todo.empty() && !reaches && seen.size() < 8192) {
+          const Id at = todo.back();
+          todo.pop_back();
+          if (pallets.count(at) != 0) {
+            reaches = true;
+            break;
+          }
+          if (const auto n = next.find(at); n != next.end())
+            for (Id to : n->second)
+              if (seen.insert(to).second) todo.push_back(to);
+        }
+        if (reaches) inputOnly.insert(division);
+      }
+    }
+  }
+  std::unordered_set<Id> keyedKeyboards;
+  for (const auto& [switchId, key] : model_.keyboardKeys) keyedKeyboards.insert(key.keyboardId);
+
   struct ThroughKeyboard {
     Id coupler = 0;
     Id keyboard = 0;
@@ -7788,7 +7832,12 @@ void MasterpieceProcessor::buildCouplerInputs() {
 
   std::vector<Id> reached;
   for (const KeyAction& a : model_.keyActions) {
-    if (a.conditionSwitchId == 0) continue;
+    if (a.conditionSwitchId == 0) {
+      if (!a.destIsKeyboard && a.destDivision != 0 && inputOnly.count(static_cast<Id>(a.destDivision)) != 0 &&
+          keyedKeyboards.count(static_cast<Id>(a.sourceKeyboard)) == 0)
+        addCoupledInputs(0, static_cast<Id>(a.destDivision), true);
+      continue;
+    }
     // A division the coupler reaches: the division's own input switch for
     // that note is what carries the note into its pipework. A coupler to a
     // keyboard reaches the division that keyboard plays, and the ones its
@@ -7923,7 +7972,7 @@ void MasterpieceProcessor::addCoupledInputs(Id coupler, Id division, bool rankle
 
 bool MasterpieceProcessor::engageCoupledInput(const ExpandedNote& reached, uint64_t noteId,
                                               int velocity) {
-  if (reached.couplerSwitch == 0 || coupledInput_.empty()) return false;
+  if (coupledInput_.empty()) return false;
   const auto it = coupledInput_.find(
       CoupledInputKey{reached.couplerSwitch, static_cast<Id>(reached.divisionId),
                       reached.midiNote});
@@ -7954,7 +8003,7 @@ void MasterpieceProcessor::releaseCoupledSwitch(Id sw) {
 }
 
 void MasterpieceProcessor::releaseCoupledInput(const ExpandedNote& reached, uint64_t noteId) {
-  if (reached.couplerSwitch == 0 || coupledHeld_.empty()) return;
+  if (coupledHeld_.empty()) return;
   const auto it = coupledInput_.find(
       CoupledInputKey{reached.couplerSwitch, static_cast<Id>(reached.divisionId),
                       reached.midiNote});
