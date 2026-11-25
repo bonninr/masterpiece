@@ -137,6 +137,12 @@ private:
   std::unique_ptr<juce::AlertWindow> namePrompt_;
   void nameGeneral(int n);
   void labelGeneral(juce::Button& b, int n) const;
+  // The generals' pistons: wide, on two lines, once any is named (#1248).
+  bool namedGenerals() const;
+  int generalW() const;
+  int generalH() const;
+  int generalsPerRow() const;
+  int generalRows(int count) const;
 
   juce::Label note_;
 };
