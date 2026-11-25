@@ -567,6 +567,9 @@ void CombinationsPanel::refreshState() {
   const bool capturing = proc_.captureMode();
   setter_.setToggleState(capturing, juce::dontSendNotification);
   setter_.setColour(juce::TextButton::buttonOnColourId, kCapture);
+  // Lit as a piston is while on (#1221): the default contrast was too faint.
+  pedalCoupler_.setColour(juce::TextButton::buttonOnColourId, kLit);
+  pedalCoupler_.setColour(juce::TextButton::textColourOnId, kBackground);
   pedalCoupler_.setToggleState(proc_.pedalCombinationsCoupled(), juce::dontSendNotification);
 
   for (size_t i = 0; i < generals_.size(); ++i) {
@@ -709,6 +712,9 @@ void CombinationsPanel::showMidiMenu(PistonButton& b, MidiTargetKind kind,
   if (kind == MidiTargetKind::PlayerGeneral) {
     menu.addSeparator();
     menu.addItem(5, TRANS("Name..."));
+    const int n = static_cast<int>(targetId);
+    menu.addItem(6, TRANS("Empty"),
+                 proc_.playerCombinations().generalSet(n) || !proc_.playerCombinations().generalName(n).empty());
   }
 
   const juce::String name = b.getButtonText();
@@ -719,6 +725,17 @@ void CombinationsPanel::showMidiMenu(PistonButton& b, MidiTargetKind kind,
           case 5:
             nameGeneral(static_cast<int>(targetId));
             break;
+          case 6: {
+            const int n = static_cast<int>(targetId);
+            proc_.clearGeneral(n);
+            if (n >= 1 && static_cast<size_t>(n) <= generals_.size()) labelGeneral(*generals_[static_cast<size_t>(n) - 1], n);
+            refreshState();
+            const int w = std::max(getWidth(), preferredWidth());
+            setSize(w, preferredHeight(w));
+            resized();
+            if (onWidthChanged) onWidthChanged();
+            break;
+          }
           case 4:
             MidiEventDialog::show(proc_, kind, targetId, name);
             break;

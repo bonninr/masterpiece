@@ -72,6 +72,40 @@ public:
 };
 static PlayerTremulantsTest g_playerTremulants;
 
+// A general emptied (#1221): unused again, as if never stored, its name gone.
+class PlayerClearGeneralTest final : public mp::test::Test {
+public:
+  PlayerClearGeneralTest() : Test("functional.control.player-clear-general", Category::Functional) {}
+  void run() override {
+    mp::OrganModel m;
+    m.divisions[1].divisionId = 1;
+    m.divisions[1].manualNumber = 1;
+    mp::Switch knob;
+    knob.switchId = 10;
+    knob.name = "Principale 8";
+    m.switches[10] = knob;
+    m.stops[100].stopId = 100;
+    m.stops[100].name = "Principale 8";
+    m.stops[100].divisionId = 1;
+    m.stops[100].controllingSwitchId = 10;
+    const auto elements = mp::PlayerCombinations::collect(m, nullptr);
+    mp::PlayerCombinations pc;
+    pc.reset(elements, mp::PlayerCombinations::divisionsOf(m, elements));
+    const auto drawn = [](const mp::PlayerCombinations::Element&) { return true; };
+    MP_CHECK(pc.captureGeneral(3, drawn), "general 3 stores");
+    pc.setGeneralName(3, "Bach - BWV 727");
+    pc.lightGeneral(3);
+    pc.clearGeneral(3);
+    MP_CHECK(!pc.generalSet(3), "emptied, general 3 is unused");
+    MP_CHECK(pc.generalName(3).empty(), "and has no name");
+    MP_CHECK(pc.litGeneral() != 3, "and is not lit");
+    std::vector<mp::PlayerCombinations::Change> out;
+    pc.recallGeneral(3, out);
+    MP_CHECK(out.empty(), "pressed, it recalls nothing");
+  }
+};
+static PlayerClearGeneralTest g_playerClearGeneral;
+
 // A stop on a switch no player can move is the organ's wiring, not its
 // registration (#1218): Alessandria's "GO Tuba 8'" stands on the hidden
 // "NoiseSwitch", engaged at load, and the first general cancel pushed it in.

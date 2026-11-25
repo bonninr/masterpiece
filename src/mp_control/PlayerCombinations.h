@@ -135,6 +135,8 @@ public:
   // for a piece keeps its own names. Read and written on the message thread.
   const std::string& generalName(int n) const;
   void setGeneralName(int n, std::string name);
+  // A general back to unused (#1221): nothing stored, no name, unlit.
+  void clearGeneral(int n);
   bool divisionalSet(Id divisionId, int n) const;
   // The piston whose registration was recalled or captured last, which is the
   // one a console lights. 0 when the registration has since moved on.
@@ -206,6 +208,10 @@ public:
   struct Suggestion {
     std::string name;
     std::vector<char> drawn;  // one flag per element, in elements() order
+    // The elements the suggestion leaves as they are (#1221): stops whose
+    // name says no family (a blower, a motor, bells). A fixed combination
+    // keeps what they are when it is filled, so PP does not stop the wind.
+    std::vector<char> kept;
   };
   static std::vector<Suggestion> suggestRegistrations(const std::vector<Element>& elements,
                                                       const std::function<int(Id)>& keyboardOf,

@@ -657,6 +657,8 @@ public:
   // A name for a general ("Tutti", "Plenum"), saved with the combination set
   // in use. Empty clears it.
   void setGeneralName(int n, const juce::String& name);
+  // Empty a general: unused again, its name gone (#1221).
+  void clearGeneral(int n);
   void pressGeneralCancel();
   void pressDivisional(Id divisionId, int n);
   void pressDivisionalCancel(Id divisionId);
