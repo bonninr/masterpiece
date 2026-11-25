@@ -7788,7 +7788,8 @@ void MasterpieceProcessor::buildCouplerInputs() {
   // pallet; the stops name only their action noises. Nothing pressed those
   // inputs, and only the noises sounded. The key now closes the division's
   // input as a coupler does.
-  std::unordered_set<Id> inputOnly;
+  std::unordered_set<Id>& inputOnly = inputOnlyDivisions_;
+  inputOnly.clear();
   {
     std::unordered_set<Id> pallets;
     for (const auto& [rankId, rank] : model_.ranks)
@@ -7851,7 +7852,8 @@ void MasterpieceProcessor::buildCouplerInputs() {
       reached.push_back(static_cast<Id>(a.destDivision));
     }
     for (const Id division : reached)
-      addCoupledInputs(static_cast<Id>(a.conditionSwitchId), division, ranked.count(division) == 0);
+      addCoupledInputs(static_cast<Id>(a.conditionSwitchId), division,
+                       ranked.count(division) == 0 || inputOnly.count(division) != 0);
     if (a.destIsKeyboard && a.destKeyboard != 0)
       throughKeyboards.push_back(
           {static_cast<Id>(a.conditionSwitchId), static_cast<Id>(a.destKeyboard), reached});
@@ -8351,7 +8353,8 @@ void MasterpieceProcessor::buildProgramCouplers() {
     // for the key the walk carries, and moves with the chord's lowest or
     // highest key (reflowExtremes).
     for (const auto& c : programCouplersList_)
-      if (ranked.count(c.srcDivision) == 0) addCoupledInputs(c.switchId, c.srcDivision, true);
+      if (ranked.count(c.srcDivision) == 0 || inputOnlyDivisions_.count(c.srcDivision) != 0)
+        addCoupledInputs(c.switchId, c.srcDivision, true);
   }
 
   // The organ's own generals store the program couplers, and its general

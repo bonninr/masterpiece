@@ -3927,6 +3927,10 @@ private:
     bool rankless = false;  // no stop of the division names a rank
   };
   std::map<CoupledInputKey, CoupledInput> coupledInput_;
+  // Divisions played through their inputs alone (#1228): a key, a coupler
+  // and a program coupler all close their inputs. Built by
+  // buildCouplerInputs, read by buildProgramCouplers.
+  std::unordered_set<Id> inputOnlyDivisions_;
   // Which note holds which of the engine's switches, so the last note out
   // closes what it opened. Reserved at load: the audio thread adds to it.
   std::vector<std::pair<uint64_t, Id>> coupledHeld_;
