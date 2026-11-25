@@ -22,6 +22,14 @@ CouplersPanel::CouplersPanel(MasterpieceProcessor& p) : proc_(p) {
     if (onExtraCouplers) onExtraCouplers();
   };
   addAndMakeVisible(extra_);
+  bass_.setColour(juce::ToggleButton::textColourId, juce::Colour(0xffb9c2d0));
+  bass_.setTooltip(TRANS("The lowest key held on a manual plays the pedal; the highest key held plays another "
+                         "manual. Included in the extra couplers. Turning them on or off loads the organ again."));
+  bass_.onClick = [this] {
+    bass_.setToggleState(proc_.bassCouplers() || proc_.programCouplers(), juce::dontSendNotification);
+    if (onBassCouplers) onBassCouplers();
+  };
+  addAndMakeVisible(bass_);
   note_.setColour(juce::Label::textColourId, juce::Colour(0xff8a93a3));
   note_.setJustificationType(juce::Justification::topLeft);
   addChildComponent(note_);
@@ -37,6 +45,8 @@ void CouplersPanel::rebuild() {
   buttons_.clear();
   headers_.clear();
   extra_.setToggleState(proc_.programCouplers(), juce::dontSendNotification);
+  bass_.setToggleState(proc_.bassCouplers() || proc_.programCouplers(), juce::dontSendNotification);
+  bass_.setEnabled(!proc_.programCouplers());
 
   for (const auto& section : panelSections(proc_)) {
     bool any = false;
@@ -96,6 +106,8 @@ void CouplersPanel::rebuild() {
 int CouplersPanel::layOut(int width, bool place) {
   int y = kMargin;
   if (place) extra_.setBounds(kMargin, y, juce::jmax(0, width - 2 * kMargin), 24);
+  y += 24 + kGap;
+  if (place) bass_.setBounds(kMargin, y, juce::jmax(0, width - 2 * kMargin), 24);
   y += 24 + kGap;
   if (buttons_.empty()) {
     if (place) note_.setBounds(kMargin, y, juce::jmax(0, width - 2 * kMargin), 40);

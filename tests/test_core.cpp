@@ -24552,6 +24552,22 @@ public:
     // the organ again: the organ's own settings are read at that load, and
     // the choice has to survive them as the other Loading choices do.
     MP_CHECK(proc.programCouplerList().empty(), "no program couplers until they are asked for");
+    // The bass and melody couplers alone (#1242): only couplers that carry
+    // the lowest or the highest key held, kept through a load.
+    proc.setBassCouplers(true);
+    proc.keepLoadingChoiceForSession();
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads with the bass couplers");
+    const auto onlyBassMelody = [&proc] {
+      for (const auto& c : proc.programCouplerList())
+        if (c.extreme == 0) return false;
+      return true;
+    };
+    MP_CHECK(!proc.programCouplerList().empty() && onlyBassMelody(),
+             "the bass and melody couplers, and no pair coupler: " +
+                 std::to_string(proc.programCouplerList().size()));
+    proc.setBassCouplers(false);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads without them");
+    MP_CHECK(proc.programCouplerList().empty(), "turned off, the bass couplers are gone after the load");
     proc.setProgramCouplers(true);
     proc.keepLoadingChoiceForSession();
     MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads again");

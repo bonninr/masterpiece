@@ -2797,6 +2797,7 @@ juce::String MasterpieceProcessor::settingsBody() const {
   // there were levels.
   text << "compress " << (!samples_.codeSamples() ? 0 : compressSetting(samples_.codeLevel())) << "\n";
   text << "programcouplers " << (programCouplers_ ? 1 : 0) << "\n";
+  text << "basscouplers " << (bassCouplers_ ? 1 : 0) << "\n";
   if (pedalManual_.load() != 0) text << "pedalmanual " << pedalManual_.load() << "\n";
   text << "releases " << static_cast<int>(samples_.releaseChoice()) << "\n";
   text << "releaselength " << samples_.releaseMaxMs() << "\n";
@@ -2937,6 +2938,7 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
     samples_.setCodeLevel(levelFromCompressSetting(val.getIntValue()));
   }
   else if (key == "programcouplers") programCouplers_ = on;
+  else if (key == "basscouplers") bassCouplers_ = on;
   else if (key == "pedalmanual") pedalManual_.store(val.getIntValue());
   else if (key == "releases")
     samples_.setReleaseChoice(static_cast<SampleLibrary::ReleaseChoice>(juce::jlimit(0, 3, val.getIntValue())));
@@ -6521,6 +6523,7 @@ void MasterpieceProcessor::keepLoadingChoiceForSession() {
   c.preload = preloadHead_;
   c.sparse = sparseEvery_;
   c.programCouplers = programCouplers_;
+  c.bassCouplers = bassCouplers_;
   c.goTremulantPitch = goTremulantPitch_;
   c.goSwellFilter = goSwellFilter_;
   c.engine = graph_.engineSwitch;
@@ -8187,7 +8190,11 @@ void MasterpieceProcessor::findControlStops() {
 void MasterpieceProcessor::buildProgramCouplers() {
   programCouplersList_.clear();
   couplers_.setProgramCouplers({});
-  if (!programCouplers_) return;
+  // The bass and melody couplers (#1242) come with "Extra couplers" or on
+  // their own; the pair and octave couplers only with "Extra couplers".
+  // Their ids are counted either way, so a coupler keeps its id, and its
+  // MIDI mapping, whichever is on.
+  if (!programCouplers_ && !bassCouplers_) return;
 
   // The divisions a player can play: the ones the playable keyboards reach.
   std::vector<Id> divisions;
@@ -8221,8 +8228,10 @@ void MasterpieceProcessor::buildProgramCouplers() {
       if (dest == src) continue;
       for (const int shift : {-12, 0, 12}) {
         const char* pitch = shift == -12 ? "16'" : shift == 0 ? "8'" : "4'";
+        const Id id = nextId++;
+        if (!programCouplers_) continue;
         Switch sw;
-        sw.switchId = nextId++;
+        sw.switchId = id;
         sw.name = nameOf(src) + " to " + nameOf(dest) + " " + pitch;
         sw.isCoupler = true;
         sw.programProvided = true;
@@ -8236,8 +8245,10 @@ void MasterpieceProcessor::buildProgramCouplers() {
   for (Id div : divisions)
     for (const int shift : {-12, 12}) {
       const char* pitch = shift == -12 ? "16'" : "4'";
+      const Id id = nextId++;
+      if (!programCouplers_) continue;
       Switch sw;
-      sw.switchId = nextId++;
+      sw.switchId = id;
       sw.name = nameOf(div) + " " + pitch;
       sw.isCoupler = true;
       sw.programProvided = true;
@@ -9627,6 +9638,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     sparseEvery_ = c.sparse;
     samples_.setSparseEvery(c.sparse);
     programCouplers_ = c.programCouplers;
+    bassCouplers_ = c.bassCouplers;
     goTremulantPitch_ = c.goTremulantPitch;
     goSwellFilter_ = c.goSwellFilter;
     graph_.engineSwitch = c.engine;
