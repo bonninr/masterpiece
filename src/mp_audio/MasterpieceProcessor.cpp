@@ -5522,7 +5522,7 @@ bool MasterpieceProcessor::applyVoicingStep(MidiTargetKind kind) {
       case MidiTargetKind::VoicingTuneUp: field = VoicingField::Tuning; by = 1.0f; break;
       default: return false;
     }
-    if (!stepVoicing(voicing_.live(), model_, voicingTarget_, field, by, field == VoicingField::Level ? 12.0f : 50.0f))
+    if (!stepVoicing(voicing_.live(), model_, voicingTarget_, field, by, voicingRange(field)))
       return false;
   }
   voicingSteps_.fetch_add(1, std::memory_order_acq_rel);

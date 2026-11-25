@@ -3237,7 +3237,7 @@ void MasterpieceEditor::showFileMenu() {
     for (int i = 0; i < versions.size(); ++i)
       other.addItem(100 + i, versions[i].getFileNameWithoutExtension(), versions[i] != loaded,
                     versions[i] == loaded);
-    menu.addSubMenu(TRANS("Open another version"), other);
+    menu.addSubMenu(TRANS("Other versions of this organ"), other);
   }
   // A phone or a tablet has no folder to save a file to that this can reach.
   if (!kMobile) {

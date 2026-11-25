@@ -1,0 +1,4 @@
+"Other versions of this organ" = "Další verze těchto varhan"
+"Learn on and off (two messages)..." = "Naučit zapnutí a vypnutí (dvě zprávy)..."
+"Learn one message as" = "Učit jednu zprávu jako"
+"Install another package..." = "Instalovat další balíček..."

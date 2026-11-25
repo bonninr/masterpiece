@@ -3313,12 +3313,16 @@ public:
         g.setColour(juce::Colours::white);
         g.drawRect(b, 1);
       }
-      // The C's named under their faders, the chosen pipe too.
-      if (notes_[i] % 12 == 0 || notes_[i] == chosen_) {
-        g.setColour(notes_[i] == chosen_ ? juce::Colours::white : juce::Colours::lightgrey);
-        g.drawText(noteName(notes_[i]), b.getX() - 12, b.getBottom() + 1, kFaderW + 24, kNameH - 2,
-                   juce::Justification::centred);
-      }
+      // Every pipe named under its fader (#1259): the C's and the chosen
+      // pipe brighter, the sharps dimmer.
+      const bool strong = notes_[i] % 12 == 0 || notes_[i] == chosen_;
+      g.setColour(notes_[i] == chosen_ ? juce::Colours::white
+                  : strong           ? juce::Colours::lightgrey
+                  : juce::MidiMessage::isMidiNoteBlack(notes_[i]) ? juce::Colour(0xff7d8594)
+                                                                  : juce::Colour(0xffa9b1bf));
+      g.setFont(juce::FontOptions(strong ? 10.5f : 9.0f));
+      g.drawText(noteName(notes_[i]), b.getX(), b.getBottom() + 1, kFaderW, kNameH - 2,
+                 juce::Justification::centred);
     }
   }
 
@@ -3665,6 +3669,7 @@ void VoicingPanel::fillChoices() {
   rank_.clear(juce::dontSendNotification);
   choiceRanks_.clear();
   const auto add = [this](const juce::String& name, std::vector<Id> ranks) {
+    ranks = loadedRanks(std::move(ranks), proc_.ranksLeftOut());
     if (ranks.empty()) return;
     choiceRanks_.push_back(std::move(ranks));
     rank_.addItem(name, static_cast<int>(choiceRanks_.size()));

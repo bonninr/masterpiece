@@ -1987,6 +1987,13 @@ public:
   // Moves on with every change, so a panel open on it can follow a preset
   // recalled from MIDI.
   int voicingEqChanges() const { return voicingEqChanges_; }
+  // Edited on the Organ EQ tab (#1259): the organ's own EQ from then on,
+  // saved as its other settings are. A score's registration recalling an EQ
+  // does not call this.
+  void voicingEqEdited() {
+    organOwnsEq_ = true;
+    markSettingsDirty();
+  }
   // The organ's sound after the voicing EQ and before the room, for the
   // Equalizer tab's spectrum. Fed only while a window has it open.
   SpectrumTap& spectrum() { return spectrum_; }

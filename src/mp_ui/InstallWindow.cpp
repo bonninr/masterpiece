@@ -110,6 +110,18 @@ InstallPanel::InstallPanel(MasterpieceProcessor& p, Mode mode, juce::File packag
     });
   };
   addAndMakeVisible(close_);
+  // Several organs or packages in a row (#1259): this window closes and
+  // the next package is chosen.
+  addChildComponent(another_);
+  another_.onClick = [this] {
+    auto* proc = &proc_;
+    auto open = open_;
+    juce::Component::SafePointer<juce::DialogWindow> dw(findParentComponentOfClass<juce::DialogWindow>());
+    juce::MessageManager::callAsync([dw, proc, open] {
+      if (dw != nullptr) dw->closeButtonPressed();
+      juce::MessageManager::callAsync([proc, open] { InstallPanel::showInstall(*proc, open); });
+    });
+  };
   close_.onClick = [this] {
     juce::Component::SafePointer<juce::DialogWindow> dw(findParentComponentOfClass<juce::DialogWindow>());
     juce::MessageManager::callAsync([dw] {
@@ -523,6 +535,7 @@ void InstallPanel::finishInstall(bool ok, const juce::String& error) {
     openButton_.setButtonText(TRANS("Open %1").replace("%1", justInstalled_[0].getFileNameWithoutExtension()));
     openButton_.setVisible(true);
   }
+  another_.setVisible(mode_ == Mode::Install && !kMobile);
   showRows();
   resized();
 }
@@ -545,6 +558,7 @@ void InstallPanel::setBusy(bool busy, const juce::String& what) {
   folderButton_.setEnabled(!busy);
   if (busy) {
     openButton_.setVisible(false);
+    another_.setVisible(false);
     status_.setColour(juce::Label::textColourId, kDim);
     status_.setText(what, juce::dontSendNotification);
   }
@@ -627,6 +641,7 @@ void InstallPanel::resized() {
   go_.setBounds(bottom.removeFromRight(130));
   bottom.removeFromRight(8);
   (cancel_button_.isVisible() ? cancel_button_ : close_).setBounds(bottom.removeFromRight(110));
+  if (another_.isVisible()) another_.setBounds(bottom.removeFromLeft(juce::jmin(200, bottom.getWidth() - 10)));
   if (openButton_.isVisible()) openButton_.setBounds(bottom.removeFromLeft(juce::jmin(320, bottom.getWidth() - 10)));
   r.removeFromBottom(6);
   summary_.setBounds(r.removeFromBottom(22));

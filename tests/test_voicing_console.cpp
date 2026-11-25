@@ -188,8 +188,8 @@ public:
 
     // The whole rank, then one pipe of it: the pipe's own, added to the rank.
     proc.setVoicingTarget(201, 0);
-    for (int i = 0; i < 30; ++i) proc.applyVoicingStep(mp::MidiTargetKind::VoicingLevelDown);
-    MP_CHECK(proc.voicing().live().rank(201).gainDb == -12.0f, "level stops at -12 dB");
+    for (int i = 0; i < 100; ++i) proc.applyVoicingStep(mp::MidiTargetKind::VoicingLevelDown);
+    MP_CHECK(proc.voicing().live().rank(201).gainDb == -24.0f, "level stops at -24 dB (#1259)");
     for (int i = 0; i < 55; ++i) proc.applyVoicingStep(mp::MidiTargetKind::VoicingTuneUp);
     MP_CHECK(proc.voicing().live().rank(201).tuningCents == 50.0f, "tuning stops at +50 cents");
     proc.applyVoicingStep(mp::MidiTargetKind::VoicingTuneDown);
@@ -197,8 +197,8 @@ public:
     proc.setVoicingTarget(201, 301);
     proc.applyVoicingStep(mp::MidiTargetKind::VoicingLevelUp);
     MP_CHECK(proc.voicing().live().pipe(301).gainDb == 0.5f, "one pipe: its own level");
-    MP_CHECK(proc.voicing().live().rank(201).gainDb == -12.0f, "and the rank's is left");
-    MP_CHECK(proc.voicingSteps() == 87, "every step is counted for the Voicing tab");
+    MP_CHECK(proc.voicing().live().rank(201).gainDb == -24.0f, "and the rank's is left");
+    MP_CHECK(proc.voicingSteps() == 157, "every step is counted for the Voicing tab");
 
     // A console button: the press raises the step, the release does not.
     mp::MidiBinding button;

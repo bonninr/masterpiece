@@ -14,6 +14,7 @@
 // Deliberately JUCE-free and header-only: voicing is read at note-on, never
 // per sample, and the fast loop must be able to test it without audio.
 #pragma once
+#include <set>
 #include "../mp_core/OrganModel.h"
 
 #include <algorithm>
@@ -142,8 +143,16 @@ inline void setVoicingValue(PipeVoicing& v, VoicingField f, float value) {
   v.gainDb = value;
 }
 
-// How far a field goes either way: 50 cents of tuning, 12 dB of the others.
-inline float voicingRange(VoicingField f) { return f == VoicingField::Tuning ? 50.0f : 12.0f; }
+// How far a field goes either way: 50 cents of tuning, 24 dB of the others
+// (12 was not enough for a rank voiced far from the rest, #1259).
+inline float voicingRange(VoicingField f) { return f == VoicingField::Tuning ? 50.0f : 24.0f; }
+
+// The ranks of a choice that were loaded (#1259): a partial load's left-out
+// ranks have nothing to voice.
+inline std::vector<Id> loadedRanks(std::vector<Id> ranks, const std::set<Id>& leftOut) {
+  ranks.erase(std::remove_if(ranks.begin(), ranks.end(), [&](Id r) { return leftOut.count(r) != 0; }), ranks.end());
+  return ranks;
+}
 
 // A stroke across the pipes of a rank, as a drag over the view of every pipe
 // draws it: from the pipe at `from` holding `fromValue` to the pipe at `to`
