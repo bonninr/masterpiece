@@ -21,12 +21,15 @@ namespace mp {
 struct ProcessorTraceOptions {
   double sampleRate = 48000.0;
   int blockSize = 256;
-  // Frames loaded per sample, 0 for all of them: a real set traced for its
-  // network need not hold its whole sample library in memory.
+  // With standIns off: the preload head per sample, 0 for whole files. A
+  // minimum, not a cap: the read always covers the sustain loop.
   int64_t maxFramesPerSample = 0;
   // Blocks run after the load before the "init" state is taken, so start-up
   // pulses and ramps are part of the trace's first lines when they are short.
   int settleBlocks = 1;
+  // Every sample a silent stand-in (SampleLibrary::setStandIns): the trace
+  // reads the voice pool, and a large set held 13.6 GB loaded for real.
+  bool standIns = true;
 };
 
 struct ProcessorTraceResult {

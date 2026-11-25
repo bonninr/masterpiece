@@ -1131,6 +1131,9 @@ public:
   // The network for the next loads, for the A/B harness: not saved, and it
   // wins over the setting and the environment until cleared (nullopt).
   void setNetworkOverride(std::optional<OrganNetwork::Kind> kind) { networkOverride_ = kind; }
+  // Silent stand-ins for every sample on the next loads (SampleLibrary::
+  // setStandIns): the A/B harness needs pipe events, not audio.
+  void setSampleStandIns(bool on) { samples_.setStandIns(on); }
   // Whether the player's pistons and sequencer leave the bass and melody
   // couplers alone: not stored, not recalled (PlayerCombinations). Off by
   // default. The program's, for every organ.

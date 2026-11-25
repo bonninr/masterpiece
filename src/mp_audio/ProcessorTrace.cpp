@@ -30,6 +30,7 @@ ProcessorTraceResult runProcessorTrace(const juce::File& definition, OrganNetwor
   ProcessorTraceResult result;
   MasterpieceProcessor proc;
   proc.setNetworkOverride(kind);
+  proc.setSampleStandIns(options.standIns);
   proc.setRateAndBufferSizeDetails(options.sampleRate, options.blockSize);
   proc.prepareToPlay(options.sampleRate, options.blockSize);
   const auto load = proc.loadOrgan(definition, options.maxFramesPerSample, false);

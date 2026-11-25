@@ -2,11 +2,14 @@
 // control and speaking pipe that changed, with the time.
 //
 //   mp-trace <definition> <script> [--network legacy|event|ab|list]
-//            [--engine processor|network] [--all] [--frames <n>] [--tick <ms>]
+//            [--engine processor|network] [--all] [--real-samples [--frames <n>]]
+//            [--tick <ms>]
 //
 // --engine processor (the default where the audio engine is built) plays the
 //   script through a whole MasterpieceProcessor: what the player hears. Keys
-//   go in as MIDI. --frames caps the frames loaded per sample (0: all).
+//   go in as MIDI. Every sample is a silent stand-in, so a large set traces
+//   in little memory; --real-samples loads the audio, --frames its preload
+//   head (a minimum: the sustain loop is always read).
 // --engine network plays it through the network alone (TraceSimulator).
 // --network ab runs both networks and prints the difference: "-" lines only
 //   the legacy network wrote, "+" lines only the event network wrote. --all
@@ -34,7 +37,7 @@ namespace {
 int usage() {
   std::fprintf(stderr,
                "usage: mp-trace <definition> <script> [--network legacy|event|ab|list] "
-               "[--engine processor|network] [--all] [--frames <n>] [--tick <ms>]\n"
+               "[--engine processor|network] [--all] [--real-samples [--frames <n>]] [--tick <ms>]\n"
                "       mp-trace --diff <a.trace> <b.trace> [--all]\n");
   return 2;
 }
@@ -81,6 +84,7 @@ int main(int argc, char** argv) {
     else if (std::strcmp(argv[i], "--tick") == 0 && i + 1 < argc) options.tickMs = std::stod(argv[++i]);
 #ifdef MP_TRACE_HAS_PROCESSOR
     else if (std::strcmp(argv[i], "--frames") == 0 && i + 1 < argc) popts.maxFramesPerSample = std::stoll(argv[++i]);
+    else if (std::strcmp(argv[i], "--real-samples") == 0) popts.standIns = false;
 #endif
     else return usage();
   }

@@ -238,6 +238,10 @@ public:
   // default: these files are gigabytes, and a cache per organ per settings
   // combination fills a disk without ever being asked to.
   void setCacheMode(CacheMode m) { cacheMode_ = m; }
+  // Stand-ins for every sample: one silent looped buffer, nothing read from
+  // disk. For traces of the organ network (ProcessorTrace), never for play.
+  void setStandIns(bool on) { standIns_ = on; }
+  bool standIns() const { return standIns_; }
   CacheMode cacheMode() const { return cacheMode_; }
 
   // Identifies WHICH organ, for the filename, and whether the definition has
@@ -527,6 +531,7 @@ private:
   double loadRate_ = 0.0;   // 0 = keep each file's own rate
   bool streamReleases_ = false;
   bool licenceConfirmed_ = false;
+  bool standIns_ = false;
   int64_t streamHead_ = 48000; // one second
   int streamHeadPercent_ = 0;
   // What the audio thread reads. Always points at one of `generations_`.
