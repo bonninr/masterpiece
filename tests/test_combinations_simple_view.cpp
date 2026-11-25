@@ -62,6 +62,32 @@ public:
     MP_CHECK(insert != nullptr && !insert->isVisible(), "the combinations alone leave the sequencer out");
     MP_CHECK(panel.preferredHeight(620) < bothHeight, "and take less room");
     proc.setCombinationsView(viewWas);
+    panel.showView();
+
+    // #1248: a named general gets a piston wide enough for its name.
+    auto general = [&panel]() -> juce::Component* {
+      for (auto* c : panel.getChildren())
+        if (auto* b = dynamic_cast<juce::Button*>(c); b != nullptr && b->getTooltip().startsWith("General 1"))
+          return b;
+      return nullptr;
+    };
+    const int plainW = general() != nullptr ? general()->getWidth() : 0;
+    MP_CHECK(plainW > 0 && plainW < 60, "unnamed, the generals' pistons are narrow: " + std::to_string(plainW) + " px");
+    const int plainHeight = panel.preferredHeight(620);
+    proc.setGeneralName(1, "Demessieux - Rorate caeli");
+    panel.rebuild();
+    auto* named = general();
+    MP_CHECK(named != nullptr && dynamic_cast<juce::Button*>(named)->getButtonText() == "Demessieux - Rorate caeli",
+             "general 1 shows its name");
+    if (named != nullptr) {
+      MP_CHECK(named->getWidth() >= 130 && named->getWidth() > plainW,
+               "a named general is wide enough for it: " + std::to_string(named->getWidth()) + " px");
+      MP_CHECK(named->getHeight() > 30, "and tall enough for two lines: " + std::to_string(named->getHeight()) + " px");
+    }
+    MP_CHECK(panel.preferredHeight(panel.getWidth()) > plainHeight, "the window grows to hold them");
+    proc.setGeneralName(1, "");
+    panel.rebuild();
+    MP_CHECK(general() != nullptr && general()->getWidth() == plainW, "no names, the narrow pistons again");
 
     proc.setSimpleMode(was, false);
   }

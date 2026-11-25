@@ -17,6 +17,11 @@ constexpr int kPistonW = 44;
 constexpr int kPerRow = 10;
 constexpr int kDivisionLabelW = 110;
 constexpr int kNoteH = 48;
+// Named generals (#1248): wide enough for "Demessieux - Rorate caeli" on
+// two lines, five to a row.
+constexpr int kNamedPistonW = 140;
+constexpr int kNamedRow = 46;
+constexpr int kNamedPerRow = 5;
 
 const juce::Colour kBackground{0xff1b1e24};
 const juce::Colour kUnset{0xff262a33};
@@ -54,7 +59,6 @@ juce::String describe(const MidiBinding& b) {
   return what;
 }
 
-int pistonRows(int count) { return (count + kPerRow - 1) / kPerRow; }
 
 } // namespace
 
@@ -418,7 +422,8 @@ int CombinationsPanel::preferredHeight(int /*width*/) const {
   const auto& pc = proc_.playerCombinations();
   int h = kMargin + kRow + kSection;
   if (sequencerShown()) h += kGap + kRow;
-  if (!simple_ && combinationsShown()) h += kHeading + kGap + pistonRows(pc.generalCount()) * (kRow + kGap) + kSection;
+  if (!simple_ && combinationsShown())
+    h += kHeading + kGap + generalRows(pc.generalCount()) * (generalH() + kGap) + kSection;
   if (combinationsShown() && !divisions_.empty()) h += kHeading + kGap + static_cast<int>(divisions_.size()) * (kRow + kGap) + kSection;
   h += kRow + kGap + kNoteH + kMargin;
   return h;
@@ -431,7 +436,7 @@ int CombinationsPanel::preferredWidth() const {
                   : 56 + kGap + 56 + 12 + 34 + 40 + 34 + 110 + 34 + 40 + 34 + kGap * 2 + 56 + 56;
   if (!simple_) w += kGap * 2 + kStyleW;
   if (!simple_)
-    w = std::max(w, kDivisionLabelW + std::min(pc.generalCount(), kPerRow) * (kPistonW + kGap));
+    w = std::max(w, kDivisionLabelW + std::min(pc.generalCount(), generalsPerRow()) * (generalW() + kGap));
   if (!divisions_.empty()) {
     w = std::max(w, kDivisionLabelW + 26 + 26 + kGap * 2 + 170);
     w = std::max(w, kDivisionLabelW + pc.divisionalCount() * (kPistonW + kGap) + kGap * 2 + kPistonW);
@@ -487,13 +492,13 @@ void CombinationsPanel::resized() {
     row.removeFromLeft(kGap);
     readyMade_.setBounds(row.removeFromLeft(110).reduced(1));
     r.removeFromTop(kGap);
+    const int gw = generalW(), gh = generalH(), per = generalsPerRow();
     for (size_t i = 0; i < generals_.size(); ++i) {
-      const int col = static_cast<int>(i) % kPerRow;
-      const int line = static_cast<int>(i) / kPerRow;
-      generals_[i]->setBounds(r.getX() + kDivisionLabelW + col * (kPistonW + kGap),
-                              r.getY() + line * (kRow + kGap), kPistonW, kRow);
+      const int col = static_cast<int>(i) % per;
+      const int line = static_cast<int>(i) / per;
+      generals_[i]->setBounds(r.getX() + kDivisionLabelW + col * (gw + kGap), r.getY() + line * (gh + kGap), gw, gh);
     }
-    r.removeFromTop(pistonRows(static_cast<int>(generals_.size())) * (kRow + kGap));
+    r.removeFromTop(generalRows(static_cast<int>(generals_.size())) * (gh + kGap));
     r.removeFromTop(kSection);
   }
 
@@ -732,6 +737,21 @@ void CombinationsPanel::showMidiMenu(PistonButton& b, MidiTargetKind kind,
       });
 }
 
+bool CombinationsPanel::namedGenerals() const {
+  const auto& pc = proc_.playerCombinations();
+  for (int n = 1; n <= pc.generalCount(); ++n)
+    if (!pc.generalName(n).empty()) return true;
+  return false;
+}
+
+int CombinationsPanel::generalW() const { return namedGenerals() ? kNamedPistonW : kPistonW; }
+int CombinationsPanel::generalH() const { return namedGenerals() ? kNamedRow : kRow; }
+int CombinationsPanel::generalsPerRow() const { return namedGenerals() ? kNamedPerRow : kPerRow; }
+int CombinationsPanel::generalRows(int count) const {
+  const int per = generalsPerRow();
+  return (count + per - 1) / per;
+}
+
 void CombinationsPanel::labelGeneral(juce::Button& b, int n) const {
   const juce::String own(juce::CharPointer_UTF8(proc_.playerCombinations().generalName(n).c_str()));
   const juce::String text = own.isEmpty() ? juce::String(n) : own;
@@ -754,6 +774,10 @@ void CombinationsPanel::nameGeneral(int n) {
     if (result == 1 && namePrompt_ != nullptr) {
       proc_.setGeneralName(n, namePrompt_->getTextEditorContents("name"));
       if (static_cast<size_t>(n) <= generals_.size()) labelGeneral(*generals_[static_cast<size_t>(n) - 1], n);
+      const int w = std::max(getWidth(), preferredWidth());
+      setSize(w, preferredHeight(w));
+      resized();
+      if (onWidthChanged) onWidthChanged();
     }
     namePrompt_.reset();
   }));
