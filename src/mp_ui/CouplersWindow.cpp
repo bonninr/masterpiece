@@ -30,6 +30,24 @@ CouplersPanel::CouplersPanel(MasterpieceProcessor& p) : proc_(p) {
     if (onBassCouplers) onBassCouplers();
   };
   addAndMakeVisible(bass_);
+  // The bass couplers' range (#1242): the whole keyboard, or up to a key.
+  bassTopLabel_.setText(TRANS("Bass up to"), juce::dontSendNotification);
+  bassTopLabel_.setColour(juce::Label::textColourId, juce::Colour(0xffb9c2d0));
+  bassTopLabel_.setJustificationType(juce::Justification::centredRight);
+  addAndMakeVisible(bassTopLabel_);
+  bassTop_.addItem(TRANS("Whole keyboard"), 1);
+  {
+    static const char* kNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    for (int n = 36; n <= 72; ++n) bassTop_.addItem(juce::String(kNames[n % 12]) + juce::String(n / 12 - 1), n);
+  }
+  bassTop_.setTooltip(TRANS("The bass coupler takes the lowest key held only up to this key: a melody played "
+                            "above it has no pedal."));
+  bassTop_.onChange = [this] {
+    const int id = bassTop_.getSelectedId();
+    proc_.setBassCouplerTop(id <= 1 ? 0 : id);
+    proc_.saveSettings();
+  };
+  addAndMakeVisible(bassTop_);
   note_.setColour(juce::Label::textColourId, juce::Colour(0xff8a93a3));
   note_.setJustificationType(juce::Justification::topLeft);
   addChildComponent(note_);
@@ -47,6 +65,13 @@ void CouplersPanel::rebuild() {
   extra_.setToggleState(proc_.programCouplers(), juce::dontSendNotification);
   bass_.setToggleState(proc_.bassCouplers() || proc_.programCouplers(), juce::dontSendNotification);
   bass_.setEnabled(!proc_.programCouplers());
+  {
+    const int top = proc_.bassCouplerTop();
+    bassTop_.setSelectedId(top >= 36 && top <= 72 ? top : 1, juce::dontSendNotification);
+    const bool on = proc_.bassCouplers() || proc_.programCouplers();
+    bassTop_.setEnabled(on);
+    bassTopLabel_.setEnabled(on);
+  }
 
   for (const auto& section : panelSections(proc_)) {
     bool any = false;
@@ -107,7 +132,12 @@ int CouplersPanel::layOut(int width, bool place) {
   int y = kMargin;
   if (place) extra_.setBounds(kMargin, y, juce::jmax(0, width - 2 * kMargin), 24);
   y += 24 + kGap;
-  if (place) bass_.setBounds(kMargin, y, juce::jmax(0, width - 2 * kMargin), 24);
+  if (place) {
+    auto row = juce::Rectangle<int>(kMargin, y, juce::jmax(0, width - 2 * kMargin), 24);
+    bassTop_.setBounds(row.removeFromRight(juce::jmin(130, row.getWidth() / 3)));
+    bassTopLabel_.setBounds(row.removeFromRight(juce::jmin(90, row.getWidth() / 3)));
+    bass_.setBounds(row);
+  }
   y += 24 + kGap;
   if (buttons_.empty()) {
     if (place) note_.setBounds(kMargin, y, juce::jmax(0, width - 2 * kMargin), 40);

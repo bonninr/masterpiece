@@ -21,3 +21,6 @@
 "Tick the matches below to map them too." = "Cochez les correspondances ci-dessous pour les associer aussi."
 "Bass and melody couplers" = "Accouplements de basse et de mélodie"
 "The lowest key held on a manual plays the pedal; the highest key held plays another manual. Included in the extra couplers. Turning them on or off loads the organ again." = "La touche la plus grave tenue sur un clavier joue la pédale ; la plus aiguë joue un autre clavier. Compris dans les accouplements supplémentaires. Les activer ou les désactiver recharge l’orgue."
+"Bass up to" = "Basse jusqu’à"
+"Whole keyboard" = "Tout le clavier"
+"The bass coupler takes the lowest key held only up to this key: a melody played above it has no pedal." = "L’accouplement de basse ne prend la touche la plus grave tenue que jusqu’à cette touche : une mélodie jouée au-dessus reste sans pédale."
