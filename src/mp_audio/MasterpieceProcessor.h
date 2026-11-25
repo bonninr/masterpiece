@@ -2267,6 +2267,10 @@ public:
     if (sessionLoading_) sessionLoading_->bassCouplers = on;
   }
   bool bassCouplers() const { return bassCouplers_; }
+  // The bass couplers' range (#1242): the lowest key held passes them only
+  // at or below this note; 0 for the whole keyboard. Saved with the organ.
+  int bassCouplerTop() const { return bassTop_.load(std::memory_order_relaxed); }
+  void setBassCouplerTop(int midiNote) { bassTop_.store(juce::jlimit(0, 127, midiNote), std::memory_order_relaxed); }
   // A GrandOrgue set's tremulant pitch and swell filter (#833), chosen on
   // the same tab: off by default, saved with the organ, applied at its load
   // (OdfLoader::Options).
@@ -3300,6 +3304,7 @@ private:
   // Whether the program couplers are offered. Off by default.
   bool programCouplers_ = false;
   bool bassCouplers_ = false;
+  std::atomic<int> bassTop_{0};
   // A GrandOrgue set's tremulant pitch and swell filter (#833). Off by
   // default; grandOrgueSet_ is the loaded definition's kind.
   bool goTremulantPitch_ = false, goSwellFilter_ = false;

@@ -13253,6 +13253,27 @@ static ExtremeCouplersTest g_extremeCouplers;
 // The player's bass and melody couplers (#722): program couplers that pass
 // only the lowest or the highest key held on the manual played, for an
 // organ whose definition has none.
+// The bass coupler's range (#1242): the lowest key held passes it only at
+// or below the chosen key; above it, a melody has no pedal.
+class BassRangeTest final : public mp::test::Test {
+public:
+  BassRangeTest() : Test("functional.control.bass-coupler-range", Category::Functional) {}
+  void run() override {
+    using M = mp::CouplerMatrix;
+    MP_CHECK(M::extremeOf(48, 48, 67, 0) == M::kLowestHeld, "whole keyboard: the lowest key is the bass");
+    MP_CHECK(M::extremeOf(48, 48, 67, 54) == M::kLowestHeld, "C3 held, range to F#3: the bass");
+    MP_CHECK(M::extremeOf(60, 60, 72, 54) == 0, "C4 the lowest held, range to F#3: no bass");
+    MP_CHECK(M::extremeOf(72, 60, 72, 54) == M::kHighestHeld, "the melody coupler is not limited");
+    MP_CHECK(M::extremeOf(54, 54, 54, 54) == (M::kLowestHeld | M::kHighestHeld), "the top key itself passes it");
+    mp::MasterpieceProcessor proc;
+    proc.setBassCouplerTop(55);
+    MP_CHECK(proc.bassCouplerTop() == 55, "the range is kept: " + std::to_string(proc.bassCouplerTop()));
+    proc.setBassCouplerTop(200);
+    MP_CHECK(proc.bassCouplerTop() == 127, "and held to a MIDI note");
+  }
+};
+static BassRangeTest g_bassRange;
+
 class ProgramExtremeCouplersTest final : public mp::test::Test {
 public:
   ProgramExtremeCouplersTest()

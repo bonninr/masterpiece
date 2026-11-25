@@ -2798,6 +2798,7 @@ juce::String MasterpieceProcessor::settingsBody() const {
   text << "compress " << (!samples_.codeSamples() ? 0 : compressSetting(samples_.codeLevel())) << "\n";
   text << "programcouplers " << (programCouplers_ ? 1 : 0) << "\n";
   text << "basscouplers " << (bassCouplers_ ? 1 : 0) << "\n";
+  if (bassTop_.load() > 0) text << "bassrange " << bassTop_.load() << "\n";
   if (pedalManual_.load() != 0) text << "pedalmanual " << pedalManual_.load() << "\n";
   text << "releases " << static_cast<int>(samples_.releaseChoice()) << "\n";
   text << "releaselength " << samples_.releaseMaxMs() << "\n";
@@ -2939,6 +2940,7 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
   }
   else if (key == "programcouplers") programCouplers_ = on;
   else if (key == "basscouplers") bassCouplers_ = on;
+  else if (key == "bassrange") bassTop_.store(juce::jlimit(0, 127, val.getIntValue()));
   else if (key == "pedalmanual") pedalManual_.store(val.getIntValue());
   else if (key == "releases")
     samples_.setReleaseChoice(static_cast<SampleLibrary::ReleaseChoice>(juce::jlimit(0, 3, val.getIntValue())));
@@ -3336,6 +3338,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   voicing_.usingB = false;
   pageWindows_.clear();
   pedalManual_.store(0);
+  bassTop_.store(0);
   combinationSet_.clear();
   combWindow_ = {};
   voicingEqSettings_ = defaultEq_;
@@ -5650,8 +5653,7 @@ int MasterpieceProcessor::extremeFor(Id keyboard, int midiNote) const {
     lowest = std::min(lowest, held.midiNote);
     highest = std::max(highest, held.midiNote);
   }
-  return (midiNote <= lowest ? CouplerMatrix::kLowestHeld : 0) |
-         (midiNote >= highest ? CouplerMatrix::kHighestHeld : 0);
+  return CouplerMatrix::extremeOf(midiNote, lowest, highest, bassTop_.load(std::memory_order_relaxed));
 }
 
 void MasterpieceProcessor::reflowExtremes(Id keyboard) {
