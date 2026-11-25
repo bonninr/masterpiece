@@ -5548,7 +5548,7 @@ void MasterpieceProcessor::keyUp(int key, int velocity) {
         held != soundingNotes_.end() &&
         std::find(sustainedKeys_.begin(), sustainedKeys_.end(), key) == sustainedKeys_.end())
       keyUpNoises(held->second);
-  if (sustainDown_ && (soundingNotes_.count(key) != 0 || heldKeySwitches_.count(key) != 0)) {
+  if (sustainDown_ && (soundingNotes_.count(key) != 0 || heldKeySwitches_.count(key) != 0 || eventKeys_.count(key) != 0)) {
     if (std::find(sustainedKeys_.begin(), sustainedKeys_.end(), key) == sustainedKeys_.end())
       sustainedKeys_.push_back(key);
     return;
@@ -5585,6 +5585,21 @@ void MasterpieceProcessor::stopNoteByKey(int key, int velocity) {
   if (const auto sent = keySends_.find(key); sent != keySends_.end()) {
     sendKey(sent->second.first, sent->second.second, velocity, false);
     keySends_.erase(sent);
+  }
+  if (eventMode()) {
+    const auto pressed = eventKeys_.find(key);
+    if (pressed == eventKeys_.end()) return;
+    const auto [keyboard, note] = pressed->second;
+    eventKeys_.erase(pressed);
+    const bool stillHeld = std::any_of(eventKeys_.begin(), eventKeys_.end(), [&](const auto& k) {
+      return k.second.first == keyboard && k.second.second == note;
+    });
+    if (stillHeld) return;
+    palletVelocity_ = velocity;
+    net().keyUp(keyboard, note);
+    setKeyDown(keyboard, note, false);
+    drainNetworkMoves();
+    return;
   }
   heldKeySwitchOrigin_.erase(key);
   if (const auto ks = heldKeySwitches_.find(key); ks != heldKeySwitches_.end()) {
@@ -5979,6 +5994,22 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
   // StopRank plays at all, and how every organ's key action sounds. This comes
   // before the no-stops check: key action speaks with nothing drawn.
   // Logged, the division inputs this key closes are noted from here on.
+  // In event mode the network plays the key: its key actions, key switches,
+  // division inputs and pallets, and the pipes they open come back through
+  // the sink. Two presses of one key (two channels) are one key down.
+  if (eventMode()) {
+    const bool already = std::any_of(eventKeys_.begin(), eventKeys_.end(), [&](const auto& k) {
+      return k.second.first == keyboard && k.second.second == midiNote;
+    });
+    eventKeys_[noteKeyId] = {keyboard, midiNote};
+    if (!already) {
+      palletVelocity_ = velocity;
+      setKeyDown(keyboard, playedNote, true);
+      net().keyDown(keyboard, midiNote, velocity);
+      drainNetworkMoves();
+    }
+    return;
+  }
   const bool traceKey = logMidi_.load(std::memory_order_acquire);
   if (traceKey) {
     tracedInputCount_ = 0;
@@ -7210,6 +7241,12 @@ void MasterpieceProcessor::setControlValue(Id controlId, int value) {
 // per-block solve: a control the organ drives itself -- a pipe-delay ramp that
 // opens a pallet once it reaches the top -- moves without anyone setting it.
 void MasterpieceProcessor::fireMovedStages() {
+  // The event network fires its own stage switches; what they moved is
+  // followed here.
+  if (eventMode()) {
+    drainNetworkMoves();
+    return;
+  }
   // Fire on whatever MOVED, not on what was set. The control a player moves is
   // often not the one with the steps behind it: Nancy's visible crescendo
   // pedal drives control 51, "Crescendo pedal (extension)", through a linkage,
@@ -7425,7 +7462,11 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   // Set what the player set, then let the organ's own wiring decide what that
   // means. On a wired console the two are different switches: Lemmer's "Pedaal
   // koppel" is 1006 and every key action that reads it looks at 10101.
+  // The event network reports these moves to the sink as well: they are
+  // followed below from lastChanges(), so the sink's copies are dropped.
+  const size_t movesBefore = networkMoves_.size();
   net().set(switchId, engaged);
+  if (networkMoves_.size() > movesBefore) networkMoves_.resize(movesBefore);
   markRememberedStateMoved();
   // The setter and the pistons the wiring moved. Klais Szikszo draws its own
   // Set, GC and cancels, each linked to the organ's real switch (Set 12, GC
@@ -7498,40 +7539,7 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
 
   // Every switch whose RESOLVED state moved — which on a wired console is
   // usually more than the one clicked.
-  for (const auto& [movedId, nowEngaged] : net().lastChanges()) {
-    (void)nowEngaged;
-    // Every stop the moved switch controls, and every stop it STANDS for
-    // whether or not the wiring reaches it: on Friesach the knob and the
-    // stop's own switch are separate chains, so the knob moves alone and
-    // this is the only thing that draws the stop with it. Each is drawn while
-    // any of its switches is engaged.
-    auto follow = [this](Id stopId) {
-      if (stopSourcesEngaged(stopId)) engagedStops_.insert(stopId);
-      else engagedStops_.erase(stopId);
-      shownStale_ = true;
-    };
-    if (const auto stopIt = stopBySwitch_.find(movedId); stopIt != stopBySwitch_.end()) {
-      for (Id stopId : stopIt->second) follow(stopId);
-      stopsChanged_.store(true, std::memory_order_release);
-    }
-    if (const auto stoodFor = stopsBySwitch_.find(movedId);
-        stoodFor != stopsBySwitch_.end())
-      for (Id stopId : stoodFor->second) follow(stopId);
-
-    // Reflect the change on the physical console, if the player wants that.
-    // A switch with sends of its own is lit by those, every block.
-    if (midiFeedback_ && (midiOut_ != nullptr || outgoingProbe) &&
-        !midiMap_.hasSends(MidiTargetKind::Switch, movedId)) {
-      // To the console the binding listens to, where its port is known.
-      if (const auto* b = midiMap_.bindingFor(MidiTargetKind::Switch, movedId))
-        addEcho(echoBuffer(b->source.deviceId), b->source, nowEngaged);
-    }
-
-    // The mechanical sound belongs to the switch that actually moved.
-    triggerNoiseFor(movedId, nowEngaged);
-    palletMoved(movedId, nowEngaged);
-    divisionInputMoved(movedId, nowEngaged);
-  }
+  for (const auto& [movedId, nowEngaged] : net().lastChanges()) followSwitch(movedId, nowEngaged);
 
   // A piston fires on the way in, never on the way out, and then lets itself
   // out again: it is a button, not a drawstop, and leaving it latched would
@@ -7545,6 +7553,83 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   // drives it lets it out again when released.
   for (size_t i = 0; i < wiredCount; ++i)
     if (!firePiston(wiredPistons[i])) fireConsoleFunction(wiredPistons[i]);
+}
+
+// What follows a switch that moved, whoever moved it: the stops it draws, its
+// lamp, its noise, and on the legacy network the pallets and division inputs
+// it opens (the event network plays those itself).
+void MasterpieceProcessor::followSwitch(Id movedId, bool nowEngaged) {
+  // Every stop the moved switch controls, and every stop it STANDS for
+  // whether or not the wiring reaches it: on Friesach the knob and the
+  // stop's own switch are separate chains, so the knob moves alone and
+  // this is the only thing that draws the stop with it. Each is drawn while
+  // any of its switches is engaged.
+  auto follow = [this](Id stopId) {
+    if (stopSourcesEngaged(stopId)) engagedStops_.insert(stopId);
+    else engagedStops_.erase(stopId);
+    shownStale_ = true;
+  };
+  if (const auto stopIt = stopBySwitch_.find(movedId); stopIt != stopBySwitch_.end()) {
+    for (Id stopId : stopIt->second) follow(stopId);
+    stopsChanged_.store(true, std::memory_order_release);
+  }
+  if (const auto stoodFor = stopsBySwitch_.find(movedId);
+      stoodFor != stopsBySwitch_.end())
+    for (Id stopId : stoodFor->second) follow(stopId);
+
+  // Reflect the change on the physical console, if the player wants that.
+  // A switch with sends of its own is lit by those, every block.
+  if (midiFeedback_ && (midiOut_ != nullptr || outgoingProbe) &&
+      !midiMap_.hasSends(MidiTargetKind::Switch, movedId)) {
+    // To the console the binding listens to, where its port is known.
+    if (const auto* b = midiMap_.bindingFor(MidiTargetKind::Switch, movedId))
+      addEcho(echoBuffer(b->source.deviceId), b->source, nowEngaged);
+  }
+
+  // The mechanical sound belongs to the switch that actually moved.
+  triggerNoiseFor(movedId, nowEngaged);
+  if (eventMode()) return;
+  palletMoved(movedId, nowEngaged);
+  divisionInputMoved(movedId, nowEngaged);
+}
+
+// The moves the event network made on its own -- a stage switch a control
+// swept past, a key's or a division input's switch, a wire from either --
+// followed as setSwitchEngaged() follows the moves a player makes, pistons
+// reached through the wiring included.
+void MasterpieceProcessor::drainNetworkMoves() {
+  if (networkMoves_.empty()) return;
+  engagedSwitches_ = net().engagedSwitches();
+  shownStale_ = true;
+  for (size_t i = 0; i < networkMoves_.size(); ++i) {
+    const auto [movedId, nowEngaged] = networkMoves_[i];
+    followSwitch(movedId, nowEngaged);
+    if (nowEngaged && (combinations_.combinationForSwitch(movedId) != 0 || consoleFunctions_.count(movedId) != 0))
+      if (!firePiston(movedId)) fireConsoleFunction(movedId);
+  }
+  networkMoves_.clear();
+  engagedSwitches_ = net().engagedSwitches();
+}
+
+void MasterpieceProcessor::NetworkSink::switchMoved(Id switchId, bool engaged, double) {
+  if (owner->networkMoves_.size() < owner->networkMoves_.capacity())
+    owner->networkMoves_.emplace_back(switchId, engaged);
+  else
+    ++owner->networkMovesDropped_;
+}
+
+void MasterpieceProcessor::NetworkSink::pipeMoved(Id rankId, Id pipeId, bool on, double, const Pipe* pipe) {
+  // Nothing sounds while the organ loads; replaySounding() starts what is
+  // speaking once it is live.
+  if (pipe == nullptr || !owner->palletsLive_.load(std::memory_order_acquire)) return;
+  const uint64_t noteId = networkNoteId(rankId, pipeId);
+  if (on) {
+    owner->startPipeLayers(*pipe, rankId, pipe->midiNote, owner->palletVelocity_, noteId);
+  } else {
+    NoteRelease rel;
+    rel.velocity = owner->palletVelocity_;
+    owner->voices_.noteOffPipe(noteId, pipeId, rel);
+  }
 }
 
 bool MasterpieceProcessor::fireConsoleFunction(Id switchId) {
@@ -9190,7 +9275,13 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // Panic did nothing for it (#276).
   // A note a drawn switch holds -- a motor or blower noise -- is not stuck,
   // and sounds on.
-  if (panic) {
+  // In event mode the network lets the keys go, and their pipes with them;
+  // a pipe a drawn switch holds sounds on.
+  if (panic && eventMode()) {
+    eventKeys_.clear();
+    net().releaseAllKeys();
+    drainNetworkMoves();
+  } else if (panic) {
     voices_.releaseAll([this](uint64_t noteId) {
       for (const auto& [sw, id] : palletNotes_)
         if (id == noteId) return true;
@@ -9207,12 +9298,16 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   if (timeLinkages_.exchange(false, std::memory_order_acq_rel)) net().setTimed(true);
   if (getSampleRate() > 0.0) net().advance(buffer.getNumSamples() / getSampleRate());
   net().propagate(0, &engagedSwitches_);
+  if (eventMode()) drainNetworkMoves();
   if (stagesReady_.load(std::memory_order_acquire)) fireMovedStages();
   // A pallet switch that was engaged before the organ went live never moved
   // while pallets listened, so its pipes are opened here, once.
-  if (palletsOpenEngaged_.exchange(false, std::memory_order_acq_rel))
-    for (const auto& [switchId, pipes] : palletPipes_)
-      if (net().engaged(switchId)) palletMoved(switchId, true);
+  if (palletsOpenEngaged_.exchange(false, std::memory_order_acq_rel)) {
+    if (eventMode()) net().replaySounding();
+    else
+      for (const auto& [switchId, pipes] : palletPipes_)
+        if (net().engaged(switchId)) palletMoved(switchId, true);
+  }
   if (lampsAfterLoad_.exchange(false, std::memory_order_acq_rel)) sendLampsAfterLoad();
   emitSends();
   emitPistonLamps();
@@ -9820,9 +9915,22 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   buildCouplerInputs();
   buildProgramCouplers();
   // The network the organ plays through, legacy or event, for this load.
-  network_ = useEventNetwork_.load(std::memory_order_relaxed) || eventNetworkFromEnvironment()
-                 ? static_cast<OrganNetwork*>(&eventNetwork_)
-                 : static_cast<OrganNetwork*>(&legacyNetwork_);
+  {
+    const bool event = networkOverride_.has_value()
+                           ? *networkOverride_ == OrganNetwork::Kind::Event
+                           : useEventNetwork_.load(std::memory_order_relaxed) || eventNetworkFromEnvironment();
+    network_ = event ? static_cast<OrganNetwork*>(&eventNetwork_) : static_cast<OrganNetwork*>(&legacyNetwork_);
+    // In event mode the network plays the keys, pipes and stage switches,
+    // and tells the processor what moved (NetworkSink).
+    networkSink_.owner = this;
+    eventNetwork_.setListener(&networkSink_);
+    eventNetwork_.setDrivesStages(true);
+    eventNetwork_.setRules(NetworkRules::fromEnvironment());
+    networkMoves_.clear();
+    networkMoves_.reserve(kNetworkMoves);
+    eventKeys_.clear();
+    eventKeys_.reserve(256);
+  }
   net().resetSwitches(model_);
   // Where the player left the switches the organ remembers, set as the player
   // would so their wiring follows: Nancy's "start blower on organ load" is
@@ -9846,6 +9954,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   }
   for (Id id : snapshotStops_) engagedStops_.insert(id);
   engagedSwitches_ = net().engagedSwitches();
+  networkMoves_.clear();
   shownStale_ = true;
   buildPalletIndex();
 
@@ -9879,6 +9988,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   // between the normal and tremmed scaling controls. Without this call both
   // sit at their declared defaults and the crossfade never happens.
   net().propagate(0, &engagedSwitches_);
+  // What the load moved is the starting state, not moves to follow.
+  networkMoves_.clear();
 
   // Pistons. The organ's own setter is the switch Hauptwerk assigns code 12,
   // "Comb. Master Capture"; an organ without one leaves capture to the UI.
@@ -10100,7 +10211,12 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   //     crescendo steps engaged. A start-up control is internal by nature:
   //     Nancy's are "__DelayBlower" and "__DelayInit" and no one ever sees
   //     them.
-  {
+  // On the event network the start signal is its own general rule
+  // (NetworkRules::startPulse, timedStart), with no name match.
+  if (eventMode()) {
+    net().startUp();
+    drainNetworkMoves();
+  } else {
     std::unordered_set<Id> driven;
     for (const auto& l : model_.controlLinkages)
       if (l.destControlId != 0) driven.insert(l.destControlId);

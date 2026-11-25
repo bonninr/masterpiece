@@ -9,10 +9,16 @@ namespace {
 constexpr int kNotes = 128;
 // Generous, and only a guard: a console cannot reach it in one instant.
 constexpr int kMaxSteps = 200000;
-// The inertia model's integration step.
-constexpr double kInertiaTick = 0.001;
+// The inertia model: one event per 5 ms, integrated in 1 ms sub-steps.
+constexpr double kInertiaTick = 0.005;
+constexpr double kInertiaSubStep = 0.001;
+constexpr int kInertiaSubSteps = 5;
 // Keyboards chain through key actions; a file can loop them.
 constexpr int kMaxKeyDepth = 8;
+// Willis: the delay to the next one-step move, msPerStep with one step left.
+double willisDelay(double msPerStep, double target, double pos) {
+  return msPerStep / std::max(1.0, std::abs(target - pos)) / 1000.0;
+}
 // No condition, and a condition naming a switch the organ does not declare
 // (read as disengaged, as SwitchNetwork reads it).
 constexpr int32_t kNoCondition = -1, kUnknownSwitch = -2;
@@ -39,6 +45,7 @@ void EventNetwork::Csr::build(size_t owners, const std::vector<std::pair<int32_t
 EventNetwork::EventNetwork() {
   linksByCondition_.build(0, {});
   inputsBySwitch_.build(0, {});
+  inputSwitchesByNote_.build(0, {});
   wiresBySource_.build(0, {});
   wiresByCondition_.build(0, {});
   linksBySource_.build(0, {});
@@ -244,6 +251,14 @@ void EventNetwork::resetSwitches(const OrganModel& model) {
     inputs_.emplace_back(d->second, in.midiNote);
   }
   inputsBySwitch_.build(n, bySwitch);
+  // And by the division note they play, for the other direction: a note the
+  // keys reach closes its input switch (Sherborne, #1228).
+  std::vector<std::pair<int32_t, int32_t>> byNote;
+  for (const auto& [s, i] : bySwitch)
+    byNote.emplace_back(inputs_[static_cast<size_t>(i)].first * kNotes + inputs_[static_cast<size_t>(i)].second, s);
+  inputSwitchesByNote_.build(divs.size() * kNotes, byNote);
+  divKeyed_.assign(divs.size() * kNotes, 0);
+  divKeyedNext_.assign(divs.size() * kNotes, 0);
 
   // Ranks and pipes.
   const std::vector<Id> ranks = sortedIds(model.ranks);
@@ -252,6 +267,7 @@ void EventNetwork::resetSwitches(const OrganModel& model) {
   rankPipeAt_.assign(ranks.size() * kNotes, -1);
   pipeRank_.clear();
   pipeId_.clear();
+  pipePtr_.clear();
   pipeHasPallet_.clear();
   std::vector<std::pair<int32_t, int32_t>> byPallet;
   for (size_t r = 0; r < ranks.size(); ++r) {
@@ -259,6 +275,7 @@ void EventNetwork::resetSwitches(const OrganModel& model) {
       const auto pi = static_cast<int32_t>(pipeId_.size());
       pipeRank_.push_back(ranks[r]);
       pipeId_.push_back(p.pipeId);
+      pipePtr_.push_back(&p);
       const int32_t pallet = p.palletSwitchId != 0 ? switchSlot(p.palletSwitchId) : -1;
       pipeHasPallet_.push_back(p.palletSwitchId != 0 ? 1 : 0);
       if (pallet >= 0) {
@@ -276,6 +293,10 @@ void EventNetwork::resetSwitches(const OrganModel& model) {
   for (int32_t s = 0; s < static_cast<int32_t>(n); ++s)
     if (pipesByPallet_.begin(s) != pipesByPallet_.end(s)) palletSwitches_.push_back(s);
   pipeOn_.assign(pipeId_.size(), 0);
+  onList_.clear();
+  onList_.reserve(pipeId_.size());
+  nextList_.clear();
+  nextList_.reserve(pipeId_.size());
   pipeNext_.assign(pipeId_.size(), 0);
 
   // Stops: each StopRank row the keys hold, under the stop's switch.
@@ -315,10 +336,10 @@ void EventNetwork::resetSwitches(const OrganModel& model) {
   engagedSet_.reserve(n);
   changes_.reserve(4096);
 
-  // The organ's defaults, then every wire judged once against them: a wire
-  // that fires asserts its engage action; one that does not fire asserts its
-  // disengage action only when that engages (an inverting 7/4 wire holding
-  // its destination on). A toggle does nothing: loading is not a press.
+  // The organ's defaults, then (NetworkRules::loadSettle) every wire judged
+  // once against them: a wire that fires asserts its engage action; one that
+  // does not fire asserts its disengage action only when that engages (an
+  // inverting 7/4 wire holding its destination on).
   // The defaults are the starting state, not moves: no wire sees an edge.
   for (size_t i = 0; i < n; ++i) {
     if (!model.switches.at(ids[i]).defaultEngaged) continue;
@@ -335,7 +356,8 @@ void EventNetwork::resetSwitches(const OrganModel& model) {
     const Wire& x = wires_[w];
     const bool f = fires(static_cast<int32_t>(w));
     fired_[w] = f ? 1 : 0;
-    if (x.engage == 3) continue;
+    // NetworkRules::loadSettle; a toggle never: loading is not a press.
+    if (x.engage == 3 || !rules_.loadSettle) continue;
     if (!f) {
       if (engages(x.disengage)) push(now_, Ev::SetSwitch, x.dst, 1);
       continue;
@@ -577,7 +599,7 @@ void EventNetwork::evalLink(int32_t l) {
         if (k.pos == target) return;
         k.scheduled = true;
         ++movingCount_;
-        if (k.type == 2) push(now_ + k.msPerStep / 1000.0, Ev::WillisStep, l);
+        if (k.type == 2) push(now_ + willisDelay(k.msPerStep, k.target, k.pos), Ev::WillisStep, l);
         else push(now_ + kInertiaTick, Ev::InertiaTick, l);
       }
       return;
@@ -586,8 +608,11 @@ void EventNetwork::evalLink(int32_t l) {
   writeControl(k.dst, target);
 }
 
-// Willis: one step every msPerStep milliseconds, toward where the source
-// last sent it.
+// Willis, as its field names it ("increment speed in milliseconds per step
+// with one step difference"): the destination moves one step at a time toward
+// where the source last sent it, at a speed proportional to the distance left,
+// one step per msPerStep with one step to go. Each step is one event, due
+// msPerStep / distance after the last.
 void EventNetwork::willisStep(int32_t l) {
   Link& k = links_[static_cast<size_t>(l)];
   k.scheduled = false;
@@ -599,21 +624,31 @@ void EventNetwork::willisStep(int32_t l) {
   if (k.pos != k.target) {
     k.scheduled = true;
     ++movingCount_;
-    push(now_ + k.msPerStep / 1000.0, Ev::WillisStep, l);
+    push(now_ + willisDelay(k.msPerStep, k.target, k.pos), Ev::WillisStep, l);
   }
 }
 
 // Inertia: a mass pulled toward the target by accel per step left, damped
-// per second, integrated in 1 ms steps until it comes to rest.
+// per second. One event every kInertiaTick, integrated inside it in 1 ms
+// sub-steps (semi-implicit Euler), until it comes to rest: within a
+// hundredth of a step and nearly still. A link too stiff for a 1 ms step
+// (sqrt(accel) or damping above 1000 per second) arrives at once: that is
+// numerics, not a rule.
 void EventNetwork::inertiaTick(int32_t l) {
   Link& k = links_[static_cast<size_t>(l)];
   k.scheduled = false;
   --movingCount_;
   if (!linkLive(l)) return;
-  k.vel += (k.accel * (k.target - k.pos) - k.damping * k.vel) * kInertiaTick;
-  k.pos += k.vel * kInertiaTick;
-  const bool rest = std::abs(k.target - k.pos) < 1e-3 && std::abs(k.vel) < 1e-2;
-  if (rest) k.pos = k.target;
+  bool rest = std::sqrt(k.accel) * kInertiaSubStep > 1.0 || k.damping * kInertiaSubStep > 1.0;
+  for (int i = 0; i < kInertiaSubSteps && !rest; ++i) {
+    k.vel += (k.accel * (k.target - k.pos) - k.damping * k.vel) * kInertiaSubStep;
+    k.pos += k.vel * kInertiaSubStep;
+    rest = std::abs(k.target - k.pos) < 1e-2 && std::abs(k.vel) < 5e-2;
+  }
+  if (rest) {
+    k.pos = k.target;
+    k.vel = 0.0;
+  }
   writeControl(k.dst, k.pos);
   if (!rest) {
     k.scheduled = true;
@@ -700,6 +735,41 @@ void EventNetwork::advance(double seconds) {
   run(now_ + seconds);
 }
 
+
+// NetworkRules::startPulse and timedStart. A start signal is an internal
+// control -- nothing drives it, nothing draws it -- that the organ moves once
+// as it comes up: one with stage switches goes to its top; one feeding a
+// timed linkage or a staged control goes from the end it rests at to the
+// other. Ids in order, so the trace is stable.
+void EventNetwork::startUp() {
+  if (model_ == nullptr) return;
+  if (rules_.timedStart) timed_ = true;
+  if (!rules_.startPulse) return run(now_);
+  const size_t n = controlId_.size();
+  std::vector<uint8_t> driven(n, 0);
+  for (const Link& k : links_) driven[static_cast<size_t>(k.dst)] = 1;
+  for (const Double& d : doubles_) driven[static_cast<size_t>(d.dst)] = 1;
+  auto staged = [this](int32_t c) { return stageRowsByControl_.begin(c) != stageRowsByControl_.end(c); };
+  for (size_t i = 0; i < n; ++i) {
+    const auto c = static_cast<int32_t>(i);
+    if (driven[i] != 0) continue;
+    const auto cc = model_->continuousControls.find(controlId_[i]);
+    if (cc == model_->continuousControls.end() || cc->second.imageSetInstanceId != 0) continue;
+    if (staged(c)) {
+      writeControl(c, hi_[i]);
+      continue;
+    }
+    bool feedsStart = false;
+    for (const int32_t* l = linksBySource_.begin(c); l != linksBySource_.end(c) && !feedsStart; ++l) {
+      const Link& k = links_[static_cast<size_t>(*l)];
+      feedsStart = k.isTimed() || staged(k.dst);
+    }
+    if (!feedsStart || lo_[i] == hi_[i]) continue;
+    if (val_[i] == lo_[i]) writeControl(c, hi_[i]);
+    else if (val_[i] == hi_[i]) writeControl(c, lo_[i]);
+  }
+  run(now_);
+}
 // ---------------------------------------------------------------- keys
 
 void EventNetwork::keyDown(Id keyboardId, int midiNote, int /*velocity*/) {
@@ -735,7 +805,7 @@ void EventNetwork::walkKey(int32_t kb, int note, int depth) {
     const int to = note + x.inc;
     if (to < 0 || to >= kNotes) continue;
     if (x.destKb >= 0) walkKey(x.destKb, to, depth + 1);
-    else ++divNoteNext_[static_cast<size_t>(x.destDiv) * kNotes + static_cast<size_t>(to)];
+    else ++divKeyedNext_[static_cast<size_t>(x.destDiv) * kNotes + static_cast<size_t>(to)];
   }
 }
 
@@ -745,7 +815,7 @@ void EventNetwork::walkKey(int32_t kb, int note, int depth) {
 void EventNetwork::settleSounding() {
   soundDirty_ = false;
   std::fill(keyDownNext_.begin(), keyDownNext_.end(), 0);
-  std::copy(divInput_.begin(), divInput_.end(), divNoteNext_.begin());
+  std::fill(divKeyedNext_.begin(), divKeyedNext_.end(), 0);
   const auto keyboards = static_cast<int32_t>(keyHeld_.size() / kNotes);
   for (int32_t kb = 0; kb < keyboards; ++kb)
     for (int n = 0; n < kNotes; ++n)
@@ -758,6 +828,20 @@ void EventNetwork::settleSounding() {
   }
   keyDown_.swap(keyDownNext_);
 
+  // A division note the keys reach closes its input switches, and opens them
+  // when the last key reaching it lets go. The note sounds while it is keyed
+  // or while an input switch of it is engaged, by whatever engaged it.
+  for (size_t k = 0; k < divKeyed_.size(); ++k) {
+    const bool keyed = divKeyedNext_[k] != 0;
+    if (keyed != (divKeyed_[k] != 0)) {
+      const auto note = static_cast<int32_t>(k);
+      for (const int32_t* s = inputSwitchesByNote_.begin(note); s != inputSwitchesByNote_.end(note); ++s)
+        push(now_, Ev::SetSwitch, *s, keyed ? 1 : 0);
+    }
+    divNoteNext_[k] = static_cast<uint16_t>(divKeyedNext_[k] + divInput_[k]);
+  }
+  divKeyed_.swap(divKeyedNext_);
+
   for (size_t k = 0; k < divNote_.size(); ++k) {
     const bool on = divNoteNext_[k] != 0;
     if (on != (divNote_[k] != 0) && listener_ != nullptr)
@@ -765,7 +849,13 @@ void EventNetwork::settleSounding() {
   }
   divNote_.swap(divNoteNext_);
 
-  std::fill(pipeNext_.begin(), pipeNext_.end(), 0);
+  // The pipes reached now, counted into pipeNext_ (all zero between settles)
+  // and listed as they are first reached; compared with the list of the
+  // pipes speaking, so a settle costs what sounds, not the organ's size.
+  nextList_.clear();
+  auto reach = [this](int32_t p) {
+    if (pipeNext_[static_cast<size_t>(p)]++ == 0) nextList_.push_back(p);
+  };
   const auto divisions = static_cast<int32_t>(divisionId_.size());
   for (int32_t d = 0; d < divisions; ++d)
     for (int n = 0; n < kNotes; ++n) {
@@ -779,18 +869,38 @@ void EventNetwork::settleSounding() {
         const int32_t rank =
             x.altRank >= 0 && x.altSwitch >= 0 && on_[static_cast<size_t>(x.altSwitch)] != 0 ? x.altRank : x.rank;
         const int32_t p = rankPipeAt_[static_cast<size_t>(rank) * kNotes + static_cast<size_t>(pn)];
-        if (p >= 0 && pipeHasPallet_[static_cast<size_t>(p)] == 0) ++pipeNext_[static_cast<size_t>(p)];
+        if (p >= 0 && pipeHasPallet_[static_cast<size_t>(p)] == 0) reach(p);
       }
     }
   for (int32_t s : palletSwitches_)
     if (on_[static_cast<size_t>(s)] != 0)
-      for (const int32_t* p = pipesByPallet_.begin(s); p != pipesByPallet_.end(s); ++p)
-        ++pipeNext_[static_cast<size_t>(*p)];
-  for (size_t p = 0; p < pipeOn_.size(); ++p) {
-    const bool on = pipeNext_[p] != 0;
-    if (on != (pipeOn_[p] != 0) && listener_ != nullptr) listener_->pipeMoved(pipeRank_[p], pipeId_[p], on, now_);
+      for (const int32_t* p = pipesByPallet_.begin(s); p != pipesByPallet_.end(s); ++p) reach(*p);
+  for (int32_t p : onList_)
+    if (pipeNext_[static_cast<size_t>(p)] == 0) {
+      pipeOn_[static_cast<size_t>(p)] = 0;
+      if (listener_ != nullptr) listener_->pipeMoved(pipeRank_[p], pipeId_[p], false, now_, pipePtr_[p]);
+    }
+  for (int32_t p : nextList_) {
+    const auto i = static_cast<size_t>(p);
+    if (pipeOn_[i] == 0 && listener_ != nullptr) listener_->pipeMoved(pipeRank_[i], pipeId_[i], true, now_, pipePtr_[i]);
+    pipeOn_[i] = pipeNext_[i];
+    pipeNext_[i] = 0;
   }
-  pipeOn_.swap(pipeNext_);
+  onList_.swap(nextList_);
+}
+
+
+void EventNetwork::releaseAllKeys() {
+  if (std::find(keyHeld_.begin(), keyHeld_.end(), uint8_t{1}) == keyHeld_.end()) return;
+  std::fill(keyHeld_.begin(), keyHeld_.end(), 0);
+  soundDirty_ = true;
+  run(now_);
+}
+
+void EventNetwork::replaySounding() {
+  if (listener_ == nullptr) return;
+  for (size_t p = 0; p < pipeOn_.size(); ++p)
+    if (pipeOn_[p] != 0) listener_->pipeMoved(pipeRank_[p], pipeId_[p], true, now_, pipePtr_[p]);
 }
 
 size_t EventNetwork::soundingPipes() const {

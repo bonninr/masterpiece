@@ -39,7 +39,7 @@ public:
       pending.push_back("division " + std::to_string(division) + " " + std::to_string(note) + (on ? " on" : " off") +
                         "  | " + nameIn(model_.divisions, division));
   }
-  void pipeMoved(Id rank, Id pipe, bool on, double) override {
+  void pipeMoved(Id rank, Id pipe, bool on, double, const Pipe*) override {
     if (sounding_)
       pending.push_back("pipe " + std::to_string(rank) + ":" + std::to_string(pipe) + (on ? " on" : " off") +
                         "  | " + nameIn(model_.ranks, rank));
@@ -122,6 +122,7 @@ std::vector<std::string> runTrace(const OrganModel& model, OrganNetwork::Kind ki
   net->resetControls(model, windStart.empty() ? nullptr : &windStart);
   net->propagate(0, &net->engagedSwitches());
   net->setTimed(true);
+  net->startUp();
 
   std::vector<Id> switches, controls;
   for (const auto& kv : model.switches) switches.push_back(kv.first);

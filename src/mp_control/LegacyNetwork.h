@@ -50,6 +50,7 @@ public:
 
   void keyDown(Id keyboardId, int midiNote, int velocity) override;
   void keyUp(Id keyboardId, int midiNote) override;
+  void releaseAllKeys() override;
 
   double now() const override { return clock_; }
 

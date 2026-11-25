@@ -26,9 +26,10 @@
 //
 //   ContinuousControlLinkage: while its condition holds, a change of its
 //   source sets its destination to (source' + increment) * coefficient.
-//   Type 1 at once; type 2 (Willis) moves the destination one step every
-//   willisMsPerStep milliseconds until it arrives; type 3 (inertia) moves it
-//   as a damped mass, integrated in 1 ms events. Double linkages add,
+//   Type 1 at once; type 2 (Willis) moves the destination one step at a time,
+//   at a speed proportional to the distance left (willisMsPerStep per step
+//   with one step to go: the field's own name); type 3 (inertia) moves it
+//   as a damped mass, 5 ms events of 1 ms sub-steps. Double linkages add,
 //   subtract or multiply, at once.
 //
 //   ContinuousControlStageSwitch: a control crossing a threshold engages or
@@ -47,7 +48,8 @@
 //   * Codes 4 and 7 act as 1 and 2; whatever else Hauptwerk means by them is
 //     not modelled.
 //   * ContinuousControlBank's pinned twins and change-only linkages into
-//     drawn controls; its Willis is an exponential lag, here a linear step.
+//     drawn controls; Willis integrated per block there, one event per step
+//     here.
 //   * Key actions: ActionTypeCode 1 from a keyboard only; no pizzicato,
 //     reiteration, bass/melody, division sources, effect codes, and no
 //     every-division fallback for a keyboard with no key actions.
@@ -93,9 +95,14 @@ public:
   bool moving() const override { return movingCount_ > 0; }
 
   void setDrivesStages(bool on) override { drivesStages_ = on; }
+  void setRules(const NetworkRules& rules) override { rules_ = rules; }
+  void startUp() override;
+  const NetworkRules& rules() const { return rules_; }
 
   void keyDown(Id keyboardId, int midiNote, int velocity) override;
   void keyUp(Id keyboardId, int midiNote) override;
+  void releaseAllKeys() override;
+  void replaySounding() override;
 
   double now() const override { return now_; }
 
@@ -202,6 +209,7 @@ private:
   bool ranAway_ = false;
   bool timed_ = false;
   bool drivesStages_ = false;
+  NetworkRules rules_;
   bool recording_ = false;  // a set() or holdOff() is filling changes_
   bool soundDirty_ = false;
   int movingCount_ = 0;
@@ -244,13 +252,17 @@ private:
   std::vector<uint16_t> keyDown_, keyDownNext_;   // played or coupled, per keyboard note
   std::vector<uint16_t> divInput_;            // division inputs engaged, per division note
   std::vector<uint16_t> divNote_, divNoteNext_;
+  std::vector<uint16_t> divKeyed_, divKeyedNext_;  // reached by key actions, per division note
+  Csr inputSwitchesByNote_;                       // division note -> its input switches
   std::vector<std::pair<int32_t, int>> inputs_;  // division input -> division slot, note
   std::vector<StopRankRef> stopRanks_;
   Csr stopRanksByDivision_;
   std::vector<int32_t> rankPipeAt_;           // rank * 128 + note -> pipe, -1
   std::vector<Id> pipeRank_, pipeId_;
+  std::vector<const Pipe*> pipePtr_;
   std::vector<uint8_t> pipeHasPallet_;
   std::vector<uint16_t> pipeOn_, pipeNext_;
+  std::vector<int32_t> onList_, nextList_;    // pipes speaking; reached this settle
   std::vector<int32_t> palletSwitches_;       // switches that are some pipe's pallet
   Csr pipesByPallet_;                         // indexed by switch slot
 };

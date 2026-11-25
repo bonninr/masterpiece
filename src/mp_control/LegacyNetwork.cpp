@@ -3,6 +3,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 namespace mp {
 
@@ -16,6 +17,18 @@ bool eventNetworkFromEnvironment() {
   return v != nullptr && std::strcmp(v, "1") == 0;
 }
 
+
+NetworkRules NetworkRules::fromEnvironment() {
+  NetworkRules r;
+  const char* v = std::getenv("MP_NETWORK_RULES");
+  if (v == nullptr) return r;
+  const std::string s(v);
+  auto off = [&s](const char* name) { return s.find(std::string("-") + name) != std::string::npos; };
+  r.loadSettle = !off("loadSettle");
+  r.startPulse = !off("startPulse");
+  r.timedStart = !off("timedStart");
+  return r;
+}
 const char* organNetworkName(OrganNetwork::Kind kind) {
   return kind == OrganNetwork::Kind::Event ? "event" : "legacy";
 }
@@ -96,4 +109,11 @@ void LegacyNetwork::keyUp(Id keyboardId, int midiNote) {
   heldKeys_.erase(held);
 }
 
+
+void LegacyNetwork::releaseAllKeys() {
+  while (!heldKeys_.empty()) {
+    const int key = heldKeys_.begin()->first;
+    keyUp(static_cast<Id>(key / 256), key % 256);
+  }
+}
 } // namespace mp

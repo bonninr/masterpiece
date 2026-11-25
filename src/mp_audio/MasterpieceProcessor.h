@@ -1128,6 +1128,9 @@ public:
   }
   // The network the loaded organ plays through.
   OrganNetwork::Kind networkKind() const { return network_->kind(); }
+  // The network for the next loads, for the A/B harness: not saved, and it
+  // wins over the setting and the environment until cleared (nullopt).
+  void setNetworkOverride(std::optional<OrganNetwork::Kind> kind) { networkOverride_ = kind; }
   // Whether the player's pistons and sequencer leave the bass and melody
   // couplers alone: not stored, not recalled (PlayerCombinations). Off by
   // default. The program's, for every organ.
@@ -2544,6 +2547,8 @@ public:
     voices_.setSampleProvider(std::move(provider));
   }
   const EngineStats& voiceStats() const { return voices_.stats(); }
+  // The voice pool, read-only: the trace harness lists the pipes speaking.
+  const VoiceEngine& voiceEngine() const { return voices_; }
 
   // Runtime DSP toggles (ADR-005). DSP always ships; this is how a slow
   // machine turns it off without a rebuild.
@@ -2990,6 +2995,27 @@ private:
   OrganNetwork* network_ = &legacyNetwork_;
   OrganNetwork& net() { return *network_; }
   const OrganNetwork& net() const { return *network_; }
+  bool eventMode() const { return network_ == &eventNetwork_; }
+  // Event mode: what the event network tells the processor. A switch it moved
+  // on its own is queued and followed (drainNetworkMoves); a pipe it opened or
+  // shut starts or releases that pipe's voices, under a note id of its own.
+  struct NetworkSink final : NetworkListener {
+    MasterpieceProcessor* owner = nullptr;
+    void switchMoved(Id switchId, bool engaged, double time) override;
+    void pipeMoved(Id rankId, Id pipeId, bool on, double time, const Pipe* pipe) override;
+  };
+  NetworkSink networkSink_;
+  static constexpr size_t kNetworkMoves = 8192;
+  std::vector<std::pair<Id, bool>> networkMoves_;  // reserved at load, never grown
+  size_t networkMovesDropped_ = 0;
+  // Keys held in event mode, by press (noteKey / mappedNoteKey): keyboard, note.
+  std::unordered_map<int, std::pair<Id, int>> eventKeys_;
+  void followSwitch(Id movedId, bool nowEngaged);
+  void drainNetworkMoves();
+  static uint64_t networkNoteId(Id rankId, Id pipeId) {
+    return (uint64_t{1} << 62) | (static_cast<uint64_t>(static_cast<uint32_t>(rankId)) << 31) |
+           static_cast<uint32_t>(pipeId);
+  }
   std::unordered_set<Id> engagedSwitches_;
   std::string organRootDir_;
   juce::File organRootOverride_;
@@ -3590,6 +3616,7 @@ private:
   // Read on the audio thread, where console and MIDI pistons are pressed.
   std::atomic<bool> setOffAfterStore_{false};
   std::atomic<bool> useEventNetwork_{false};
+  std::optional<OrganNetwork::Kind> networkOverride_;
   bool leaveBassAndMelody_ = false;
   bool pistonsStayLit_ = false;
   std::atomic<bool> showPlayedKeys_{true};

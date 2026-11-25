@@ -14,6 +14,7 @@
 
 #ifdef MP_TEST_HAS_AUDIO
 #include "../src/mp_audio/MasterpieceProcessor.h"
+#include "../src/mp_audio/ProcessorTrace.h"
 #endif
 
 #include <cmath>
@@ -163,7 +164,7 @@ mp::OrganModel load(const std::string& xml) {
 // Records what a network reports.
 struct Pipes final : mp::NetworkListener {
   std::vector<std::string> moved;
-  void pipeMoved(mp::Id rankId, mp::Id pipeId, bool on, double) override {
+  void pipeMoved(mp::Id rankId, mp::Id pipeId, bool on, double, const mp::Pipe*) override {
     moved.push_back(std::to_string(rankId) + ":" + std::to_string(pipeId) + (on ? " on" : " off"));
   }
 };
@@ -236,12 +237,12 @@ public:
     n.setValue(1, 5);
     MP_CHECK(n.value(2) == 0, "Willis: nothing moves at once");
     MP_CHECK(n.moving(), "Willis: on its way");
-    n.advance(0.025);
-    MP_CHECK(n.value(2) == 2, "Willis: one step per 10 ms, two at 25 ms: " + std::to_string(n.value(2)));
-    n.advance(0.040);
-    MP_CHECK(n.value(2) == 5, "Willis: arrived by 65 ms: " + std::to_string(n.value(2)));
-    for (int i = 0; i < 300; ++i) n.advance(0.01);
-    MP_CHECK(n.value(3) == 5, "inertia: settled on the source in 3 s: " + std::to_string(n.value(3)));
+    n.advance(0.005);
+    MP_CHECK(n.value(2) == 2, "Willis: faster with more to go, two steps in 5 ms (2 + 2.5 ms): " + std::to_string(n.value(2)));
+    n.advance(0.020);
+    MP_CHECK(n.value(2) == 5, "Willis: the last step takes the full 10 ms, arrived by 25 ms: " + std::to_string(n.value(2)));
+    for (int i = 0; i < 500; ++i) n.advance(0.01);
+    MP_CHECK(n.value(3) == 5, "inertia: settled on the source in 5 s: " + std::to_string(n.value(3)));
     MP_CHECK(!n.moving(), "and nothing is moving");
 
     MP_CHECK(n.value(4) == 0, "gated: a linkage behind a closed gate does nothing");
@@ -479,6 +480,21 @@ std::vector<Fixture> fixtures() {
                                       list("SwitchLinkage", link(1, 2, 2, 7) + link(1, 3, 2, 7) + link(2, 5) +
                                                                 link(5, 2))),
                "switch 2 on\nswitch 3 on\npiston 1\nwait 10\n"});
+  // Sherborne (#1228): a plain key action into the division; the division
+  // note closes its input switch, which opens the pallet while the stop's
+  // knob is drawn. The stop names no rank (test_input_only_division).
+  f.push_back({"input-only-division",
+               organXml("Sherborne", list("Keyboard", keyboard(2, "Great", 2)) + list("Division", division(3, "Great")) +
+                                         list("KeyAction", keyAction(2, 3, false)) +
+                                         list("DivisionInput", divisionInput(3, 60, 33060)) +
+                                         list("Switch", sw(1302, "Gt. Open Diapason 8") + sw(33060, "Gt input 60", false) +
+                                                            sw(7060, "Pallet 60", false)) +
+                                         list("SwitchLinkage", link(33060, 7060, 1, 2, 1302)) +
+                                         list("Rank", rank(201, "Open Diapason")) +
+                                         list("Pipe_SoundEngine01", pipe(301, 201, 60, 7060)) +
+                                         list("Stop", stop(901, "Gt. Open Diapason 8", 3, 1302))),
+               "key 2 60 down\nwait 10\nkey 2 60 up\nwait 10\nswitch 1302 on\nkey 2 60 down\nwait 10\nkey 2 60 up\n"
+               "wait 10\nswitch 1302 off\nkey 2 60 down\nwait 10\nkey 2 60 up\nwait 10\n"});
   return f;
 }
 
@@ -551,6 +567,94 @@ public:
   }
 };
 ProcessorEventNetworkTest g_processorEventNetwork;
+
+// Each pipe of a fixture given a layer and an attack on one stand-in sample,
+// so the processor starts voices for it.
+std::string withSamples(const std::string& xml) {
+  std::string layers, attacks;
+  const std::string tag = "<Pipe_SoundEngine01><PipeID>";
+  for (size_t at = xml.find(tag); at != std::string::npos; at = xml.find(tag, at + 1)) {
+    const size_t from = at + tag.size();
+    const std::string id = xml.substr(from, xml.find('<', from) - from);
+    layers += "<Pipe_SoundEngine01_Layer><LayerID>" + id + "</LayerID><PipeID>" + id +
+              "</PipeID></Pipe_SoundEngine01_Layer>";
+    attacks += "<Pipe_SoundEngine01_AttackSample><UniqueID>" + id + "</UniqueID><LayerID>" + id +
+               "</LayerID><SampleID>1</SampleID></Pipe_SoundEngine01_AttackSample>";
+  }
+  const std::string tables =
+      "<ObjectList ObjectType=\"RequiredInstallationPackage\"><RequiredInstallationPackage>"
+      "<InstallationPackageID>1</InstallationPackageID><Name>P</Name></RequiredInstallationPackage></ObjectList>"
+      "<ObjectList ObjectType=\"Sample\"><Sample><SampleID>1</SampleID><InstallationPackageID>1</InstallationPackageID>"
+      "<SampleFilename>tone.wav</SampleFilename><Pitch_SpecificationMethodCode>1</Pitch_SpecificationMethodCode>"
+      "<Pitch_ExactSamplePitch>261.63</Pitch_ExactSamplePitch></Sample></ObjectList>" +
+      list("Pipe_SoundEngine01_Layer", layers) + list("Pipe_SoundEngine01_AttackSample", attacks);
+  std::string out = xml;
+  out.insert(out.rfind("</Hauptwerk>"), tables);
+  return out;
+}
+
+juce::File writeFixture(const juce::File& root, const Fixture& f) {
+  root.deleteRecursively();
+  const auto defs = root.getChildFile("OrganDefinitions");
+  const auto pkg = root.getChildFile("OrganInstallationPackages").getChildFile("000001");
+  defs.createDirectory();
+  pkg.createDirectory();
+  juce::WavAudioFormat fmt;
+  std::unique_ptr<juce::FileOutputStream> os(pkg.getChildFile("tone.wav").createOutputStream());
+  juce::StringPairArray meta;
+  meta.set("NumSampleLoops", "1");
+  meta.set("Loop0Start", "1000");
+  meta.set("Loop0End", "47000");
+  std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os.release(), 48000.0, 1, 16, meta, 0));
+  juce::AudioBuffer<float> tone(1, 48000);
+  for (int i = 0; i < 48000; ++i)
+    tone.setSample(0, i, static_cast<float>(0.3 * std::sin(2.0 * 3.14159265 * 261.63 * i / 48000.0)));
+  w->writeFromAudioSampleBuffer(tone, 0, 48000);
+  w.reset();
+  const auto odf = defs.getChildFile(f.name + ".Organ_Hauptwerk_xml");
+  odf.replaceWithText(withSamples(f.xml));
+  return odf;
+}
+
+// The A/B harness at the engine's level: every fixture's script through a
+// whole processor on each network, the traces diffed: switches, controls and
+// the pipes speaking. Two outcomes are required of the event network, the
+// rest is reported.
+class ProcessorAbTest final : public mp::test::Test {
+public:
+  ProcessorAbTest() : Test("functional.network.ab-processor", Category::Functional) {}
+  void run() override {
+    std::string report;
+    const juce::File base = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-ab-processor");
+    for (const Fixture& f : fixtures()) {
+      const juce::File odf = writeFixture(base.getChildFile(f.name), f);
+      mp::TraceScript s;
+      std::string error;
+      MP_CHECK(mp::TraceScript::parse(f.script, s, error), f.name + ": " + error);
+      const auto a = mp::runProcessorTrace(odf, Kind::Legacy, s);
+      const auto b = mp::runProcessorTrace(odf, Kind::Event, s);
+      MP_CHECK(a.loaded && b.loaded, f.name + ": loads on both networks: " + a.error + b.error);
+      const auto d = mp::diffTraces(a.lines, b.lines, {"switch", "control", "pipe"});
+      report += "== processor " + f.name + ": legacy " + std::to_string(a.lines.size()) + " lines, event " +
+                std::to_string(b.lines.size()) + "; " + std::to_string(d.onlyA) + " only in legacy, " +
+                std::to_string(d.onlyB) + " only in event\n";
+      for (const auto& l : d.lines) report += l + "\n";
+      auto has = [](const std::vector<std::string>& t, const std::string& what) {
+        for (const auto& l : t)
+          if (l.find(what) != std::string::npos) return true;
+        return false;
+      };
+      if (f.name == "input-only-division")
+        MP_CHECK(has(b.lines, "pipe 201:301 on"), "Sherborne on the event network: the drawn stop's pipe speaks");
+      if (f.name == "floating-division-inputs")
+        MP_CHECK(has(b.lines, "pipe 202:302 on"), "Caen on the event network: the reeds speak with the Anches drawn");
+    }
+    base.deleteRecursively();
+    std::fputs(report.c_str(), stdout);
+    if (const char* path = std::getenv("MP_AB_REPORT")) std::ofstream(path, std::ios::app) << report;
+  }
+};
+ProcessorAbTest g_processorAb;
 #endif
 
 }  // namespace

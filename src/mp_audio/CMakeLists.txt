@@ -8,6 +8,7 @@
 # target so existing link lines keep working.
 add_library(mp_audio STATIC
   MasterpieceProcessor.h MasterpieceProcessor.cpp
+  ProcessorTrace.h ProcessorTrace.cpp
   SampleLibrary.h SampleLibrary.cpp
   RealtimeThread.h RealtimeThread.cpp
   WavPackFormat.h WavPackFormat.cpp

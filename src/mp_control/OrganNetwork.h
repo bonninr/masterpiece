@@ -39,7 +39,35 @@ public:
   virtual void divisionNote(Id /*divisionId*/, int /*midiNote*/, bool /*on*/, double /*time*/) {}
   // A pipe starts or stops speaking: through a drawn stop and a played
   // division note, or through its pallet switch.
-  virtual void pipeMoved(Id /*rankId*/, Id /*pipeId*/, bool /*on*/, double /*time*/) {}
+  virtual void pipeMoved(Id /*rankId*/, Id /*pipeId*/, bool /*on*/, double /*time*/, const Pipe* /*pipe*/) {}
+};
+
+// General rules on top of the literal object model: behaviour sample sets by
+// well-known publishers rely on and Hauptwerk evidently has, written as rules
+// for every organ, never keyed by an organ's id or name. Each can be switched
+// off on its own for A/B (MP_NETWORK_RULES="-startPulse,-timedStart").
+struct NetworkRules {
+  // LoadSettle: at load every wire is judged once against the switches'
+  // defaults. A firing wire asserts its engage action; one that does not fire
+  // asserts its disengage action only where that engages (an inverting 7/4
+  // wire holds a unison-off's destination on). Off: nothing is asserted
+  // until a switch moves.
+  bool loadSettle = true;
+  // StartPulse: once loaded, the organ's start signal fires. Every control
+  // that no linkage drives and no image draws moves: to its top when stage
+  // switches hang on it (Nancy's __DelayBlower, Alessandria's blower init,
+  // #1183), and from one end of its range to the other when it feeds a timed
+  // linkage or a staged control (the "Hidden OffToOn"/"OnToOff" pair of
+  // Nancy, Friesach and Oloron, #263). Replaces the legacy name match.
+  bool startPulse = true;
+  // TimedStart: the start pulse travels through timed linkages in time, as
+  // at power-on, rather than settling at once. Ramps then land in the order
+  // of their own times, which the legacy engine imitates by sorting the
+  // staged controls by ramp time (#1183).
+  bool timedStart = true;
+
+  // All on, less those MP_NETWORK_RULES turns off.
+  static NetworkRules fromEnvironment();
 };
 
 class OrganNetwork {
@@ -93,6 +121,19 @@ public:
   // key paths and does not call these yet; the trace simulator does.
   virtual void keyDown(Id keyboardId, int midiNote, int velocity) = 0;
   virtual void keyUp(Id keyboardId, int midiNote) = 0;
+  // Every key up at once (a panic).
+  virtual void releaseAllKeys() = 0;
+  // Report every pipe speaking now as starting: for a listener that was not
+  // ready to start voices when they began (the organ loading).
+  virtual void replaySounding() {}
+
+  // ---- start-up ----
+  // The rules for the next reset (NetworkRules); the legacy network keeps
+  // its own behaviour and ignores them.
+  virtual void setRules(const NetworkRules& rules) { (void)rules; }
+  // The organ is loaded: fire its start signal (NetworkRules::startPulse).
+  // The legacy network's start-up is the processor's own and runs there.
+  virtual void startUp() {}
 
   // ---- time and reporting ----
   virtual double now() const = 0;
