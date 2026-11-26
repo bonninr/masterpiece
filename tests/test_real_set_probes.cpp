@@ -102,6 +102,9 @@ public:
         r.proc.setSwitchEngaged(r.proc.playerSwitchFor(ka.conditionSwitchId), coupled);
         r.proc.setSwitchEngaged(ka.conditionSwitchId, coupled);
         r.blocks(20);
+        // The last press's release tails die away first, up to 10 s: they are
+        // tone voices too.
+        for (int i = 0; i < 1900 && r.proc.soundingTonePipes() > 0; ++i) r.block();
         juce::MidiBuffer down;
         down.addEvent(juce::MidiMessage::noteOn(1, note, 0.8f), 0);
         r.block(down);
