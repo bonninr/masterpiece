@@ -28,6 +28,7 @@
 
 #include <set>
 #include "../src/mp_control/StageSwitches.h"
+#include "../src/mp_control/EventNetwork.h"
 #include "../src/mp_control/PlayerCombinations.h"
 #include "../src/mp_control/WindSolver.h"
 #include "../src/mp_control/SwitchNetwork.h"
@@ -7330,6 +7331,60 @@ public:
     cres.moveControl(9001, 127, 0, out);
     MP_CHECK(out.size() == 1 && out.front().switchId == 99 && !out.front().engage,
              "a blower's release row stops it and fires nothing else");
+
+    // --- the same crescendo on the event network ---------------------------
+    // Hauptwerk taken literally: every step passed on the way up stays
+    // engaged, so the step below is released and engaged again, and its
+    // switch fires its combination once more.
+    for (mp::Id id : {mp::Id{700}, mp::Id{701}, mp::Id{702}, mp::Id{703}, mp::Id{99}}) {
+      mp::Switch s;
+      s.switchId = id;
+      duren.switches[id] = s;
+    }
+    for (mp::Id id : {mp::Id{5}, mp::Id{9001}}) {
+      mp::ContinuousControl c;
+      c.controlId = id;
+      duren.continuousControls[id] = c;
+    }
+    struct Moves final : mp::NetworkListener {
+      std::vector<std::pair<mp::Id, bool>> moved;
+      void switchMoved(mp::Id id, bool engaged, double) override { moved.emplace_back(id, engaged); }
+    } moves;
+    const auto lastOn = [&moves] {
+      for (auto m = moves.moved.rbegin(); m != moves.moved.rend(); ++m)
+        if (m->second) return m->first;
+      return mp::Id{0};
+    };
+    mp::EventNetwork net;
+    net.setDrivesStages(true);
+    net.setListener(&moves);
+    net.resetSwitches(duren);
+    net.resetControls(duren, nullptr);
+    net.propagate(0, &net.engagedSwitches());
+    net.setValue(5, 13);
+    MP_CHECK(lastOn() == 703 && net.engaged(701) && net.engaged(702) && net.engaged(703),
+             "event: up to 13, each step passed engaged and 703 last");
+    moves.moved.clear();
+    net.setValue(5, 9);
+    MP_CHECK(!net.engaged(703), "event: leaving 13 downwards releases that step");
+    MP_CHECK(moves.moved.size() == 3 && moves.moved[1] == std::make_pair(mp::Id{702}, false) &&
+                 moves.moved[2] == std::make_pair(mp::Id{702}, true),
+             "event: and moves the step below out and in again: " + std::to_string(moves.moved.size()) + " moves");
+    moves.moved.clear();
+    net.setValue(5, 8);
+    MP_CHECK(moves.moved.empty() && net.engaged(702), "event: arriving on 8 from above is still that step");
+    net.setValue(5, 0);
+    MP_CHECK(lastOn() == 700 && net.engaged(700) && !net.engaged(701) && !net.engaged(702),
+             "event: back to the start plays the first step's combination last");
+    moves.moved.clear();
+    net.setValue(5, 6);
+    MP_CHECK(lastOn() == 701 && moves.moved.size() == 1, "event: and forward again plays the next");
+    net.setValue(9001, 127);
+    MP_CHECK(net.engaged(99), "event: the blower starts");
+    moves.moved.clear();
+    net.setValue(9001, 0);
+    MP_CHECK(moves.moved.size() == 1 && moves.moved.front() == std::make_pair(mp::Id{99}, false),
+             "event: a blower's release row stops it and fires nothing else");
   }
 };
 
