@@ -232,20 +232,21 @@ juce::File scoreResourceFolder() {
 }
 
 namespace {
-// The manual each staff plays, one row per staff.
+// The manual each staff plays, one row per staff: the score's own, with a
+// Mute box each, or a manual change's from its note on (#1273), with Delete.
 class ManualsDialog : public juce::Component {
 public:
-  explicit ManualsDialog(juce::Component::SafePointer<ScorePanel> panel,
-                         const std::vector<ScorePanel::Staff>& staves,
-                         const std::vector<std::pair<Id, juce::String>>& keyboards)
-      : panel_(panel) {
+  // `markIndex` -1 for the score's own.
+  ManualsDialog(juce::Component::SafePointer<ScorePanel> panel, const std::vector<ScorePanel::Staff>& staves,
+                const std::vector<std::pair<Id, juce::String>>& keyboards, int markIndex)
+      : panel_(panel), mark_(markIndex) {
     for (const auto& s : staves) {
       auto row = std::make_unique<Row>();
       row->label.setText(s.name, juce::dontSendNotification);
       row->box.addItem(TRANS("None"), 1);
       for (size_t i = 0; i < keyboards.size(); ++i)
         row->box.addItem(keyboards[i].second, static_cast<int>(i) + 2);
-      const Id current = panel->keyboardForStaff(s.number);
+      const Id current = mark_ < 0 ? panel->keyboardForStaff(s.number) : panel->markKeyboardForStaff(mark_, s.number);
       int selected = 1;
       for (size_t i = 0; i < keyboards.size(); ++i)
         if (keyboards[i].first == current) selected = static_cast<int>(i) + 2;
@@ -254,30 +255,51 @@ public:
       row->box.onChange = [this, staff, keyboards, box = &row->box] {
         const int id = box->getSelectedId();
         const Id kb = id >= 2 ? keyboards[static_cast<size_t>(id - 2)].first : 0;
-        if (panel_ != nullptr) panel_->setKeyboardForStaff(staff, kb);
-      };
-      // Silent, for the player to play it; the notes still shown (#1012).
-      row->mute.setButtonText(TRANS("Mute"));
-      row->mute.setTooltip(TRANS("Leave this staff silent, to play it yourself; it is saved with the score"));
-      row->mute.setToggleState(panel->muted(staff), juce::dontSendNotification);
-      row->mute.onClick = [this, staff, mute = &row->mute] {
-        if (panel_ != nullptr) panel_->setMuted(staff, mute->getToggleState());
+        if (panel_ == nullptr) return;
+        if (mark_ < 0) panel_->setKeyboardForStaff(staff, kb);
+        else panel_->setMarkKeyboardForStaff(mark_, staff, kb);
       };
       addAndMakeVisible(row->label);
       addAndMakeVisible(row->box);
-      addAndMakeVisible(row->mute);
+      if (mark_ < 0) {
+        // Silent, for the player to play it; the notes still shown (#1012).
+        row->mute.setButtonText(TRANS("Mute"));
+        row->mute.setTooltip(TRANS("Leave this staff silent, to play it yourself; it is saved with the score"));
+        row->mute.setToggleState(panel->muted(staff), juce::dontSendNotification);
+        row->mute.onClick = [this, staff, mute = &row->mute] {
+          if (panel_ != nullptr) panel_->setMuted(staff, mute->getToggleState());
+        };
+        addAndMakeVisible(row->mute);
+      }
       rows_.push_back(std::move(row));
     }
-    setSize(460, static_cast<int>(rows_.size()) * 30 + 12);
+    if (mark_ >= 0) {
+      title_.setText(TRANS("From this note on"), juce::dontSendNotification);
+      addAndMakeVisible(title_);
+      delete_.onClick = [this] {
+        if (panel_ != nullptr) panel_->deleteMark(mark_);
+        mark_ = -1;
+        if (auto* box = findParentComponentOfClass<juce::CallOutBox>()) box->dismiss();
+      };
+      addAndMakeVisible(delete_);
+    }
+    setSize(460, static_cast<int>(rows_.size()) * 30 + 12 + (mark_ >= 0 ? 64 : 0));
   }
 
   void resized() override {
     auto r = getLocalBounds().reduced(6);
+    if (mark_ >= 0) {
+      title_.setBounds(r.removeFromTop(26));
+      delete_.setBounds(r.removeFromBottom(28).removeFromRight(90));
+      r.removeFromBottom(4);
+    }
     for (auto& row : rows_) {
       auto line = r.removeFromTop(30).reduced(0, 3);
       row->label.setBounds(line.removeFromLeft(150));
-      row->mute.setBounds(line.removeFromRight(76));
-      line.removeFromRight(6);
+      if (mark_ < 0) {
+        row->mute.setBounds(line.removeFromRight(76));
+        line.removeFromRight(6);
+      }
       row->box.setBounds(line);
     }
   }
@@ -289,8 +311,12 @@ private:
     juce::ToggleButton mute;
   };
   juce::Component::SafePointer<ScorePanel> panel_;
+  int mark_;
+  juce::Label title_;
+  juce::TextButton delete_{TRANS("Delete")};
   std::vector<std::unique_ptr<Row>> rows_;
 };
+
 
 void closeCallOut(juce::Component& c) {
   if (auto* box = c.findParentComponentOfClass<juce::CallOutBox>()) box->dismiss();
@@ -1452,8 +1478,67 @@ void ScorePanel::chooseManuals() {
   std::vector<std::pair<Id, juce::String>> keyboards;
   for (const Id kb : proc_.playableKeyboards())
     keyboards.emplace_back(kb, juce::String::fromUTF8(proc_.keyboardName(kb).c_str()));
-  auto dialog = std::make_unique<ManualsDialog>(juce::Component::SafePointer<ScorePanel>(this), staves_, keyboards);
+  auto dialog = std::make_unique<ManualsDialog>(juce::Component::SafePointer<ScorePanel>(this), staves_, keyboards, -1);
   juce::CallOutBox::launchAsynchronously(std::move(dialog), manuals_.getScreenBounds(), nullptr);
+}
+
+// --- manual changes (#1273) ------------------------------------------------
+
+namespace {
+// "1:2 2:3": each staff and the assignment code of its manual, 0 for none.
+std::map<int, int> parseManuals(const std::string& text) {
+  std::map<int, int> out;
+  std::istringstream in(text);
+  std::string pair;
+  while (in >> pair) {
+    const auto colon = pair.find(':');
+    if (colon == std::string::npos) continue;
+    out[std::atoi(pair.substr(0, colon).c_str())] = std::atoi(pair.substr(colon + 1).c_str());
+  }
+  return out;
+}
+
+std::string writeManuals(const std::map<int, int>& staves) {
+  std::string out;
+  for (const auto& [staff, code] : staves) out += (out.empty() ? "" : " ") + std::to_string(staff) + ":" + std::to_string(code);
+  return out;
+}
+}  // namespace
+
+Id ScorePanel::markKeyboardForStaff(int markIndex, int staff) const {
+  if (markIndex < 0 || markIndex >= static_cast<int>(marks_.marks.size())) return keyboardForStaff(staff);
+  const auto staves = parseManuals(marks_.marks[static_cast<size_t>(markIndex)].states);
+  const auto it = staves.find(staff);
+  if (it == staves.end()) return keyboardForStaff(staff);
+  if (it->second == 0) return 0;
+  for (const Id kb : proc_.playableKeyboards())
+    if (proc_.assignmentCodeOf(kb) == it->second) return kb;
+  return keyboardForStaff(staff);
+}
+
+void ScorePanel::setMarkKeyboardForStaff(int markIndex, int staff, Id keyboard) {
+  if (markIndex < 0 || markIndex >= static_cast<int>(marks_.marks.size())) return;
+  auto staves = parseManuals(marks_.marks[static_cast<size_t>(markIndex)].states);
+  staves[staff] = keyboard == 0 ? 0 : proc_.assignmentCodeOf(keyboard);
+  setMarkStates(markIndex, writeManuals(staves));
+  if (playing()) restart();
+}
+
+Id ScorePanel::keyboardForStaffAt(int staff, double ms) const {
+  // The last manual change reached by this moment, on any pass of a repeat.
+  int last = -1;
+  double lastMs = -1;
+  for (size_t i = 0; i < marks_.marks.size(); ++i) {
+    if (marks_.marks[i].kind != ScoreMark::Kind::Manuals) continue;
+    const auto times = noteTimes_.find(marks_.marks[i].note);
+    if (times == noteTimes_.end()) continue;
+    for (const double t : times->second)
+      if (t <= ms + 1.0 && t > lastMs) {
+        lastMs = t;
+        last = static_cast<int>(i);
+      }
+  }
+  return last < 0 ? keyboardForStaff(staff) : markKeyboardForStaff(last, staff);
 }
 
 // --- playing -------------------------------------------------------------
@@ -1464,6 +1549,15 @@ std::vector<ScorePlayer::Event> ScorePanel::eventsForPlaying(double fromSeconds)
     const Id kb = keyboardForStaff(s.number);
     channels[s.number] = kb != 0 ? proc_.clickChannelForKeyboard(kb) : 0;
   }
+  // With manual changes (#1273), each note asks for the manual in force when
+  // it starts.
+  const bool changes = std::any_of(marks_.marks.begin(), marks_.marks.end(),
+                                   [](const ScoreMark& m) { return m.kind == ScoreMark::Kind::Manuals; });
+  const auto channelAt = [&](int staff, double seconds) {
+    if (!changes) return channels[staff];
+    const Id kb = keyboardForStaffAt(staff, seconds * 1000.0);
+    return kb != 0 ? proc_.clickChannelForKeyboard(kb) : 0;
+  };
   std::vector<ScorePlayer::Event> events;
   events.reserve(notes_.size() * 2);
   // An ornament's notes: thirty-seconds of the score's beat, between 50 and
@@ -1472,7 +1566,7 @@ std::vector<ScorePlayer::Event> ScorePanel::eventsForPlaying(double fromSeconds)
   for (size_t k = 0; k < notes_.size(); ++k) {
     const auto& n = notes_[k];
     if (muted(n.staff)) continue;
-    const int ch = channels[n.staff];
+    const int ch = channelAt(n.staff, n.on);
     if (ch < 1 || ch > 16) continue;
     const auto c = static_cast<uint8_t>(ch);
     const double off = std::max(n.off, n.on);
@@ -1723,6 +1817,32 @@ void ScorePanel::paint(juce::Graphics& g) {
   }
   for (int slot = 0; slot < slotCount(); ++slot) drawSlot(g, slot);
   drawMarks(g);
+  // The measure the playing is in, or the start point while stopped, as the
+  // score numbers it (mdehn38, #1271).
+  if (const auto bar = currentBar(); bar.isNotEmpty()) {
+    const auto text = TRANS("Bar %1").replace("%1", bar);
+    const auto area = pageArea().removeFromTop(24).removeFromLeft(90).toFloat().translated(4.0f, 4.0f);
+    g.setColour(juce::Colour(0xcc1b1e24));
+    g.fillRoundedRectangle(area, 4.0f);
+    g.setColour(juce::Colours::white);
+    g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
+    g.drawText(text, area, juce::Justification::centred, false);
+  }
+}
+
+juce::String ScorePanel::currentBar() const {
+  if (!loaded_ || measureMs_.empty()) return {};
+  const double ms = playing() ? proc_.scorePlayer().positionSeconds() * 1000.0 : startMs_;
+  const auto it = std::upper_bound(measureMs_.begin(), measureMs_.end(), ms + 1.0);
+  const size_t k = it == measureMs_.begin() ? 0 : static_cast<size_t>(it - measureMs_.begin()) - 1;
+  // Its written number: on a repeat, the measure played again by its own.
+  const auto& order = playback_.order();
+  const auto& numbers = playback_.numbers();
+  if (k < order.size() && order.size() == measureMs_.size()) {
+    const auto index = static_cast<size_t>(order[k]);
+    if (index < numbers.size() && !numbers[index].empty()) return juce::String::fromUTF8(numbers[index].c_str());
+  }
+  return juce::String(static_cast<int>(k) + 1);
 }
 
 std::string ScorePanel::noteAt(juce::Point<float> at, float within) const {
@@ -1810,6 +1930,15 @@ bool ScorePanel::keyPressed(const juce::KeyPress& key) {
   }
   if (code == juce::KeyPress::leftKey) return stepMeasure(-1) || true;
   if (code == juce::KeyPress::rightKey) return stepMeasure(1) || true;
+  // Home and End: the first measure, and the last (mdehn38, #1271).
+  if (code == juce::KeyPress::homeKey) {
+    moveTo(0.0);
+    return true;
+  }
+  if (code == juce::KeyPress::endKey) {
+    if (!measureMs_.empty()) moveTo(measureMs_.back());
+    return true;
+  }
   if (code == juce::KeyPress::upKey) return stepJump(-1) || true;
   if (code == juce::KeyPress::downKey) return stepJump(1) || true;
   if (code == juce::KeyPress::pageUpKey) {
@@ -1864,6 +1993,16 @@ int ScorePanel::addMark(ScoreMark::Kind kind, const std::string& note, const juc
     m.states = writeScoreStates({captureScoreState(proc_)});
   } else if (kind == ScoreMark::Kind::Jump) {
     if (m.text.empty()) m.text = (TRANS("Jump") + " " + juce::String(jumpOrder().size() + 1)).toStdString();
+  } else if (kind == ScoreMark::Kind::Manuals) {
+    // Each staff on the manual it plays here now; changed in its window.
+    std::map<int, int> staves;
+    const double at = noteStartMs_.count(note) != 0 ? noteStartMs_.at(note) : 0.0;
+    for (const auto& s : staves_) {
+      const Id kb = keyboardForStaffAt(s.number, at);
+      staves[s.number] = kb == 0 ? 0 : proc_.assignmentCodeOf(kb);
+    }
+    m.states = writeManuals(staves);
+    if (m.text.empty()) m.text = TRANS("Manual change").toStdString();
   } else if (kind == ScoreMark::Kind::Combination) {
     // The general lit now, or the sequencer's step; general 1 when neither.
     const auto& player = proc_.playerCombinations();
@@ -2103,6 +2242,16 @@ void ScorePanel::drawMarks(juce::Graphics& g) {
                        r.getY() + r.getHeight() * 0.68f);
       g.setColour(juce::Colour(0xff2e9e4f));
       g.fillPath(flag);
+    } else if (m.kind == ScoreMark::Kind::Manuals) {
+      // A manual change: a keyboard's keys, white bars on a teal square.
+      g.setColour(juce::Colour(0xff1f8a8a));
+      g.fillRoundedRectangle(r, 3.0f);
+      g.setColour(juce::Colours::white);
+      for (int k = 0; k < 3; ++k) {
+        const float x = r.getX() + 3.0f + static_cast<float>(k) * (r.getWidth() - 6.0f) / 3.0f;
+        g.fillRect(juce::Rectangle<float>(x + 0.5f, r.getY() + 4.0f, (r.getWidth() - 6.0f) / 3.0f - 1.5f,
+                                          r.getHeight() - 8.0f));
+      }
     } else if (m.kind == ScoreMark::Kind::Combination) {
       // A combination: a piston, square, with G for a general or S for a
       // sequencer step. Orange when set now.
@@ -2136,7 +2285,12 @@ void ScorePanel::openMark(int index, bool fresh) {
   std::unique_ptr<juce::Component> editor;
   if (m.kind == ScoreMark::Kind::Note)
     editor = std::make_unique<MarkNoteEditor>(safe, index, juce::String::fromUTF8(m.text.c_str()), fresh);
-  else if (m.kind == ScoreMark::Kind::Registration)
+  else if (m.kind == ScoreMark::Kind::Manuals) {
+    std::vector<std::pair<Id, juce::String>> keyboards;
+    for (const Id kb : proc_.playableKeyboards())
+      keyboards.emplace_back(kb, juce::String::fromUTF8(proc_.keyboardName(kb).c_str()));
+    editor = std::make_unique<ManualsDialog>(safe, staves_, keyboards, index);
+  } else if (m.kind == ScoreMark::Kind::Registration)
     editor = std::make_unique<MarkRegistrationEditor>(safe, index, proc_);
   else
     editor = std::make_unique<MarkPlaceEditor>(safe, index);
@@ -2151,6 +2305,7 @@ void ScorePanel::addMarkMenu(const std::string& note, juce::Rectangle<int> scree
   menu.addItem(2, TRANS("Add a registration here (the organ as it is now)"));
   menu.addItem(4, TRANS("Add a combination here (a general or a sequencer step, for every organ)"));
   menu.addItem(5, TRANS("Add a jump mark here"));
+  menu.addItem(6, TRANS("Add a manual change here (each staff on the manual set now)"));
   // Also Ctrl+Z; here for a touch screen, which has no keys.
   menu.addSeparator();
   menu.addItem(3, TRANS("Undo the last change to the marks"), !undo_.empty());
@@ -2164,6 +2319,7 @@ void ScorePanel::addMarkMenu(const std::string& note, juce::Rectangle<int> scree
                        const auto kind = chosen == 1   ? ScoreMark::Kind::Note
                                          : chosen == 2 ? ScoreMark::Kind::Registration
                                          : chosen == 4 ? ScoreMark::Kind::Combination
+                                         : chosen == 6 ? ScoreMark::Kind::Manuals
                                                        : ScoreMark::Kind::Jump;
                        const int index = safe->addMark(kind, note);
                        if (index >= 0) safe->openMark(index, true);

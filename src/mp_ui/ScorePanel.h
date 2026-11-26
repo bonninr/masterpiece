@@ -129,6 +129,14 @@ public:
   // A staff left silent, for the player to play it (#1012); its notes still
   // shown and followed.
   void setMuted(int staff, bool muted);
+  // A manual change (#1273): from its note on, each staff it names plays the
+  // manual it names. By the keyboard's place on a console, so the same on
+  // another organ; on a repeat, again on each pass.
+  Id markKeyboardForStaff(int markIndex, int staff) const;
+  void setMarkKeyboardForStaff(int markIndex, int staff, Id keyboard);
+  // The keyboard a staff plays at a moment of the playing: the last manual
+  // change before it, or the score's own.
+  Id keyboardForStaffAt(int staff, double ms) const;
   bool muted(int staff) const { return muted_.count(staff) != 0; }
 
   // The score's own settings (#1012), saved into its file with the marks:
@@ -152,6 +160,9 @@ public:
   // A measure back or on (the arrow keys, a console's buttons): from where
   // the playing is, or from the start point while stopped. False at an end.
   bool stepMeasure(int step);
+  // The number of the measure the playing is in (the start point while
+  // stopped), as the score writes it; empty with no score.
+  juce::String currentBar() const;
   // When each measure starts, in milliseconds of the playing, in order.
   const std::vector<double>& measureStarts() const { return measureMs_; }
   // The jump marks in the order they come, and a step to the one after or

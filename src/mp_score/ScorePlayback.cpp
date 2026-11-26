@@ -214,6 +214,7 @@ std::string ScorePlayback::originalId(const std::string& id) {
 
 bool ScorePlayback::load(const std::string& musicXml) {
   order_.clear();
+  numbers_.clear();
   repeats_ = false;
   ornaments_.clear();
   impl_->doc.reset();
@@ -224,7 +225,10 @@ bool ScorePlayback::load(const std::string& musicXml) {
   // The repeats, from the first part: every part carries the same signs.
   const auto first = root.child("part");
   std::vector<Measure> measures;
-  for (const auto measure : first.children("measure")) measures.push_back(readMeasure(measure));
+  for (const auto measure : first.children("measure")) {
+    measures.push_back(readMeasure(measure));
+    numbers_.emplace_back(measure.attribute("number").value());
+  }
   order_ = playOrder(measures);
   repeats_ = order_.size() != measures.size();
   for (size_t k = 0; k < order_.size() && !repeats_; ++k) repeats_ = order_[k] != static_cast<int>(k);

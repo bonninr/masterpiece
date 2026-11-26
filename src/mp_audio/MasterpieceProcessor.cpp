@@ -7882,10 +7882,16 @@ void MasterpieceProcessor::buildCouplerInputs() {
   std::unordered_set<Id>& inputOnly = inputOnlyDivisions_;
   inputOnly.clear();
   {
+    // Only the pallets of pipes that sound the organ's tone. Friesach's inputs
+    // lead to the pallets of its key noises (#967) while its stops name the
+    // ranks: taken as played through its inputs, its couplers pressed those
+    // inputs alone, and only the noises sounded (#1272).
     std::unordered_set<Id> pallets;
-    for (const auto& [rankId, rank] : model_.ranks)
+    for (const auto& [rankId, rank] : model_.ranks) {
+      if (rank.isNoise || rank.noiseEffect) continue;
       for (const Pipe& pipe : rank.pipes)
         if (pipe.palletSwitchId != 0) pallets.insert(pipe.palletSwitchId);
+    }
     if (!pallets.empty()) {
       std::unordered_map<Id, std::vector<Id>> next;
       for (const auto& l : model_.switchLinkages)

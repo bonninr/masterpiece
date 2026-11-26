@@ -40,6 +40,8 @@ public:
 
   // The measures of the first part, from 0, in the order they are played.
   const std::vector<int>& order() const { return order_; }
+  // The measures' own numbers, as the first part writes them, by index.
+  const std::vector<std::string>& numbers() const { return numbers_; }
   // True when that is not simply each measure once, in turn.
   bool repeats() const { return repeats_; }
   // The score with its measures in that order, every part alike, and the
@@ -56,6 +58,7 @@ private:
   struct Impl;
   std::unique_ptr<Impl> impl_;
   std::vector<int> order_;
+  std::vector<std::string> numbers_;
   bool repeats_ = false;
   std::map<std::string, ScoreOrnament> ornaments_;
 };

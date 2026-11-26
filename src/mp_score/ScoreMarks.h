@@ -34,14 +34,16 @@ struct ScoreMark {
   // A jump mark (#1012) is a place to go to, named, stepped to with the up
   // and down keys or a console's buttons. A combination is a registration
   // by piston: "general 3" or "step 12", the same on every organ.
-  enum class Kind { Note, Registration, Jump, Combination };
+  enum class Kind { Note, Registration, Jump, Combination, Manuals };
   Kind kind = Kind::Note;
   // The note it belongs to, by the id the engraved page gives it.
   std::string note;
   // A note's text; a registration's, a jump's or a combination's name.
   std::string text;
   // A registration's states, one organ per line; a combination's piston
-  // ("general 3", "step 12"); empty for the others.
+  // ("general 3", "step 12"); a manual change's staves, "1:2 2:3" (each
+  // staff and the assignment code of the manual it plays from here on, 0 for
+  // none, #1273); empty for the others.
   std::string states;
 };
 

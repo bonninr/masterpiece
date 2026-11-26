@@ -21,3 +21,7 @@
 "Add a jump mark here" = "Añadir aquí una marca de salto"
 "View..." = "Vista..."
 "Buttons..." = "Botones..."
+"From this note on" = "Desde esta nota"
+"Add a manual change here (each staff on the manual set now)" = "Añadir aquí un cambio de teclado (cada pentagrama en el teclado elegido ahora)"
+"Manual change" = "Cambio de teclado"
+"Bar %1" = "Compás %1"

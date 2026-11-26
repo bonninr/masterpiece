@@ -1354,6 +1354,33 @@ public:
              "a combination holds a general");
     MP_CHECK(panel.registrationOrder().size() == 1, "and plays as a registration does");
 
+    // The bar number, as written, on each pass; Home and End.
+    panel.setStart(0);
+    MP_CHECK(panel.currentBar() == "1", "bar 1 at the start");
+    panel.stepMeasure(1);
+    MP_CHECK(panel.currentBar() == "1", "and again on the repeat: " + panel.currentBar().toStdString());
+    panel.keyPressed(juce::KeyPress(juce::KeyPress::endKey));
+    MP_CHECK(std::abs(panel.startSeconds() - 8.0) < 0.01 && panel.currentBar() == "2", "End: the last bar, 2");
+    panel.keyPressed(juce::KeyPress(juce::KeyPress::homeKey));
+    MP_CHECK(panel.startSeconds() < 0.01, "Home: the top");
+
+    // A manual change on D5 (#1273): from there the right hand plays the
+    // pedal; before it, the manual.
+    const int change = panel.addMark(mp::ScoreMark::Kind::Manuals, "mpn2");
+    MP_CHECK(change >= 0, "a manual change is added");
+    panel.setMarkKeyboardForStaff(change, 1, 701);
+    MP_CHECK(panel.keyboardForStaffAt(1, 1000.0) == 702 && panel.keyboardForStaffAt(1, 9000.0) == 701,
+             "the right hand: the manual before the change, the pedal after");
+    const int pedalChannel = proc.clickChannelForKeyboard(701);
+    bool before = true, after = true;
+    for (const auto& e : panel.playedEvents()) {
+      if (!e.on || e.note < 60) continue;
+      if (e.seconds < 7.9) before = before && e.channel != pedalChannel;
+      else after = after && e.channel == pedalChannel;
+    }
+    MP_CHECK(before && after, "and the notes go there");
+    panel.deleteMark(change);
+
     // The settings, and another panel opening the same score with them.
     panel.setTempoBpm(90);
     panel.setLineView(true);

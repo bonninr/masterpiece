@@ -21,3 +21,7 @@
 "Add a jump mark here" = "Přidat sem značku skoku"
 "View..." = "Zobrazení..."
 "Buttons..." = "Tlačítka..."
+"From this note on" = "Od této noty"
+"Add a manual change here (each staff on the manual set now)" = "Přidat sem změnu manuálu (každá osnova na nyní zvoleném manuálu)"
+"Manual change" = "Změna manuálu"
+"Bar %1" = "Takt %1"
