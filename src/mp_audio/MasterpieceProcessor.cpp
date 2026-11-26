@@ -4890,6 +4890,30 @@ bool MasterpieceProcessor::saveMidiMap() const {
   console.clearKeyboardBindings();
   console.keepOnlyConsoleSendsAndShortcuts();
   const auto cf = consoleMidiFile();
+  {
+    using Key = std::pair<MidiTargetKind, Id>;
+    std::map<Key, std::vector<MidiBinding>> byManual;
+    for (const auto& b : midiMap_.bindings()) {
+      const Id m = divisionalByManual(b.targetKind, b.targetId);
+      if (m == 0) continue;
+      MidiBinding c = b;
+      c.targetId = m;
+      byManual[{b.targetKind, m}].push_back(c);
+    }
+    // What the console file held by manual for pistons this organ has none
+    // for: another organ's, kept.
+    MidiMap previous;
+    if (cf.existsAsFile() && previous.fromText(cf.loadFileAsString().toStdString())) {
+      std::map<Key, std::vector<MidiBinding>> kept;
+      for (const auto& b : previous.bindings())
+        if ((b.targetKind == MidiTargetKind::PlayerDivisional ||
+             b.targetKind == MidiTargetKind::PlayerDivisionalCancel) &&
+            b.targetId < 0 && byManual.count({b.targetKind, b.targetId}) == 0)
+          kept[{b.targetKind, b.targetId}].push_back(b);
+      for (auto& [key, list] : kept) byManual.emplace(key, std::move(list));
+    }
+    for (const auto& [key, list] : byManual) console.setBindingsFor(key.first, key.second, list);
+  }
   cf.getParentDirectory().createDirectory();
   mp::writeTextFile(cf, juce::String(console.toText()));
 
@@ -4935,6 +4959,15 @@ void MasterpieceProcessor::applyConsoleMidi() {
     }
   for (const auto& b : own.bindings())
     if (taken.count(b.source) == 0) midiMap_.bindFrom(own, b);
+  // The console's divisional pistons by manual (#1259), on the division that
+  // manual plays here, unless this organ maps that piston itself.
+  for (const auto& b : console.bindings()) {
+    const Id id = divisionalFromManual(b.targetKind, b.targetId);
+    if (id == 0 || taken.count(b.source) != 0 || !midiMap_.bindingsFor(b.targetKind, id).empty()) continue;
+    MidiBinding here = b;
+    here.targetId = id;
+    midiMap_.bindFrom(console, here);
+  }
   // The console's lamps and computer keys come with it too. Only its buttons
   // came before: on an organ with no file of its own, or one saved before the
   // lamp was set, the recorder's lamps stayed dark. A target the console has
@@ -4946,6 +4979,31 @@ void MasterpieceProcessor::applyConsoleMidi() {
   for (const auto& k : console.shortcuts())
     if (MidiMap::isConsoleTarget(k.targetKind)) keyed.insert({k.targetKind, k.targetId});
   for (const auto& [kind, id] : keyed) midiMap_.setShortcutsFor(kind, id, console.shortcutsFor(kind, id));
+}
+
+Id MasterpieceProcessor::divisionalByManual(MidiTargetKind kind, Id targetId) const {
+  if (targetId <= 0) return 0;
+  const bool piston = kind == MidiTargetKind::PlayerDivisional;
+  if (!piston && kind != MidiTargetKind::PlayerDivisionalCancel) return 0;
+  const Id division = piston ? playerDivisionalDivision(targetId) : targetId;
+  const int manual = divisionKeyboard(model_, division);
+  if (manual < 0) return 0;
+  return piston ? -(1 + manual * 100 + playerDivisionalPiston(targetId)) : -(1 + manual);
+}
+
+Id MasterpieceProcessor::divisionalFromManual(MidiTargetKind kind, Id byManual) const {
+  if (byManual >= 0) return 0;
+  const bool piston = kind == MidiTargetKind::PlayerDivisional;
+  if (!piston && kind != MidiTargetKind::PlayerDivisionalCancel) return 0;
+  const Id code = -byManual - 1;
+  const int manual = piston ? static_cast<int>(code / 100) : static_cast<int>(code);
+  // The lowest-numbered division that manual plays, so the choice is the
+  // same at every load.
+  Id best = 0;
+  for (const auto& [id, d] : model_.divisions)
+    if (divisionKeyboard(model_, id) == manual && (best == 0 || id < best)) best = id;
+  if (best == 0) return 0;
+  return piston ? playerDivisionalTarget(best, static_cast<int>(code % 100)) : best;
 }
 
 int MasterpieceProcessor::consoleRoleOf(Id keyboardId) const {
