@@ -264,8 +264,12 @@ public:
   static juce::Array<juce::File> organVersions(const juce::File& odf);
   // The installation packages a definition needs (RequiredInstallationPackage).
   static std::set<int> requiredPackagesOf(const juce::File& odf);
-  // Masterpiece's own data folder or a folder in it: never a sample library.
-  static bool isOwnDataFolder(const juce::File& dir);
+  // A folder Masterpiece unpacked an organ's RAR packages into (it carries
+  // the archive marker): never a sample library.
+  static bool isUnpackedPackage(const juce::File& dir);
+  // The RAR an organ played from its packages comes from; none for an
+  // installed one.
+  static juce::File packagedArchiveOf(const juce::File& odf);
   // A package remembers which of its definitions was opened last, in the
   // folder Masterpiece unpacked it into -- never in an installed sample set,
   // which is not ours to write to. None: an empty File.

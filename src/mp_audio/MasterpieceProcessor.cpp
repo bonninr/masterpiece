@@ -4657,27 +4657,35 @@ void MasterpieceProcessor::setOrgansFolder(const juce::File& dir) {
   writeGlobalFile();
 }
 
-bool MasterpieceProcessor::isOwnDataFolder(const juce::File& dir) {
-  const juce::File data = mp::dataFolder();
-  return dir == data || dir.isAChildOf(data);
+bool MasterpieceProcessor::isUnpackedPackage(const juce::File& dir) {
+  return !readArchiveMarker(dir.getFullPathName().toStdString()).empty();
 }
 
 juce::Array<juce::File> MasterpieceProcessor::installedOrgans() const {
   juce::Array<juce::File> out;
   std::vector<juce::File> roots{organsFolder()};
-  // Not Masterpiece's own folder (#1259): an organ opened from its RAR
-  // packages is unpacked there, and that folder was remembered as a library,
-  // so the organ stayed listed as installed after its packages were gone.
+  // A folder Masterpiece unpacked an organ's RAR packages into is not a
+  // library (#1259): it was remembered as one, and its organs stayed listed
+  // after the RARs were removed.
   for (const auto& lib : libraries_)
-    if (!isOwnDataFolder(lib) && std::find(roots.begin(), roots.end(), lib) == roots.end()) roots.push_back(lib);
+    if (!isUnpackedPackage(lib) && std::find(roots.begin(), roots.end(), lib) == roots.end()) roots.push_back(lib);
   for (const auto& root : roots)
     for (const auto& path : mp::installedOrganFiles(root.getFullPathName().toStdString()))
       out.addIfNotAlreadyThere(juce::File(juce::String::fromUTF8(path.c_str())));
+  // The organs played from their RAR packages, listed while the RAR is there.
+  for (const auto& packaged : packagedRoots()) {
+    for (const auto& dir : packaged.findChildFiles(juce::File::findDirectories, false)) {
+      const std::string archive = readArchiveMarker(dir.getFullPathName().toStdString());
+      if (archive.empty() || !juce::File(juce::String::fromUTF8(archive.c_str())).existsAsFile()) continue;
+      for (const auto& path : mp::installedOrganFiles(dir.getFullPathName().toStdString()))
+        out.addIfNotAlreadyThere(juce::File(juce::String::fromUTF8(path.c_str())));
+    }
+  }
   return out;
 }
 
 void MasterpieceProcessor::rememberSampleLibrary(const juce::File& root) {
-  if (!root.isDirectory() || isOwnDataFolder(root)) return;
+  if (!root.isDirectory() || isUnpackedPackage(root)) return;
   if (!root.getChildFile("OrganInstallationPackages").isDirectory()) return;
   if (std::find(libraries_.begin(), libraries_.end(), root) != libraries_.end())
     return;
@@ -11222,6 +11230,13 @@ juce::Array<juce::File> MasterpieceProcessor::organVersions(const juce::File& od
   }
   out.sort();
   return out;
+}
+
+juce::File MasterpieceProcessor::packagedArchiveOf(const juce::File& odf) {
+  const juce::File package = packageFolderOf(odf);
+  if (package == juce::File()) return {};
+  const std::string archive = readArchiveMarker(package.getFullPathName().toStdString());
+  return archive.empty() ? juce::File() : juce::File(juce::String::fromUTF8(archive.c_str()));
 }
 
 void MasterpieceProcessor::rememberDefinition(const juce::File& odf) {
