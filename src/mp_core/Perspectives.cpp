@@ -22,8 +22,53 @@ const std::set<std::string>& positions() {
   static const std::set<std::string> words = {
       "close",  "direct", "near",     "dry",     "front",   "middle", "mid",
       "diffuse", "rear",  "far",      "back",    "surround", "ambient", "ambience",
-      "distant", "wet",   "gallery",  "nave",    "center",  "centre"};
+      "distant", "wet",   "gallery",  "nave",    "center",  "centre",  "room",   "hall",
+      "semidry",
+      // German and French.
+      "nah",     "vorne", "mitte",    "hinten",  "proche",  "lointain"};
   return words;
+}
+
+// One letter added, dropped, changed, or two neighbours swapped.
+bool oneEditApart(const std::string& a, const std::string& b) {
+  if (a == b) return false;
+  const std::string& s = a.size() <= b.size() ? a : b;
+  const std::string& l = a.size() <= b.size() ? b : a;
+  if (l.size() - s.size() > 1) return false;
+  size_t i = 0;
+  while (i < s.size() && s[i] == l[i]) ++i;
+  if (s.size() == l.size())
+    return s.compare(i + 1, std::string::npos, l, i + 1, std::string::npos) == 0 ||
+           (i + 1 < s.size() && s[i] == l[i + 1] && s[i + 1] == l[i] &&
+            s.compare(i + 2, std::string::npos, l, i + 2, std::string::npos) == 0);
+  return s.compare(i, std::string::npos, l, i + 1, std::string::npos) == 0;
+}
+
+// The position a word names: the word itself, or the position word it
+// misses by one letter ("Difuse: 1. Principal 8", Chemnitz; "Direkt").
+// Long words only: a short word a letter off a position is often a stop's
+// own ("Mixte").
+std::string positionWord(const std::string& word) {
+  if (positions().count(word) != 0) return word;
+  if (word.size() < 6) return {};
+  for (const auto& p : positions())
+    if (p.size() >= 6 && oneEditApart(word, p)) return p;
+  return {};
+}
+
+// The text with each misspelt position word written right, so "Difuse" and
+// "Diffuse" ranks are one perspective.
+std::string spelledRight(const std::string& text) {
+  std::string out, word;
+  for (const char c : text + " ") {
+    if (std::isalpha(static_cast<unsigned char>(c))) { word += c; continue; }
+    const std::string w = positionWord(word);
+    out += w.empty() ? word : w;
+    out += c;
+    word.clear();
+  }
+  out.pop_back();
+  return out;
 }
 
 }  // namespace
@@ -40,7 +85,7 @@ std::string perspectiveOf(const std::string& rankName) {
     std::string word;
     for (const char c : prefix + " ") {
       if (std::isalpha(static_cast<unsigned char>(c))) { word += c; continue; }
-      if (positions().count(word) != 0) return prefix;
+      if (!positionWord(word).empty()) return spelledRight(prefix);
       word.clear();
     }
   }
@@ -61,13 +106,13 @@ std::string perspectiveOf(const std::string& rankName) {
           break;
         }
       }
-      return p;
+      return spelledRight(p);
     }
   }
   // The last word, after a space, a dash or an underscore.
   const auto cut = name.find_last_of(" -_");
   const std::string last = cut == std::string::npos ? name : name.substr(cut + 1);
-  return positions().count(last) != 0 ? last : std::string();
+  return positionWord(last);
 }
 
 namespace {
