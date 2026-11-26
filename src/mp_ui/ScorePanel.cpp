@@ -7,7 +7,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <deque>
 #include <limits>
+#include <map>
 #include <sstream>
 
 namespace mp::ui {
@@ -21,6 +23,8 @@ constexpr int kEngraveDelayMs = 200;
 constexpr int kSaveDelayMs = 1000;  // a change to the marks is written this long after it
 constexpr float kIcon = 18.0f;      // a mark's icon, in the panel's pixels
 constexpr size_t kUndoSteps = 100;
+// A note with no length of its own, in seconds.
+constexpr double kShortestNoteSeconds = 0.05;
 const juce::Colour kBackground{0xff1b1e24};
 
 bool hasClass(const juce::XmlElement& e, juce::StringRef name) {
@@ -799,22 +803,40 @@ void ScorePanel::readTimeline() {
       file.convertTimestampTicksToSeconds();
       for (int t = 1; t < file.getNumTracks(); ++t) {
         juce::MidiMessageSequence seq(*file.getTrack(t));
-        seq.updateMatchedPairs();
         juce::String trackName;
         bool any = false;
+        // Each note-off ends the oldest note still open on its key. Two voices
+        // sharing a note write two note-ons on one key: paired as JUCE pairs
+        // them, the first ended where the second began, at the same moment,
+        // and a note ending as it starts left its key held to the end of the
+        // score (JPIL04, #1012).
+        std::map<int, std::deque<size_t>> open;
+        const size_t first = notes_.size();
         for (int i = 0; i < seq.getNumEvents(); ++i) {
           const auto* ev = seq.getEventPointer(i);
-          if (ev->message.isTrackNameEvent() && trackName.isEmpty())
-            trackName = ev->message.getTextFromTextMetaEvent();
-          if (!ev->message.isNoteOn()) continue;
-          Note n;
-          n.on = ev->message.getTimeStamp();
-          n.off = ev->noteOffObject != nullptr ? ev->noteOffObject->message.getTimeStamp() : n.on;
-          n.staff = t;
-          n.pitch = ev->message.getNoteNumber();
-          notes_.push_back(n);
-          any = true;
+          const auto& m = ev->message;
+          if (m.isTrackNameEvent() && trackName.isEmpty()) trackName = m.getTextFromTextMetaEvent();
+          const int key = m.getChannel() * 128 + m.getNoteNumber();
+          if (m.isNoteOn()) {
+            Note n;
+            n.on = m.getTimeStamp();
+            n.off = -1.0;
+            n.staff = t;
+            n.pitch = m.getNoteNumber();
+            open[key].push_back(notes_.size());
+            notes_.push_back(n);
+            any = true;
+          } else if (m.isNoteOff()) {
+            auto& waiting = open[key];
+            if (waiting.empty()) continue;
+            notes_[waiting.front()].off = m.getTimeStamp();
+            waiting.pop_front();
+          }
         }
+        // A note the file never lets go of, or one as long as nothing, is
+        // played short rather than not at all.
+        for (size_t k = first; k < notes_.size(); ++k)
+          if (notes_[k].off <= notes_[k].on) notes_[k].off = notes_[k].on + kShortestNoteSeconds;
         if (any) staves_.push_back({t, TRANS("Staff") + " " + juce::String(t) +
                                            (trackName.isNotEmpty() ? " (" + trackName + ")" : juce::String())});
       }

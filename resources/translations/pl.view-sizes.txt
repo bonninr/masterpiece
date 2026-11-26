@@ -1,0 +1,6 @@
+"Normal" = "Normalny"
+"Large" = "Duży"
+"Larger" = "Większy"
+"Stop list size" = "Rozmiar listy głosów"
+"Piston size" = "Rozmiar pistonów"
+"Large frame number" = "Duży numer kroku"

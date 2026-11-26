@@ -22,6 +22,7 @@
 #include <cstring>
 #include <fstream>
 #include <functional>
+#include <map>
 #include <sstream>
 
 using mp::test::Category;
@@ -1472,6 +1473,48 @@ public:
   }
 };
 static ScoreNoConsoleTest g_scoreNoConsole;
+
+// Two voices sharing a note leave no key held (JPIL04, #1012): each note-off
+// ends the oldest note on its key, and every note has a length.
+class ScoreUnisonVoicesTest final : public mp::test::Test {
+public:
+  ScoreUnisonVoicesTest() : Test("functional.score.unison-voices", Category::Functional) {}
+  void run() override {
+    juce::ScopedJuceInitialiser_GUI gui;
+    const auto fonts = unpackedFonts();
+    ScoreOrgan organ;
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, kBlock);
+    MP_CHECK(proc.loadOrgan(organ.odf, 0, false).ok, "the organ loads");
+    mp::ui::ScorePanel panel(proc, fonts);
+    panel.setSize(1000, 700);
+    const std::string xml = readScoreFixture("unison-voices.musicxml");
+    MP_CHECK(panel.openData(juce::MemoryBlock(xml.data(), xml.size()), "unison-voices.musicxml"), "the score opens");
+    const auto events = panel.playedEvents();
+    MP_CHECK(!events.empty(), "it has notes");
+    // Counted as the player counts: a key goes down with its first note and
+    // up with its last.
+    std::map<int, int> held;
+    double c5Up = -1.0;
+    for (const auto& e : events) {
+      int& n = held[e.channel * 128 + e.note];
+      if (e.on) {
+        ++n;
+      } else if (n > 0 && --n == 0 && e.note == 72) {
+        c5Up = e.seconds;
+      }
+      MP_CHECK(e.on || n >= 0, "no key goes below none");
+    }
+    for (const auto& [key, n] : held)
+      MP_CHECK(n == 0, "key " + std::to_string(key % 128) + " is let go at the end, held by " + std::to_string(n));
+    // The engraver writes one note-off for the shared C5, at the end of the
+    // shorter note: the key is held at least that long, and let go.
+    MP_CHECK(c5Up > 0.45 && c5Up < 1.1, "C5 is held through the lower voice's half note, to " + std::to_string(c5Up) + " s");
+    for (size_t i = 0; i + 1 < events.size(); ++i)
+      MP_CHECK(events[i].seconds <= events[i + 1].seconds, "the events are in time order");
+  }
+};
+static ScoreUnisonVoicesTest g_scoreUnisonVoices;
 
 // The engraver plays an unrolled copy and answers by the page's ids.
 class ScoreUnrolledEngraverTest final : public mp::test::Test {

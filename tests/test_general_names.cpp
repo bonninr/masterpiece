@@ -43,6 +43,43 @@ public:
     mp::PlayerCombinations other;
     other.fromText("counts 10 5\n");
     MP_CHECK(other.generalName(3).empty(), "a set without names has none");
+
+    // Divisionals take names too (JPIL04, #1221): "Cornet 3 rangs" on the
+    // Positif's 10, kept per division and number.
+    mp::PlayerCombinations::Element stop;
+    stop.id = 11;
+    stop.divisionId = 7;
+    stop.name = "Cornet";
+    const std::vector<mp::PlayerCombinations::Division> divisions{{7, "Positif"}, {8, "Pedale"}};
+    mp::PlayerCombinations div;
+    div.reset({stop}, divisions);
+    MP_CHECK(!div.anyDivisionalNamed(), "no divisional is named at first");
+    div.setDivisionalName(7, 10, " Cornet 3 rangs\t");
+    MP_CHECK(!div.anyDivisionalNamed(), "a name on a divisional not shown (5 of them) widens nothing");
+    div.setDivisionalCount(10);
+    div.setDivisionalName(9, 1, "a division the organ lacks");
+    div.setDivisionalName(8, mp::PlayerCombinations::kMaxDivisionals + 1, "past the last");
+    MP_CHECK(div.divisionalName(7, 10) == "Cornet 3 rangs", "a divisional's name is kept: [" + div.divisionalName(7, 10) + "]");
+    MP_CHECK(div.divisionalName(8, 10).empty(), "the same number on another division has none");
+    MP_CHECK(div.divisionalName(9, 1).empty(), "no division, no name");
+    MP_CHECK(div.anyDivisionalNamed(), "now one is named");
+    const std::string divText = div.toText();
+    MP_CHECK(divText.find("divisionalname 7 10 Cornet 3 rangs\n") != std::string::npos, "saved as a line:\n" + divText);
+    mp::PlayerCombinations divBack;
+    divBack.reset({stop}, divisions);
+    MP_CHECK(divBack.fromText(divText), "and read back");
+    MP_CHECK(divBack.divisionalName(7, 10) == "Cornet 3 rangs", "with its name");
+
+    // Emptied: unused, no name, unlit.
+    MP_CHECK(divBack.storeDivisional(7, 2, [](const mp::PlayerCombinations::Element&) { return true; }),
+             "the Positif's 2 stores");
+    divBack.setDivisionalName(7, 2, "Fonds 8' 4'");
+    divBack.clearDivisional(7, 2);
+    MP_CHECK(!divBack.divisionalSet(7, 2) && divBack.divisionalName(7, 2).empty(), "emptied, it is unused and unnamed");
+    MP_CHECK(divBack.litDivisional(7) != 2, "and not lit");
+    divBack.setDivisionalName(7, 10, "");
+    MP_CHECK(!divBack.anyDivisionalNamed() && divBack.toText().find("divisionalname") == std::string::npos,
+             "no names left, none written");
   }
 };
 static GeneralNamesTest g_generalNames;

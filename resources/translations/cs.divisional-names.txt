@@ -1,0 +1,4 @@
+"Divisional %1" = "Dílčí kombinace %1"
+"Divisional %1: %2" = "Dílčí kombinace %1: %2"
+"Name of divisional %1 of %2" = "Název dílčí kombinace %1 – %2"
+"A name shown on the piston, such as Cornet or Plein jeu. Empty shows its number." = "Název zobrazený na pistonu, například Cornet nebo Plein jeu. Prázdné zobrazí jeho číslo."

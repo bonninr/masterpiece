@@ -557,7 +557,11 @@ public:
   bool copyCombinationSetTo(const std::string& name) const;
   bool deleteCombinationSet(const std::string& name) const;
   bool saveCombinations() const;
+  // Reads the player's file, then shows the stored states on the organ's
+  // memory switches (a crescendo page's cells).
   bool loadCombinations();
+  bool readCombinations();
+  void showCombinationMemory();
   // Capture can happen on the audio thread — a piston is a MIDI message like
   // any other — and the audio thread must not write a file. So a capture only
   // raises a flag, and the message thread does the writing.
@@ -667,6 +671,9 @@ public:
   void setGeneralName(int n, const juce::String& name);
   // Empty a general: unused again, its name gone (#1221).
   void clearGeneral(int n);
+  // The same for a divisional (JPIL04, #1221): "Cornet", "Fonds 8' 4'".
+  void setDivisionalName(Id divisionId, int n, const juce::String& name);
+  void clearDivisional(Id divisionId, int n);
   void pressGeneralCancel();
   void pressDivisional(Id divisionId, int n);
   void pressDivisionalCancel(Id divisionId);
@@ -1951,6 +1958,32 @@ public:
     levelsFromZero_ = on;
     writeGlobalFile();
   }
+  // Sizes for a touch screen or a glance from the bench, the program's own:
+  // 0 as drawn, 1 large, 2 larger. The stop list's buttons (fabiomancini67,
+  // #1271) and the Combinations window's pistons (mdehn38, #1221).
+  static constexpr int kMaxViewSize = 2;
+  int stopListSize() const { return stopListSize_; }
+  void setStopListSize(int size) {
+    size = std::clamp(size, 0, kMaxViewSize);
+    if (stopListSize_ == size) return;
+    stopListSize_ = size;
+    writeGlobalFile();
+  }
+  int pistonSize() const { return pistonSize_; }
+  void setPistonSize(int size) {
+    size = std::clamp(size, 0, kMaxViewSize);
+    if (pistonSize_ == size) return;
+    pistonSize_ = size;
+    writeGlobalFile();
+  }
+  // The sequencer's frame shown as its number alone, in large bright figures
+  // (fabiomancini67, #1271).
+  bool bigFrameNumber() const { return bigFrameNumber_; }
+  void setBigFrameNumber(bool on) {
+    if (bigFrameNumber_ == on) return;
+    bigFrameNumber_ = on;
+    writeGlobalFile();
+  }
   // Ready-made registrations (#1221): PP, P, MF, F, Plein jeu and Tutti,
   // built from this organ's stop names (PlayerCombinations::
   // suggestRegistrations), stored in the generals not yet set, from the
@@ -3127,6 +3160,9 @@ private:
   bool learnAlsoSends_ = false;
   bool stepperLevels_ = false;
   bool levelsFromZero_ = false;
+  int stopListSize_ = 0;
+  int pistonSize_ = 0;
+  bool bigFrameNumber_ = false;
   int levelSize_ = 10;
   // The echo's values for a lit and a dark button (#1185): 1..127, and
   // 0..127 or -1 for a Note Off.

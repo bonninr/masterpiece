@@ -553,6 +553,8 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       outModel.uniqueOrganId = fieldInt(row, "Identification_UniqueOrganID", "b", 0);
       outModel.organVersion = field(row, "Control_OrganVersion", "u");
       outModel.basePitchHz = fieldDouble(row, "AudioEngine_BasePitchHz", "n1", 440.0);
+      outModel.basePitchDeclared =
+          !trim(field(row, "AudioEngine_BasePitchHz", "n1")).empty() && outModel.basePitchHz > 0.0;
       // A zero here means "not stated", not "silence". The Barton theatre
       // consoles write 0, and taking it literally tuned every pipe to 0 Hz --
       // an organ that loads, draws and plays nothing audible.
@@ -2461,6 +2463,11 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     el.storedEngaged = fieldBool(row, "InitialStoredStateIsEngaged", "e", false);
     el.invertWhenActivating =
         fieldBool(row, "InvertStoredStateWhenActivating", "f", false);
+    el.memorySwitchId = fieldInt(row, "MemorySwitchID", "g", 0);
+    if (el.memorySwitchId != 0 && outModel.switches.count(el.memorySwitchId) == 0) {
+      outDiag.danglingIds.push_back(el.memorySwitchId);
+      el.memorySwitchId = 0;
+    }
     if (el.controlledSwitchId != 0 && outModel.switches.count(el.controlledSwitchId) == 0)
       outDiag.danglingIds.push_back(el.controlledSwitchId);
     if (el.capturedSwitchId != 0 && outModel.switches.count(el.capturedSwitchId) == 0)

@@ -366,6 +366,7 @@ void PlayerCombinations::clearAll() {
       std::fill(r.drawn.begin(), r.drawn.end(), 0);
     }
   for (auto& name : generalNames_) name.clear();
+  divisionalNames_.clear();
   frame_ = 0;
   unlight();
 }
@@ -385,6 +386,22 @@ void PlayerCombinations::setGeneralName(int n, std::string name) {
   const auto first = name.find_first_not_of(' ');
   const auto last = name.find_last_not_of(' ');
   generalNames_[static_cast<size_t>(n)] = first == std::string::npos ? std::string() : name.substr(first, last - first + 1);
+}
+
+const std::string& PlayerCombinations::divisionalName(Id divisionId, int n) const {
+  static const std::string none;
+  const auto it = divisionalNames_.find({divisionId, n});
+  return it != divisionalNames_.end() ? it->second : none;
+}
+
+void PlayerCombinations::setDivisionalName(Id divisionId, int n, std::string name) {
+  if (n < 1 || n > kMaxDivisionals || divisionIndex(divisionId) < 0) return;
+  for (auto& c : name)
+    if (c == '\n' || c == '\r' || c == '\t') c = ' ';
+  const auto first = name.find_first_not_of(' ');
+  const auto last = name.find_last_not_of(' ');
+  if (first == std::string::npos) divisionalNames_.erase({divisionId, n});
+  else divisionalNames_[{divisionId, n}] = name.substr(first, last - first + 1);
 }
 
 void PlayerCombinations::setGeneralCount(int n) {
@@ -545,6 +562,17 @@ void PlayerCombinations::clearGeneral(int n) {
   if (litGeneral_ == n) litGeneral_ = 0;
 }
 
+void PlayerCombinations::clearDivisional(Id divisionId, int n) {
+  const int d = divisionIndex(divisionId);
+  if (d < 0 || n < 1 || n > kMaxDivisionals) return;
+  Registration& r = divisionals_[static_cast<size_t>(d) * (kMaxDivisionals + 1) + static_cast<size_t>(n)];
+  r.set = false;
+  std::fill(r.drawn.begin(), r.drawn.end(), 0);
+  divisionalNames_.erase({divisionId, n});
+  if (static_cast<size_t>(d) < litDivisional_.size() && litDivisional_[static_cast<size_t>(d)] == n)
+    litDivisional_[static_cast<size_t>(d)] = 0;
+}
+
 void PlayerCombinations::lightGeneral(int n) {
   unlight();
   litGeneral_ = n;
@@ -629,6 +657,7 @@ bool PlayerCombinations::deleteFrame() {
 //   divisional <division> <n> [key...]
 //   frame <n> [key...]
 //   generalname <n> <name to the end of the line>
+//   divisionalname <division> <n> <name to the end of the line>
 //
 // Keys are s<stop> and w<switch>, so a file survives an organ update that
 // adds or reorders stops. A piston captured empty is written with no keys,
@@ -661,6 +690,8 @@ std::string PlayerCombinations::toText() const {
     }
   for (int n = 1; n <= kMaxGenerals; ++n)
     if (!generalName(n).empty()) out << "generalname " << n << ' ' << generalName(n) << '\n';
+  for (const auto& [key, name] : divisionalNames_)
+    out << "divisionalname " << key.first << ' ' << key.second << ' ' << name << '\n';
   return out.str();
 }
 
@@ -711,6 +742,13 @@ bool PlayerCombinations::fromText(const std::string& text) {
       int n = 0;
       if (!(ls >> n) || n < 1 || n > kMaxFrames) { ok = false; continue; }
       readKeys(ls, frames_[static_cast<size_t>(n)]);
+    } else if (what == "divisionalname") {
+      long long div = 0;
+      int n = 0;
+      if (!(ls >> div >> n)) { ok = false; continue; }
+      std::string name;
+      std::getline(ls, name);
+      setDivisionalName(static_cast<Id>(div), n, name);
     } else if (what == "generalname") {
       int n = 0;
       if (!(ls >> n) || n < 1 || n > kMaxGenerals) { ok = false; continue; }

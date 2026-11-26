@@ -1,0 +1,6 @@
+"Normal" = "Normální"
+"Large" = "Velké"
+"Larger" = "Větší"
+"Stop list size" = "Velikost seznamu rejstříků"
+"Piston size" = "Velikost pistonů"
+"Large frame number" = "Velké číslo kroku"

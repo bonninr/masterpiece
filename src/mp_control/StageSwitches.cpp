@@ -8,6 +8,11 @@ void StageSwitchBank::reset(const OrganModel& model) {
   model_ = &model;
   rows_.clear();
   engagedStep_.clear();
+  pistonSwitches_.clear();
+  for (const auto& [id, combination] : model.combinations) {
+    (void)id;
+    if (combination.activatingSwitchId != 0) pistonSwitches_.insert(combination.activatingSwitchId);
+  }
   total_ = model.controlStageSwitches.size();
 
   for (const auto& row : model.controlStageSwitches)
@@ -93,12 +98,47 @@ void StageSwitchBank::moveControl(Id controlId, int fromValue, int toValue,
   const auto& list = it->second;
   const bool rising = toValue > fromValue;
 
+  // The engaging rows of the highest threshold below `left`, each a switch
+  // that fires a combination: one step, its switches engaged together.
+  const auto engageStepBelow = [&](const ContinuousControlStageSwitch& left) {
+    // Rows sharing the threshold left are one step: the first already did it.
+    if (const auto now = engagedStep_.find(controlId);
+        now != engagedStep_.end() && !now->second.switches.empty() && now->second.value < left.value)
+      return;
+    int below = -1;
+    for (const auto& row : list)
+      if (row.value < left.value && row.engageWhenIncreasing && row.controlledSwitchId != left.controlledSwitchId &&
+          pistonSwitches_.count(row.controlledSwitchId) != 0)
+        below = std::max(below, row.value);
+    if (below < 0) return;
+    Step& step = engagedStep_[controlId];
+    for (Id was : step.switches) out.push_back({was, false});
+    step.switches.clear();
+    step.value = below;
+    for (const auto& row : list)
+      if (row.value == below && row.engageWhenIncreasing && pistonSwitches_.count(row.controlledSwitchId) != 0 &&
+          std::find(step.switches.begin(), step.switches.end(), row.controlledSwitchId) == step.switches.end()) {
+        step.switches.push_back(row.controlledSwitchId);
+        out.push_back({row.controlledSwitchId, true});
+      }
+  };
+
   // Walk the thresholds in the order the shoe met them.
   const auto handle = [&](const ContinuousControlStageSwitch& row) {
     // Crossed, half-open so that arriving exactly on a threshold counts and
     // leaving it does not count twice.
-    const bool crossed = rising ? (fromValue < row.value && row.value <= toValue)
-                                : (toValue <= row.value && row.value < fromValue);
+    //
+    // Except for a row that engages one way and releases the other: it says
+    // its switch is on while the value is at or past the threshold. Its
+    // release counts on leaving the threshold, not on arriving at it, or a
+    // step reached exactly on the way up (Düren's 13, #1274; a swell's open
+    // detent at 123) would stay engaged when the shoe moves back from there.
+    const bool onFromBelow = row.engageWhenIncreasing && row.disengageWhenDecreasing && !row.engageWhenDecreasing;
+    const bool onFromAbove = row.engageWhenDecreasing && row.disengageWhenIncreasing && !row.engageWhenIncreasing;
+    bool crossed = rising ? (fromValue < row.value && row.value <= toValue)
+                          : (toValue <= row.value && row.value < fromValue);
+    if (rising && onFromAbove) crossed = fromValue <= row.value && row.value < toValue;
+    if (!rising && onFromBelow) crossed = toValue < row.value && row.value <= fromValue;
     if (!crossed) return;
 
     const bool engage =
@@ -128,6 +168,12 @@ void StageSwitchBank::moveControl(Id controlId, int fromValue, int toValue,
         if (sw.empty()) engagedStep_.erase(prev);
       }
       out.push_back({row.controlledSwitchId, false});
+      // A crescendo step left on the way down: the step below is the one now,
+      // and its combination is what the shoe should play (#1274). Only for a
+      // step that fires a combination: a blower's or a noise's own release
+      // row means just that.
+      if (!rising && row.engageWhenIncreasing && pistonSwitches_.count(row.controlledSwitchId) != 0)
+        engageStepBelow(row);
     }
   };
 
