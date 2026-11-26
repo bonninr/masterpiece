@@ -47,13 +47,10 @@ if(MP_BUILD_CLAP)
       GIT_REPOSITORY https://github.com/free-audio/clap-juce-extensions.git
       GIT_TAG ${MP_CLAP_JUCE_COMMIT}
       GIT_SUBMODULES_RECURSE TRUE)
-    FetchContent_GetProperties(clap_juce_extensions)
-    if(NOT clap_juce_extensions_POPULATED)
-      FetchContent_Populate(clap_juce_extensions)
-    endif()
-    set(MP_CLAP_JUCE_DIR ${clap_juce_extensions_SOURCE_DIR})
+    FetchContent_MakeAvailable(clap_juce_extensions)
+  else()
+    add_subdirectory(${MP_CLAP_JUCE_DIR} ${CMAKE_BINARY_DIR}/clap-juce-extensions EXCLUDE_FROM_ALL)
   endif()
-  add_subdirectory(${MP_CLAP_JUCE_DIR} ${CMAKE_BINARY_DIR}/clap-juce-extensions EXCLUDE_FROM_ALL)
   clap_juce_extensions_plugin(TARGET MasterpiecePlugin
     CLAP_ID "org.masterpiece.player"
     CLAP_FEATURES instrument sampler)
