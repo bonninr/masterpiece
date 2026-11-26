@@ -32,3 +32,29 @@ endif()
 if(TARGET mp_dsp)
   target_link_libraries(MasterpiecePlugin PRIVATE mp_dsp)
 endif()
+
+# CLAP, through clap-juce-extensions (free-audio): off by default. Tried with
+# JUCE 9.0.1 on Linux: builds, loads in a CLAP host, restores its organ from
+# the host's state and plays. A host must offer timer support: JUCE's message
+# loop runs on its timers there.
+option(MP_BUILD_CLAP "Build the plugin as CLAP too (clap-juce-extensions)" OFF)
+set(MP_CLAP_JUCE_DIR "" CACHE PATH "A clap-juce-extensions checkout with its submodules; fetched when empty")
+set(MP_CLAP_JUCE_COMMIT "3837f4a" CACHE STRING "clap-juce-extensions commit")
+if(MP_BUILD_CLAP)
+  if(MP_CLAP_JUCE_DIR STREQUAL "")
+    include(FetchContent)
+    FetchContent_Declare(clap_juce_extensions
+      GIT_REPOSITORY https://github.com/free-audio/clap-juce-extensions.git
+      GIT_TAG ${MP_CLAP_JUCE_COMMIT}
+      GIT_SUBMODULES_RECURSE TRUE)
+    FetchContent_GetProperties(clap_juce_extensions)
+    if(NOT clap_juce_extensions_POPULATED)
+      FetchContent_Populate(clap_juce_extensions)
+    endif()
+    set(MP_CLAP_JUCE_DIR ${clap_juce_extensions_SOURCE_DIR})
+  endif()
+  add_subdirectory(${MP_CLAP_JUCE_DIR} ${CMAKE_BINARY_DIR}/clap-juce-extensions EXCLUDE_FROM_ALL)
+  clap_juce_extensions_plugin(TARGET MasterpiecePlugin
+    CLAP_ID "org.masterpiece.player"
+    CLAP_FEATURES instrument sampler)
+endif()
