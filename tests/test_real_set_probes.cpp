@@ -42,22 +42,24 @@ struct Rig {
     blocks(1200);  // the blower and the start-up chains, 6 s
     return true;
   }
-  // Tone pipes open: their pallets engaged, or, for a set without pallets,
-  // the voices sounding.
-  int tonePipesOpen() const {
-    const auto& m = proc.organModel();
-    int open = 0;
-    bool anyPallet = false;
-    for (const auto& [rankId, rank] : m.ranks) {
+  // Tone pipes heard: their voices. A set whose samples are not on this
+  // machine sounds nothing, and there the pallets of tone pipes open stand in
+  // (on a set whose pallets open with the key whatever is drawn, as
+  // Friesach's do, they say nothing).
+  struct Heard {
+    int voices = 0;
+    int pallets = 0;
+  };
+  Heard tonePipes() const {
+    Heard h;
+    h.voices = proc.soundingTonePipes();
+    for (const auto& [rankId, rank] : proc.organModel().ranks) {
       (void)rankId;
       if (rank.isNoise || rank.noiseEffect) continue;
-      for (const auto& pipe : rank.pipes) {
-        if (pipe.palletSwitchId == 0) continue;
-        anyPallet = true;
-        if (proc.switchEngaged(pipe.palletSwitchId)) ++open;
-      }
+      for (const auto& pipe : rank.pipes)
+        if (pipe.palletSwitchId != 0 && proc.switchEngaged(pipe.palletSwitchId)) ++h.pallets;
     }
-    return anyPallet ? open : proc.voiceStats().activeVoices;
+    return h;
   }
 };
 
@@ -74,10 +76,20 @@ public:
     const auto& m = r.proc.organModel();
     const auto stops = r.proc.stopList();
     int couplers = 0;
+    std::string failed;
     for (const auto& ka : m.keyActions) {
       if (ka.conditionSwitchId == 0 || ka.sourceKeyboard == 0 || ka.destIsKeyboard || ka.destDivision == 0) continue;
+      int drawnThere = 0;
+      for (const auto& s : stops) {
+        const bool there = s.divisionId == ka.destDivision && s.playable && !s.control;
+        r.proc.setStopEngaged(s.stopId, there);
+        if (there) ++drawnThere;
+      }
+      if (drawnThere == 0) {
+        std::printf("  division %d has no stops to sound: its coupler left out\n", ka.destDivision);
+        continue;
+      }
       ++couplers;
-      for (const auto& s : stops) r.proc.setStopEngaged(s.stopId, s.divisionId == ka.destDivision);
       r.proc.setSwitchEngaged(r.proc.playerSwitchFor(ka.conditionSwitchId), false);
       r.proc.setSwitchEngaged(ka.conditionSwitchId, false);
       r.proc.clearChannelAssignments();
@@ -94,23 +106,27 @@ public:
         down.addEvent(juce::MidiMessage::noteOn(1, note, 0.8f), 0);
         r.block(down);
         r.blocks(40);
-        const int open = r.tonePipesOpen();
+        const Rig::Heard heard = r.tonePipes();
         juce::MidiBuffer up;
         up.addEvent(juce::MidiMessage::noteOff(1, note), 0);
         r.block(up);
         r.blocks(200);
-        return open;
+        return heard;
       };
-      const int off = press(false);
-      const int on = press(true);
+      const Rig::Heard off = press(false);
+      const Rig::Heard on = press(true);
       press(false);
-      std::printf("  coupler %s (switch %lld), keyboard %d to division %d, key %d: %d pipes open without, %d with\n",
+      // Voices where the set sounds here; pallets where it is silent.
+      const bool audible = off.voices > 0 || on.voices > 0;
+      const bool couples = audible ? on.voices > off.voices : on.pallets > off.pallets;
+      std::printf("  coupler %s (switch %lld), keyboard %d to division %d (%d stops drawn), key %d: "
+                  "tone voices %d without, %d with; tone pallets %d, %d%s\n",
                   name.c_str(), static_cast<long long>(ka.conditionSwitchId), ka.sourceKeyboard, ka.destDivision,
-                  note, off, on);
-      MP_CHECK(on > off, "coupler " + name + " sounds the pipes of the division it couples: " +
-                             std::to_string(off) + " without, " + std::to_string(on) + " with");
+                  drawnThere, note, off.voices, on.voices, off.pallets, on.pallets, couples ? "" : "  <-- silent");
+      if (!couples) failed += (failed.empty() ? "" : ", ") + name;
     }
     std::printf("  %d couplers to a division\n", couplers);
+    MP_CHECK(failed.empty(), "every coupler sounds the pipes of the division it couples; not: " + failed);
   }
 };
 static RealSetCouplersProbe g_realSetCouplers;

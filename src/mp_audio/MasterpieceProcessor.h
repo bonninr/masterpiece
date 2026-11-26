@@ -317,6 +317,9 @@ public:
   // as takeAudioLoad() does.
   int64_t lateBlocksTotal() const { return lateBlocks_.load(std::memory_order_relaxed); }
   int soundingVoices() const { return soundingVoices_.load(std::memory_order_relaxed); }
+  // Voices of tone pipes sounding, noises and effects left out: what a
+  // coupler or a stop is heard to add. Between blocks, for tests and probes.
+  int soundingTonePipes() const;
   // A stop held off because a demo ships no pipework for it. Set at load.
   bool stopLocked(Id stopId) const { return lockedStops_.count(stopId) > 0; }
   // Ask the running load to stop. Returns immediately; the load ends at the

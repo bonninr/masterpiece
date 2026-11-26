@@ -7824,6 +7824,17 @@ bool MasterpieceProcessor::saveCombinationsIfDirty() {
   return saveCombinations();
 }
 
+int MasterpieceProcessor::soundingTonePipes() const {
+  int n = 0;
+  voices_.forEachSounding([&](Id pipeId) {
+    const auto r = rankOfPipe_.find(pipeId);
+    if (r == rankOfPipe_.end()) return;
+    const auto rank = model_.ranks.find(r->second);
+    if (rank != model_.ranks.end() && !rank->second.isNoise && !rank->second.noiseEffect) ++n;
+  });
+  return n;
+}
+
 void MasterpieceProcessor::showCombinationMemory() {
   // The cells of a crescendo page show what its steps hold: the organ's own
   // program, or the player's saved one (#1171, #1274).
