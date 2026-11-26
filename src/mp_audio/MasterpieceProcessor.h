@@ -918,6 +918,13 @@ public:
   // The role a keyboard plays on a console: 0 the pedal, 1 the first manual,
   // -1 none.
   int consoleRoleOf(Id keyboardId) const;
+  // A divisional piston or cancel named by the console's manual (#1259):
+  // 0 for the Pedal, 1 for the first manual and so on, as the console
+  // profiles number them. Kept in the console's file with negative ids, so
+  // a console's divisional pistons work on every organ, on whatever division
+  // that manual plays there. 0 when the division's manual is not known.
+  Id divisionalByManual(MidiTargetKind kind, Id targetId) const;
+  Id divisionalFromManual(MidiTargetKind kind, Id byManual) const;
 
   void setKeyboardForChannel(int channel, Id keyboardId, int deviceId = 0,
                              bool exclusive = true) {
