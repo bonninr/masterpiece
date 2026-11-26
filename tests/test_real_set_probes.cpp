@@ -169,19 +169,31 @@ public:
       r.blocks(2);
       down[static_cast<size_t>(v)] = drawn();
     }
-    int differ = 0, steps = 0;
+    // Going down, a step may hold until the threshold below it: rows that
+    // engage both ways ("this step now": Nancy, Cracow, Alessandria) select
+    // the step whose threshold the shoe passes, from above as from below.
+    // What must not happen is a registration from further up (#1274).
+    int differ = 0, behind = 0, steps = 0;
     for (int v = 0; v <= 127; ++v) {
-      if (v > 0 && up[static_cast<size_t>(v)] != up[static_cast<size_t>(v) - 1]) ++steps;
-      if (up[static_cast<size_t>(v)] == down[static_cast<size_t>(v)]) continue;
+      const auto at = static_cast<size_t>(v);
+      if (v > 0 && up[at] != up[at - 1]) ++steps;
+      if (up[at] == down[at]) continue;
+      size_t next = at + 1;
+      while (next < up.size() && up[next] == up[at]) ++next;
+      if (next < up.size() && down[at] == up[next]) {
+        ++behind;
+        continue;
+      }
       ++differ;
       if (differ <= 5)
         std::printf("  at %d: %zu stops drawn on the way up, %zu on the way down\n", v,
                     up[static_cast<size_t>(v)].size(), down[static_cast<size_t>(v)].size());
     }
     std::printf("  crescendo control %lld: %zu stage rows, %d changes of registration on the way up, "
-                "%zu stops at the top\n",
-                static_cast<long long>(cres), r.proc.stageSwitches().stepCount(cres), steps, up[127].size());
-    MP_CHECK(differ == 0, "the same registration at each value both ways: " + std::to_string(differ) + " values differ");
+                "%zu stops at the top; going down, %d values a step behind as the rows define\n",
+                static_cast<long long>(cres), r.proc.stageSwitches().stepCount(cres), steps, up[127].size(), behind);
+    MP_CHECK(differ == 0, "going down, the registration of that value or of the step just above it: " +
+                              std::to_string(differ) + " values differ");
     MP_CHECK(down[0] == up[0], "back at the start, the registration it started with");
   }
 };
