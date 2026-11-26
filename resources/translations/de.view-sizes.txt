@@ -1,0 +1,6 @@
+"Normal" = "Normal"
+"Large" = "Groß"
+"Larger" = "Größer"
+"Stop list size" = "Größe der Registerliste"
+"Piston size" = "Größe der Setzertasten"
+"Large frame number" = "Große Schrittnummer"

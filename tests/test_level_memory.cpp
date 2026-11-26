@@ -169,7 +169,7 @@ public:
              "each field writes its own value");
     MP_CHECK(mp::voicingValue(v, F::Brightness) == 4.5f && mp::voicingValue(v, F::Bass) == -6.0f,
              "and reads it back");
-    MP_CHECK(mp::voicingRange(F::Tuning) == 50.0f && mp::voicingRange(F::Bass) == 12.0f, "the ranges");
+    MP_CHECK(mp::voicingRange(F::Tuning) == 50.0f && mp::voicingRange(F::Bass) == 24.0f, "the ranges");
     MP_CHECK(mp::voicingValuesOf(F::Brightness) == mp::kVoicingBrightness &&
                  mp::voicingValuesOf(F::Bass) == mp::kVoicingBass && mp::voicingValuesOf(F::Level) == mp::kVoicingLevel,
              "each field names its voicing value");

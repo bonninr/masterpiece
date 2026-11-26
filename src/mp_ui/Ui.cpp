@@ -46,6 +46,9 @@ juce::String divisionLabel(const MasterpieceProcessor& proc, Id divisionId) {
 }
 
 constexpr int kStopHeight = 30;
+// The tile's height at each of the stop list's sizes (fabiomancini67, #1271):
+// as drawn, then tall enough for a fingertip on a touch screen.
+constexpr int kStopHeights[] = {kStopHeight, 46, 62};
 constexpr int kHeaderHeight = 24;
 constexpr int kJambWidth = 320;
 // A grid of stop tiles rather than bars the width of the window: as many
@@ -349,6 +352,10 @@ void StopJamb::moveFocus(StopButton& from, const juce::KeyPress& key) {
   entries_[static_cast<size_t>(target)].button->grabKeyboardFocus();
 }
 
+int StopJamb::stopHeight() const {
+  return kStopHeights[std::clamp(proc_.stopListSize(), 0, MasterpieceProcessor::kMaxViewSize)];
+}
+
 int StopJamb::heightFor(int width) const {
   const int columns = columnsFor(width);
   int height = 8;
@@ -357,7 +364,7 @@ int StopJamb::heightFor(int width) const {
     const Id division = entries_[i].divisionId;
     size_t n = 0;
     while (i + n < entries_.size() && entries_[i + n].divisionId == division) ++n;
-    height += kHeaderHeight + static_cast<int>((n + columns - 1) / columns) * (kStopHeight + kGap);
+    height += kHeaderHeight + static_cast<int>((n + columns - 1) / columns) * (stopHeight() + kGap);
     i += n;
   }
   return height;
@@ -376,13 +383,13 @@ void StopJamb::resized() {
     y += kHeaderHeight;
     int column = 0;
     for (; i < entries_.size() && entries_[i].divisionId == division; ++i) {
-      entries_[i].button->setBounds(4 + column * (tile + kGap), y, tile, kStopHeight);
+      entries_[i].button->setBounds(4 + column * (tile + kGap), y, tile, stopHeight());
       if (++column == columns) {
         column = 0;
-        y += kStopHeight + kGap;
+        y += stopHeight() + kGap;
       }
     }
-    if (column != 0) y += kStopHeight + kGap;
+    if (column != 0) y += stopHeight() + kGap;
   }
 }
 
@@ -2974,6 +2981,11 @@ void MasterpieceEditor::setScoreDetached(bool detached) {
         [this] { setScoreDetached(false); });
     if (scoreWindowBounds_.getWidth() > 100) scoreWindow_->setBounds(scoreWindowBounds_);
     else scoreWindow_->centreWithSize(1100, 760);
+    // Over the console's window, when the player asks (#1012).
+    scoreWindow_->setAlwaysOnTop(score_->keptOnTop());
+    score_->onKeepOnTop = [this](bool top) {
+      if (scoreWindow_ != nullptr) scoreWindow_->setAlwaysOnTop(top);
+    };
     score_->setVisible(true);
     scoreWindow_->setVisible(true);
     // The score's tab goes: from it, back to the base view.
@@ -3237,8 +3249,12 @@ void MasterpieceEditor::showFileMenu() {
     for (int i = 0; i < versions.size(); ++i)
       other.addItem(100 + i, versions[i].getFileNameWithoutExtension(), versions[i] != loaded,
                     versions[i] == loaded);
-    menu.addSubMenu(TRANS("Open another version"), other);
+    menu.addSubMenu(TRANS("Other versions of this organ"), other);
   }
+#if MP_HAS_SCORE
+  // A score straight from the start (#1012): the score panel, and its file.
+  menu.addItem(40, TRANS("Open score..."));
+#endif
   // A phone or a tablet has no folder to save a file to that this can reach.
   if (!kMobile) {
     // An organ's packages put in the organs folder, and taken out (#1024).
@@ -3266,6 +3282,12 @@ void MasterpieceEditor::showFileMenu() {
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this), versions](int c) {
                        if (safe == nullptr || c == 0) return;
                        if (c == 1) safe->showOpenMenu();
+#if MP_HAS_SCORE
+                       if (c == 40) {
+                         safe->showScore();
+                         if (safe->score_ != nullptr) safe->score_->openScoreDialog();
+                       }
+#endif
                        if (c == 20) safe->importSettings();
                        if (c == 21) safe->exportSettings(true);
                        if (c == 22) safe->exportSettings(false);
@@ -3372,6 +3394,18 @@ void MasterpieceEditor::showViewMenu() {
   if (expression_.shoeCount() > 0) menu.addItem(11, TRANS("Expression pedals"), true, showingSwell_);
   menu.addItem(12, TRANS("Keyboard"), true, showingKeyboard_);
   menu.addItem(13, TRANS("Highlight played keys"), true, proc_.showPlayedKeys());
+  // Sizes for a touch screen or for reading from the bench (#1271, #1221).
+  {
+    const juce::String sizes[] = {TRANS("Normal"), TRANS("Large"), TRANS("Larger")};
+    juce::PopupMenu stopList, pistons;
+    for (int s = 0; s <= MasterpieceProcessor::kMaxViewSize; ++s) {
+      stopList.addItem(24 + s, sizes[s], true, proc_.stopListSize() == s);
+      pistons.addItem(28 + s, sizes[s], true, proc_.pistonSize() == s);
+    }
+    menu.addSubMenu(TRANS("Stop list size"), stopList);
+    menu.addSubMenu(TRANS("Piston size"), pistons);
+  }
+  menu.addItem(27, TRANS("Large frame number"), true, proc_.bigFrameNumber());
   // Each item its own number: the handler below runs every branch that
   // matches, so a shared number does two things at once. 15 is the stop list.
   menu.addItem(17, TRANS("Scale small pages to fit"), true, proc_.smallPagesFill());
@@ -3411,6 +3445,18 @@ void MasterpieceEditor::showViewMenu() {
                          safe->resized();
                        }
                        if (c == 18) safe->fitWindowToPage();
+                       if (c >= 24 && c <= 26) {
+                         safe->proc_.setStopListSize(c - 24);
+                         safe->resized();
+                       }
+                       if (c >= 28 && c <= 30) {
+                         safe->proc_.setPistonSize(c - 28);
+                         if (safe->combinations_ != nullptr) safe->combinations_->panel().relayout();
+                       }
+                       if (c == 27) {
+                         safe->proc_.setBigFrameNumber(!safe->proc_.bigFrameNumber());
+                         safe->stepFrame_.repaint();
+                       }
                        if (c == 20) safe->setFullScreen(!safe->fullScreen_);
                        if (c == 21) {
                          safe->proc_.setRememberWindowPlaces(!safe->proc_.rememberWindowPlaces());
@@ -3659,6 +3705,25 @@ void MasterpieceEditor::timerCallback() {
                                                     "%03d", PlayerCombinations::shownNumber(
                                                                 juce::jmax(last, seq.frame())))),
                        juce::dontSendNotification);
+  // View > Large frame number: the number alone, the whole line in the tip.
+  {
+    const bool big = proc_.bigFrameNumber();
+    if (stepFrame_.big != big) {
+      if (big) frameTip_ = stepFrame_.getTooltip();
+      else stepFrame_.setTooltip(frameTip_);
+      stepFrame_.big = big;
+      stepFrame_.repaint();
+    }
+    if (big) {
+      const juce::String whole = stepFrame_.getText();
+      if (stepFrame_.getTooltip() != whole) stepFrame_.setTooltip(whole);
+      stepFrame_.setText(levels && seq.frame() >= 1
+                             ? juce::String((seq.frame() - 1) / perLevel + 1) + "." +
+                                   juce::String((seq.frame() - 1) % perLevel + 1)
+                             : juce::String::formatted("%03d", PlayerCombinations::shownNumber(seq.frame())),
+                         juce::dontSendNotification);
+    }
+  }
   stepPrev_.setEnabled(seq.frame() > 1);
   // Every frame is there (#1245): the next one too, set or not.
   stepNext_.setEnabled(seq.frame() < PlayerCombinations::kMaxFrames);

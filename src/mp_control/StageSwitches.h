@@ -22,6 +22,7 @@
 #include "../mp_core/OrganModel.h"
 
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -89,6 +90,11 @@ private:
     std::vector<Id> switches;
   };
   std::unordered_map<Id, Step> engagedStep_;
+  // Switches that fire a combination the organ names them for: a crescendo's
+  // steps. Düren's rows engage a step on the way up and only release it on
+  // the way down (#1274); a released step fires nothing, so leaving it puts
+  // the step below back, as Hauptwerk plays it.
+  std::unordered_set<Id> pistonSwitches_;
   size_t total_ = 0;
 };
 

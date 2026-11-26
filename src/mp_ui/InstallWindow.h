@@ -96,6 +96,7 @@ private:
   double progress_ = 0.0;
   juce::ProgressBar bar_{progress_};
   juce::TextButton go_, cancel_button_{TRANS("Cancel")}, openButton_, close_{TRANS("Close")};
+  juce::TextButton another_{TRANS("Install another package...")};
   std::unique_ptr<juce::FileChooser> chooser_;
 };
 

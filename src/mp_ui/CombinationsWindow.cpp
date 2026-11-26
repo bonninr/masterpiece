@@ -272,8 +272,10 @@ CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
   // read as levels of generals, as English consoles have them.
   addChildComponent(style_);
   style_.addItem(TRANS("Sequencer"), 1);
-  for (int n = 1; n <= MasterpieceProcessor::kMaxLevelSize; ++n)
-    style_.addItem(TRANS("Levels of %1 generals").replace("%1", juce::String(n)), n + 1);
+  // Levels in one entry, numbered as the console's pistons are (#1259); how
+  // many generals a level holds is set beside it, as the divisionals are.
+  style_.addItem(TRANS("Levels, numbered from 1"), 2);
+  style_.addItem(TRANS("Levels, numbered from 0"), 3);
   style_.setTooltip(TRANS("The stepper as GrandOrgue's sequencer, frames 000 to 998, or as levels of generals: "
                           "- and + step through the generals, the level buttons move a level, and the numbered "
                           "buttons pick a general of the level"));
@@ -281,7 +283,21 @@ CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
     const int id = style_.getSelectedId();
     if (id <= 0) return;
     proc_.setStepperLevels(id > 1);
-    if (id > 1) proc_.setLevelSize(id - 1);
+    if (id > 1) proc_.setLevelsFromZero(id == 3);
+    applyView();
+  };
+  for (auto* b : {&fewerLevel_, &moreLevel_}) addChildComponent(*b);
+  addChildComponent(levelSize_);
+  levelSize_.setJustificationType(juce::Justification::centred);
+  levelSize_.setColour(juce::Label::textColourId, kText);
+  fewerLevel_.setTooltip(TRANS("Fewer generals in each level"));
+  moreLevel_.setTooltip(TRANS("More generals in each level"));
+  fewerLevel_.onClick = [this] {
+    proc_.setLevelSize(proc_.levelSize() - 1);
+    applyView();
+  };
+  moreLevel_.onClick = [this] {
+    proc_.setLevelSize(proc_.levelSize() + 1);
     applyView();
   };
   applyView();
@@ -292,8 +308,14 @@ void CombinationsPanel::applyView() {
   simple_ = proc_.simpleMode();
   levels_ = simple_ || proc_.stepperLevels();
   const int perLevel = proc_.levelStep();
-  style_.setSelectedId(proc_.stepperLevels() ? proc_.levelSize() + 1 : 1, juce::dontSendNotification);
+  style_.setSelectedId(proc_.stepperLevels() ? (proc_.levelsFromZero() ? 3 : 2) : 1, juce::dontSendNotification);
   style_.setVisible(!simple_ && sequencerShown());
+  const bool sized = !simple_ && proc_.stepperLevels() && sequencerShown();
+  for (juce::Component* c : std::initializer_list<juce::Component*>{&fewerLevel_, &moreLevel_, &levelSize_})
+    c->setVisible(sized);
+  levelSize_.setText(TRANS("%1 a level").replace("%1", juce::String(proc_.levelSize())), juce::dontSendNotification);
+  fewerLevel_.setEnabled(proc_.levelSize() > 1);
+  moreLevel_.setEnabled(proc_.levelSize() < MasterpieceProcessor::kMaxLevelSize);
   const bool frames = !levels_ && sequencerShown();
   for (juce::Component* c :
        std::initializer_list<juce::Component*>{&stepFirst_, &stepLast_, &frame_, &insertFrame_, &deleteFrame_})
@@ -331,9 +353,10 @@ void CombinationsPanel::applyView() {
   for (int i = 0; i < 10; ++i) {
     // Levels number their generals from 1; the sequencer's digits are the
     // last figure of a frame, from 0.
-    digits_[static_cast<size_t>(i)]->setButtonText(juce::String(levels_ ? i + 1 : i));
+    const int shown = levels_ && !proc_.levelsFromZero() ? i + 1 : i;
+    digits_[static_cast<size_t>(i)]->setButtonText(juce::String(shown));
     digits_[static_cast<size_t>(i)]->setTooltip(
-        levels_ ? TRANS("General %1 of this level").replace("%1", juce::String(i + 1))
+        levels_ ? TRANS("General %1 of this level").replace("%1", juce::String(shown))
                 : TRANS("The frame ending in %1, among the ten shown").replace("%1", juce::String(i)));
   }
   const int w = std::max(getWidth(), preferredWidth());
@@ -350,6 +373,7 @@ void CombinationsPanel::rebuild() {
   generals_.clear();
   for (int n = 1; n <= pc.generalCount(); ++n) {
     auto b = std::make_unique<PistonButton>(juce::String(n));
+    b->setLookAndFeel(&pistonLook_);
     auto* raw = b.get();
     labelGeneral(*b, n);
     b->onClick = [this, n] { proc_.pressGeneral(n); };
@@ -372,6 +396,8 @@ void CombinationsPanel::rebuild() {
     const Id div = d.divisionId;
     for (int n = 1; n <= pc.divisionalCount(); ++n) {
       auto b = std::make_unique<PistonButton>(juce::String(n));
+      b->setLookAndFeel(&pistonLook_);
+      labelDivisional(*b, div, n);
       auto* raw = b.get();
       b->onClick = [this, div, n] { proc_.pressDivisional(div, n); };
       b->onRightClick = [this, raw, div, n] {
@@ -382,6 +408,7 @@ void CombinationsPanel::rebuild() {
       row.pistons.push_back(std::move(b));
     }
     row.cancel = std::make_unique<PistonButton>("0");
+    row.cancel->setLookAndFeel(&pistonLook_);
     row.cancel->setTooltip(TRANS("Cancel this division"));
     auto* raw = row.cancel.get();
     row.cancel->onClick = [this, div] { proc_.pressDivisionalCancel(div); };
@@ -424,7 +451,8 @@ int CombinationsPanel::preferredHeight(int /*width*/) const {
   if (sequencerShown()) h += kGap + kRow;
   if (!simple_ && combinationsShown())
     h += kHeading + kGap + generalRows(pc.generalCount()) * (generalH() + kGap) + kSection;
-  if (combinationsShown() && !divisions_.empty()) h += kHeading + kGap + static_cast<int>(divisions_.size()) * (kRow + kGap) + kSection;
+  if (combinationsShown() && !divisions_.empty())
+    h += kHeading + kGap + static_cast<int>(divisions_.size()) * divisionalRows() * (divisionalH() + kGap) + kSection;
   h += kRow + kGap + kNoteH + kMargin;
   return h;
 }
@@ -435,17 +463,19 @@ int CombinationsPanel::preferredWidth() const {
   int w = levels_ ? 56 + kGap + 56 + 12 + 48 + 48 + 110 + 48 + 48
                   : 56 + kGap + 56 + 12 + 34 + 40 + 34 + 110 + 34 + 40 + 34 + kGap * 2 + 56 + 56;
   if (!simple_) w += kGap * 2 + kStyleW;
+  if (!simple_ && proc_.stepperLevels()) w += 26 + 26 + 70;
   if (!simple_)
     w = std::max(w, kDivisionLabelW + std::min(pc.generalCount(), generalsPerRow()) * (generalW() + kGap));
   if (!divisions_.empty()) {
     w = std::max(w, kDivisionLabelW + 26 + 26 + kGap * 2 + 170);
-    w = std::max(w, kDivisionLabelW + pc.divisionalCount() * (kPistonW + kGap) + kGap * 2 + kPistonW);
+    w = std::max(w, kDivisionLabelW + divisionalsPerRow() * (divisionalW() + kGap) + kGap * 2 + scaled(kPistonW));
   }
   w = std::max(w, kDivisionLabelW + 200 + kGap + 90 + 70);
   return w + 2 * kMargin;
 }
 
 void CombinationsPanel::resized() {
+  pistonLook_.percent = scaled(100);
   auto r = getLocalBounds().reduced(kMargin, 0);
   r.removeFromTop(kMargin);
 
@@ -455,6 +485,11 @@ void CombinationsPanel::resized() {
   generalCancel_.setBounds(row.removeFromLeft(56).reduced(1));
   row.removeFromLeft(12);
   if (!simple_) style_.setBounds(row.removeFromRight(kStyleW).reduced(1));
+  if (fewerLevel_.isVisible()) {
+    moreLevel_.setBounds(row.removeFromRight(26).reduced(1));
+    levelSize_.setBounds(row.removeFromRight(70));
+    fewerLevel_.setBounds(row.removeFromRight(26).reduced(1));
+  }
   if (levels_) {
     stepBack10_.setBounds(row.removeFromLeft(48).reduced(1));
     stepPrev_.setBounds(row.removeFromLeft(48).reduced(1));
@@ -511,16 +546,18 @@ void CombinationsPanel::resized() {
     pedalCoupler_.setBounds(row.removeFromLeft(juce::jmin(row.getWidth(), 90)).reduced(1));
     pedalManual_.setBounds(row.removeFromLeft(juce::jmin(row.getWidth(), 150)).reduced(1));
     r.removeFromTop(kGap);
+    const int dw = divisionalW(), dh = divisionalH(), per = divisionalsPerRow(), lines = divisionalRows();
     for (auto& d : divisions_) {
-      row = r.removeFromTop(kRow);
-      r.removeFromTop(kGap);
-      d.name->setBounds(row.removeFromLeft(kDivisionLabelW));
-      for (auto& b : d.pistons) {
-        b->setBounds(row.removeFromLeft(kPistonW));
-        row.removeFromLeft(kGap);
+      auto block = r.removeFromTop(lines * (dh + kGap));
+      d.name->setBounds(block.getX(), block.getY(), kDivisionLabelW, dh);
+      const int left = block.getX() + kDivisionLabelW;
+      for (size_t i = 0; i < d.pistons.size(); ++i) {
+        const int col = static_cast<int>(i) % per;
+        const int line = static_cast<int>(i) / per;
+        d.pistons[i]->setBounds(left + col * (dw + kGap), block.getY() + line * (dh + kGap), dw, dh);
       }
-      row.removeFromLeft(kGap * 2);
-      d.cancel->setBounds(row.removeFromLeft(kPistonW));
+      // The cancel at the end of the first line, the height of a plain piston.
+      d.cancel->setBounds(left + per * (dw + kGap) + kGap * 2, block.getY(), scaled(kPistonW), scaled(kRow));
     }
     r.removeFromTop(kSection);
   }
@@ -567,6 +604,9 @@ void CombinationsPanel::refreshState() {
   const bool capturing = proc_.captureMode();
   setter_.setToggleState(capturing, juce::dontSendNotification);
   setter_.setColour(juce::TextButton::buttonOnColourId, kCapture);
+  // Lit as a piston is while on (#1221): the default contrast was too faint.
+  pedalCoupler_.setColour(juce::TextButton::buttonOnColourId, kLit);
+  pedalCoupler_.setColour(juce::TextButton::textColourOnId, kBackground);
   pedalCoupler_.setToggleState(proc_.pedalCombinationsCoupled(), juce::dontSendNotification);
 
   for (size_t i = 0; i < generals_.size(); ++i) {
@@ -580,6 +620,7 @@ void CombinationsPanel::refreshState() {
     for (size_t i = 0; i < d.pistons.size(); ++i) {
       const int n = static_cast<int>(i) + 1;
       paintPiston(*d.pistons[i], pc.divisionalSet(d.divisionId, n), lit == n);
+      labelDivisional(*d.pistons[i], d.divisionId, n);
     }
   }
 
@@ -609,7 +650,8 @@ void CombinationsPanel::refreshState() {
   }
   level_.setText(pc.frame() >= 1 ? TRANS("Level %1, general %2")
                                        .replace("%1", juce::String(base / perLevel + 1))
-                                       .replace("%2", juce::String(pc.frame() - base))
+                                       .replace("%2", juce::String(pc.frame() - base -
+                                                                    (proc_.levelsFromZero() ? 1 : 0)))
                                  : TRANS("Level %1").replace("%1", juce::String(base / perLevel + 1)),
                  juce::dontSendNotification);
   stepPrev_.setEnabled(pc.frame() > 1);
@@ -709,6 +751,16 @@ void CombinationsPanel::showMidiMenu(PistonButton& b, MidiTargetKind kind,
   if (kind == MidiTargetKind::PlayerGeneral) {
     menu.addSeparator();
     menu.addItem(5, TRANS("Name..."));
+    const int n = static_cast<int>(targetId);
+    menu.addItem(6, TRANS("Empty"),
+                 proc_.playerCombinations().generalSet(n) || !proc_.playerCombinations().generalName(n).empty());
+  } else if (kind == MidiTargetKind::PlayerDivisional) {
+    const auto& pc = proc_.playerCombinations();
+    const Id div = playerDivisionalDivision(targetId);
+    const int n = playerDivisionalPiston(targetId);
+    menu.addSeparator();
+    menu.addItem(7, TRANS("Name..."));
+    menu.addItem(8, TRANS("Empty"), pc.divisionalSet(div, n) || !pc.divisionalName(div, n).empty());
   }
 
   const juce::String name = b.getButtonText();
@@ -718,6 +770,22 @@ void CombinationsPanel::showMidiMenu(PistonButton& b, MidiTargetKind kind,
         switch (choice) {
           case 5:
             nameGeneral(static_cast<int>(targetId));
+            break;
+          case 6: {
+            const int n = static_cast<int>(targetId);
+            proc_.clearGeneral(n);
+            if (n >= 1 && static_cast<size_t>(n) <= generals_.size()) labelGeneral(*generals_[static_cast<size_t>(n) - 1], n);
+            refreshState();
+            relayout();
+            break;
+          }
+          case 7:
+            nameDivisional(playerDivisionalDivision(targetId), playerDivisionalPiston(targetId));
+            break;
+          case 8:
+            proc_.clearDivisional(playerDivisionalDivision(targetId), playerDivisionalPiston(targetId));
+            refreshState();
+            relayout();
             break;
           case 4:
             MidiEventDialog::show(proc_, kind, targetId, name);
@@ -744,8 +812,12 @@ bool CombinationsPanel::namedGenerals() const {
   return false;
 }
 
-int CombinationsPanel::generalW() const { return namedGenerals() ? kNamedPistonW : kPistonW; }
-int CombinationsPanel::generalH() const { return namedGenerals() ? kNamedRow : kRow; }
+int CombinationsPanel::scaled(int px) const {
+  static constexpr int kPercent[] = {100, 140, 180};
+  return px * kPercent[std::clamp(proc_.pistonSize(), 0, MasterpieceProcessor::kMaxViewSize)] / 100;
+}
+int CombinationsPanel::generalW() const { return scaled(namedGenerals() ? kNamedPistonW : kPistonW); }
+int CombinationsPanel::generalH() const { return scaled(namedGenerals() ? kNamedRow : kRow); }
 int CombinationsPanel::generalsPerRow() const { return namedGenerals() ? kNamedPerRow : kPerRow; }
 int CombinationsPanel::generalRows(int count) const {
   const int per = generalsPerRow();
@@ -774,10 +846,61 @@ void CombinationsPanel::nameGeneral(int n) {
     if (result == 1 && namePrompt_ != nullptr) {
       proc_.setGeneralName(n, namePrompt_->getTextEditorContents("name"));
       if (static_cast<size_t>(n) <= generals_.size()) labelGeneral(*generals_[static_cast<size_t>(n) - 1], n);
-      const int w = std::max(getWidth(), preferredWidth());
-      setSize(w, preferredHeight(w));
-      resized();
-      if (onWidthChanged) onWidthChanged();
+      relayout();
+    }
+    namePrompt_.reset();
+  }));
+}
+
+void CombinationsPanel::relayout() {
+  const int w = std::max(getWidth(), preferredWidth());
+  setSize(w, preferredHeight(w));
+  resized();
+  if (onWidthChanged) onWidthChanged();
+}
+
+int CombinationsPanel::divisionalW() const {
+  return scaled(proc_.playerCombinations().anyDivisionalNamed() ? kNamedPistonW : kPistonW);
+}
+int CombinationsPanel::divisionalH() const {
+  return scaled(proc_.playerCombinations().anyDivisionalNamed() ? kNamedRow : kRow);
+}
+int CombinationsPanel::divisionalsPerRow() const {
+  const int count = std::max(1, proc_.playerCombinations().divisionalCount());
+  return proc_.playerCombinations().anyDivisionalNamed() ? std::min(count, kNamedPerRow) : count;
+}
+int CombinationsPanel::divisionalRows() const {
+  const int per = divisionalsPerRow();
+  return (std::max(1, proc_.playerCombinations().divisionalCount()) + per - 1) / per;
+}
+
+void CombinationsPanel::labelDivisional(juce::Button& b, Id divisionId, int n) const {
+  const juce::String own(juce::CharPointer_UTF8(proc_.playerCombinations().divisionalName(divisionId, n).c_str()));
+  const juce::String text = own.isEmpty() ? juce::String(n) : own;
+  if (b.getButtonText() != text) b.setButtonText(text);
+  const juce::String tip = own.isEmpty() ? TRANS("Divisional %1").replace("%1", juce::String(n))
+                                         : TRANS("Divisional %1: %2").replace("%1", juce::String(n)).replace("%2", own);
+  if (b.getTooltip() != tip) b.setTooltip(tip);
+}
+
+void CombinationsPanel::nameDivisional(Id divisionId, int n) {
+  const auto& pc = proc_.playerCombinations();
+  const juce::String now(juce::CharPointer_UTF8(pc.divisionalName(divisionId, n).c_str()));
+  juce::String division;
+  for (const auto& d : pc.divisions())
+    if (d.divisionId == divisionId) division = juce::String(juce::CharPointer_UTF8(d.name.c_str()));
+  namePrompt_ = std::make_unique<juce::AlertWindow>(
+      TRANS("Name of divisional %1 of %2").replace("%1", juce::String(n)).replace("%2", division),
+      TRANS("A name shown on the piston, such as Cornet or Plein jeu. Empty shows its number."),
+      juce::MessageBoxIconType::NoIcon);
+  namePrompt_->addTextEditor("name", now, TRANS("Name"));
+  namePrompt_->addButton(TRANS("Save"), 1);
+  namePrompt_->addButton(TRANS("Cancel"), 0);
+  namePrompt_->enterModalState(true, juce::ModalCallbackFunction::create([this, divisionId, n](int result) {
+    if (result == 1 && namePrompt_ != nullptr) {
+      proc_.setDivisionalName(divisionId, n, namePrompt_->getTextEditorContents("name"));
+      refreshState();
+      relayout();
     }
     namePrompt_.reset();
   }));

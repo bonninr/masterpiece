@@ -7,7 +7,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <deque>
 #include <limits>
+#include <map>
+#include <sstream>
 
 namespace mp::ui {
 
@@ -20,6 +23,8 @@ constexpr int kEngraveDelayMs = 200;
 constexpr int kSaveDelayMs = 1000;  // a change to the marks is written this long after it
 constexpr float kIcon = 18.0f;      // a mark's icon, in the panel's pixels
 constexpr size_t kUndoSteps = 100;
+// A note with no length of its own, in seconds.
+constexpr double kShortestNoteSeconds = 0.05;
 const juce::Colour kBackground{0xff1b1e24};
 
 bool hasClass(const juce::XmlElement& e, juce::StringRef name) {
@@ -130,9 +135,21 @@ struct GeometryWalk {
     }
   }
 };
+// The staff lines in a colour of their own (#1012): each horizontal path of
+// a staff. As an inline style: the SVG renderer lets the page's style sheet
+// win over a plain stroke attribute.
+void colourStaffLines(juce::XmlElement& e, const juce::String& colour) {
+  if (e.hasTagName("g") && hasClass(e, "staff"))
+    for (auto* c : e.getChildWithTagNameIterator("path")) {
+      float x1, x2, y;
+      if (horizontalLine(c->getStringAttribute("d"), x1, x2, y)) c->setAttribute("style", "stroke:" + colour);
+    }
+  for (auto* c : e.getChildIterator()) colourStaffLines(*c, colour);
+}
 }  // namespace
 
-std::unique_ptr<juce::Drawable> parseScorePage(const std::string& svg, ScorePageGeometry& geometry) {
+std::unique_ptr<juce::Drawable> parseScorePage(const std::string& svg, ScorePageGeometry& geometry,
+                                               juce::Colour lines) {
   geometry = {};
   const auto doc = juce::XmlDocument::parse(juce::String::fromUTF8(svg.c_str()));
   if (doc == nullptr) return nullptr;
@@ -167,6 +184,7 @@ std::unique_ptr<juce::Drawable> parseScorePage(const std::string& svg, ScorePage
       if (l.gap > 0) s.lineGap = l.gap;
       geometry.systems.push_back(s);
     }
+    if (!lines.isTransparent()) colourStaffLines(*inner, "#" + lines.toDisplayString(false));
   }
   return juce::Drawable::createFromSVGString(doc->toString());
 }
@@ -218,20 +236,21 @@ juce::File scoreResourceFolder() {
 }
 
 namespace {
-// The manual each staff plays, one row per staff.
+// The manual each staff plays, one row per staff: the score's own, with a
+// Mute box each, or a manual change's from its note on (#1273), with Delete.
 class ManualsDialog : public juce::Component {
 public:
-  explicit ManualsDialog(juce::Component::SafePointer<ScorePanel> panel,
-                         const std::vector<ScorePanel::Staff>& staves,
-                         const std::vector<std::pair<Id, juce::String>>& keyboards)
-      : panel_(panel) {
+  // `markIndex` -1 for the score's own.
+  ManualsDialog(juce::Component::SafePointer<ScorePanel> panel, const std::vector<ScorePanel::Staff>& staves,
+                const std::vector<std::pair<Id, juce::String>>& keyboards, int markIndex)
+      : panel_(panel), mark_(markIndex) {
     for (const auto& s : staves) {
       auto row = std::make_unique<Row>();
       row->label.setText(s.name, juce::dontSendNotification);
       row->box.addItem(TRANS("None"), 1);
       for (size_t i = 0; i < keyboards.size(); ++i)
         row->box.addItem(keyboards[i].second, static_cast<int>(i) + 2);
-      const Id current = panel->keyboardForStaff(s.number);
+      const Id current = mark_ < 0 ? panel->keyboardForStaff(s.number) : panel->markKeyboardForStaff(mark_, s.number);
       int selected = 1;
       for (size_t i = 0; i < keyboards.size(); ++i)
         if (keyboards[i].first == current) selected = static_cast<int>(i) + 2;
@@ -240,20 +259,51 @@ public:
       row->box.onChange = [this, staff, keyboards, box = &row->box] {
         const int id = box->getSelectedId();
         const Id kb = id >= 2 ? keyboards[static_cast<size_t>(id - 2)].first : 0;
-        if (panel_ != nullptr) panel_->setKeyboardForStaff(staff, kb);
+        if (panel_ == nullptr) return;
+        if (mark_ < 0) panel_->setKeyboardForStaff(staff, kb);
+        else panel_->setMarkKeyboardForStaff(mark_, staff, kb);
       };
       addAndMakeVisible(row->label);
       addAndMakeVisible(row->box);
+      if (mark_ < 0) {
+        // Silent, for the player to play it; the notes still shown (#1012).
+        row->mute.setButtonText(TRANS("Mute"));
+        row->mute.setTooltip(TRANS("Leave this staff silent, to play it yourself; it is saved with the score"));
+        row->mute.setToggleState(panel->muted(staff), juce::dontSendNotification);
+        row->mute.onClick = [this, staff, mute = &row->mute] {
+          if (panel_ != nullptr) panel_->setMuted(staff, mute->getToggleState());
+        };
+        addAndMakeVisible(row->mute);
+      }
       rows_.push_back(std::move(row));
     }
-    setSize(380, static_cast<int>(rows_.size()) * 30 + 12);
+    if (mark_ >= 0) {
+      title_.setText(TRANS("From this note on"), juce::dontSendNotification);
+      addAndMakeVisible(title_);
+      delete_.onClick = [this] {
+        if (panel_ != nullptr) panel_->deleteMark(mark_);
+        mark_ = -1;
+        if (auto* box = findParentComponentOfClass<juce::CallOutBox>()) box->dismiss();
+      };
+      addAndMakeVisible(delete_);
+    }
+    setSize(460, static_cast<int>(rows_.size()) * 30 + 12 + (mark_ >= 0 ? 64 : 0));
   }
 
   void resized() override {
     auto r = getLocalBounds().reduced(6);
+    if (mark_ >= 0) {
+      title_.setBounds(r.removeFromTop(26));
+      delete_.setBounds(r.removeFromBottom(28).removeFromRight(90));
+      r.removeFromBottom(4);
+    }
     for (auto& row : rows_) {
       auto line = r.removeFromTop(30).reduced(0, 3);
       row->label.setBounds(line.removeFromLeft(150));
+      if (mark_ < 0) {
+        row->mute.setBounds(line.removeFromRight(76));
+        line.removeFromRight(6);
+      }
       row->box.setBounds(line);
     }
   }
@@ -262,10 +312,15 @@ private:
   struct Row {
     juce::Label label;
     juce::ComboBox box;
+    juce::ToggleButton mute;
   };
   juce::Component::SafePointer<ScorePanel> panel_;
+  int mark_;
+  juce::Label title_;
+  juce::TextButton delete_{TRANS("Delete")};
   std::vector<std::unique_ptr<Row>> rows_;
 };
+
 
 void closeCallOut(juce::Component& c) {
   if (auto* box = c.findParentComponentOfClass<juce::CallOutBox>()) box->dismiss();
@@ -412,6 +467,89 @@ private:
   juce::TextButton recall_{TRANS("Set now")}, store_{TRANS("Store")}, forget_{TRANS("Forget organ")},
       delete_{TRANS("Delete")};
 };
+
+// A jump mark's name; or a combination's name and piston: a general or a
+// step of the sequencer, by number (#1012).
+class MarkPlaceEditor : public juce::Component {
+public:
+  MarkPlaceEditor(juce::Component::SafePointer<ScorePanel> panel, int index) : panel_(panel), index_(index) {
+    const auto& mark = panel->marks()[static_cast<size_t>(index)];
+    combination_ = mark.kind == ScoreMark::Kind::Combination;
+    name_.setText(juce::String::fromUTF8(mark.text.c_str()), false);
+    name_.setFont(juce::FontOptions(15.0f));
+    name_.setSelectAllWhenFocused(true);
+    name_.onReturnKey = [this] { closeCallOut(*this); };
+    name_.onEscapeKey = [this] { closeCallOut(*this); };
+    addAndMakeVisible(name_);
+    if (combination_) {
+      piston_.addItem(TRANS("General"), 1);
+      piston_.addItem(TRANS("Sequencer step"), 2);
+      const auto states = juce::String::fromUTF8(mark.states.c_str());
+      piston_.setSelectedId(states.startsWith("step") ? 2 : 1, juce::dontSendNotification);
+      number_.setInputRestrictions(4, "0123456789");
+      number_.setText(juce::String(juce::jmax(1, states.fromFirstOccurrenceOf(" ", false, false).getIntValue())),
+                      false);
+      addAndMakeVisible(piston_);
+      addAndMakeVisible(number_);
+    }
+    act_.setButtonText(combination_ ? TRANS("Set now") : TRANS("Go there"));
+    act_.onClick = [this] {
+      keep();
+      if (panel_ != nullptr) {
+        if (combination_) panel_->recallRegistration(index_);
+        else panel_->goToMark(index_);
+      }
+      closeCallOut(*this);
+    };
+    delete_.onClick = [this] {
+      if (panel_ != nullptr) panel_->deleteMark(index_);
+      index_ = -1;
+      closeCallOut(*this);
+    };
+    addAndMakeVisible(act_);
+    addAndMakeVisible(delete_);
+    setSize(340, combination_ ? 110 : 76);
+  }
+  ~MarkPlaceEditor() override { keep(); }
+  void visibilityChanged() override {
+    if (isShowing()) name_.grabKeyboardFocus();
+  }
+  void resized() override {
+    auto r = getLocalBounds().reduced(6);
+    name_.setBounds(r.removeFromTop(26));
+    r.removeFromTop(6);
+    if (combination_) {
+      auto row = r.removeFromTop(26);
+      piston_.setBounds(row.removeFromLeft(180));
+      row.removeFromLeft(6);
+      number_.setBounds(row.removeFromLeft(70));
+      r.removeFromTop(6);
+    }
+    auto buttons = r.removeFromTop(28);
+    act_.setBounds(buttons.removeFromLeft(110));
+    delete_.setBounds(buttons.removeFromRight(90));
+  }
+
+private:
+  void keep() {
+    if (panel_ == nullptr || index_ < 0 || index_ >= static_cast<int>(panel_->marks().size())) return;
+    const auto& mark = panel_->marks()[static_cast<size_t>(index_)];
+    const auto text = name_.getText().trim();
+    if (text.isNotEmpty() && text.toStdString() != mark.text) panel_->setMarkText(index_, text);
+    if (combination_) {
+      const std::string states = std::string(piston_.getSelectedId() == 2 ? "step " : "general ") +
+                                 std::to_string(juce::jmax(1, number_.getText().getIntValue()));
+      if (states != panel_->marks()[static_cast<size_t>(index_)].states) panel_->setMarkStates(index_, states);
+    }
+  }
+
+  juce::Component::SafePointer<ScorePanel> panel_;
+  int index_;
+  bool combination_ = false;
+  juce::TextEditor name_, number_;
+  juce::ComboBox piston_;
+  juce::TextButton act_, delete_{TRANS("Delete")};
+};
 }  // namespace
 
 ScorePanel::ScorePanel(MasterpieceProcessor& proc, const juce::File& fonts) : proc_(proc) {
@@ -425,9 +563,15 @@ ScorePanel::ScorePanel(MasterpieceProcessor& proc, const juce::File& fonts) : pr
   } else {
     message_ = TRANS("Open a MusicXML score (.musicxml, .xml or .mxl).");
   }
-  for (auto* b : {&open_, &prev_, &next_, &zoomOut_, &zoomIn_, &zoomReset_, &twoUp_, &play_, &manuals_, &invert_,
-                  &mark_, &regPrev_, &regNext_})
+  for (auto* b : {&open_, &prev_, &next_, &zoomOut_, &zoomIn_, &zoomReset_, &play_, &manuals_,
+                  &mark_, &regPrev_, &regNext_, &view_, &console_})
     addAndMakeVisible(b);
+  view_.setTooltip(TRANS("Pages, one line or two pages, inverted"));
+  console_.setTooltip(TRANS("Learn a console's buttons for Play, a measure back or on, the jump marks and the pages. "
+                            "On the computer: Space plays and stops, the arrows go a measure back or on, "
+                            "up and down go to the jump marks, Page Up and Page Down turn the pages."));
+  view_.onClick = [this] { chooseView(); };
+  console_.onClick = [this] { chooseConsoleButtons(); };
   addChildComponent(detach_);
   addAndMakeVisible(tempo_);
   addAndMakeVisible(pageLabel_);
@@ -446,8 +590,8 @@ ScorePanel::ScorePanel(MasterpieceProcessor& proc, const juce::File& fonts) : pr
   }
 
   open_.onClick = [this] { chooseFile(); };
-  prev_.onClick = [this] { showPage(page_ - slotCount()); };
-  next_.onClick = [this] { showPage(page_ + slotCount()); };
+  prev_.onClick = [this] { line_ ? scrollLine(-1.0f) : showPage(page_ - slotCount()); };
+  next_.onClick = [this] { line_ ? scrollLine(1.0f) : showPage(page_ + slotCount()); };
   zoomOut_.onClick = [this] { setZoom(std::min(zoom_, drawnZoom_) - 10); };
   zoomIn_.onClick = [this] { setZoom(zoom_ + 10); };
   zoomReset_.onClick = [this] { setZoom(100); };
@@ -464,6 +608,7 @@ ScorePanel::ScorePanel(MasterpieceProcessor& proc, const juce::File& fonts) : pr
     // The score's own tempo, shown whole, is exactly the score's.
     const double v = tempo_.getValue();
     proc_.scorePlayer().setSpeed(v == std::round(scoreBpm_) ? 1.0 : v / scoreBpm_);
+    settingsChanged();
   };
   showTempo();
   manuals_.onClick = [this] { chooseManuals(); };
@@ -507,7 +652,23 @@ void ScorePanel::setDetachable(bool can) {
 }
 
 void ScorePanel::setDetached(bool detached) {
+  detached_ = detached;
   detach_.setButtonText(detached ? TRANS("Attach") : TRANS("Detach"));
+}
+
+namespace {
+// The score window's own preference, the program's and not a score's: a
+// line in a small file of the app-data folder.
+juce::File scoreWindowFile() { return mp::dataFolder().getChildFile("score-window.txt"); }
+}  // namespace
+
+bool ScorePanel::keptOnTop() const {
+  return scoreWindowFile().loadFileAsString().contains("ontop 1");
+}
+
+void ScorePanel::setKeptOnTop(bool top) {
+  scoreWindowFile().replaceWithText(top ? "ontop 1\n" : "ontop 0\n");
+  if (onKeepOnTop) onKeepOnTop(top);
 }
 
 // --- opening -----------------------------------------------------------
@@ -577,8 +738,14 @@ bool ScorePanel::openData(const juce::MemoryBlock& bytes, const juce::String& na
   notes_.clear();
   staves_.clear();
   noteStartMs_.clear();
+  noteTimes_.clear();
+  measureMs_.clear();
+  muted_.clear();
+  keyboards_.clear();
+  savedCodes_.clear();
   cursorNotes_.clear();
   startMs_ = 0;
+  scrollX_ = 0;
   page_ = 1;
   if (engraver_ == nullptr) {
     refreshButtons();
@@ -595,13 +762,17 @@ bool ScorePanel::openData(const juce::MemoryBlock& bytes, const juce::String& na
     message_ = TRANS("No score was found in this file.");
   } else {
     // Without the marks, and with every note named, so a mark finds its note
-    // on the page.
-    loaded_ = engraver_->load(marks_.engraving());
+    // on the page. Played with its repeats unrolled and its ornaments.
+    playback_.load(marks_.engraving());
+    loaded_ = engraver_->load(marks_.engraving(), playback_.unrolled());
     message_ = loaded_ ? name : juce::String::fromUTF8(engraver_->error().c_str());
   }
   if (loaded_) {
     readTimeline();
+    // The score's own settings: its tempo, manuals, mutes and view.
+    applySettings(marks_.settings);
     engrave();
+    startTimer(33);
   }
   refreshButtons();
   repaint();
@@ -632,22 +803,40 @@ void ScorePanel::readTimeline() {
       file.convertTimestampTicksToSeconds();
       for (int t = 1; t < file.getNumTracks(); ++t) {
         juce::MidiMessageSequence seq(*file.getTrack(t));
-        seq.updateMatchedPairs();
         juce::String trackName;
         bool any = false;
+        // Each note-off ends the oldest note still open on its key. Two voices
+        // sharing a note write two note-ons on one key: paired as JUCE pairs
+        // them, the first ended where the second began, at the same moment,
+        // and a note ending as it starts left its key held to the end of the
+        // score (JPIL04, #1012).
+        std::map<int, std::deque<size_t>> open;
+        const size_t first = notes_.size();
         for (int i = 0; i < seq.getNumEvents(); ++i) {
           const auto* ev = seq.getEventPointer(i);
-          if (ev->message.isTrackNameEvent() && trackName.isEmpty())
-            trackName = ev->message.getTextFromTextMetaEvent();
-          if (!ev->message.isNoteOn()) continue;
-          Note n;
-          n.on = ev->message.getTimeStamp();
-          n.off = ev->noteOffObject != nullptr ? ev->noteOffObject->message.getTimeStamp() : n.on;
-          n.staff = t;
-          n.pitch = ev->message.getNoteNumber();
-          notes_.push_back(n);
-          any = true;
+          const auto& m = ev->message;
+          if (m.isTrackNameEvent() && trackName.isEmpty()) trackName = m.getTextFromTextMetaEvent();
+          const int key = m.getChannel() * 128 + m.getNoteNumber();
+          if (m.isNoteOn()) {
+            Note n;
+            n.on = m.getTimeStamp();
+            n.off = -1.0;
+            n.staff = t;
+            n.pitch = m.getNoteNumber();
+            open[key].push_back(notes_.size());
+            notes_.push_back(n);
+            any = true;
+          } else if (m.isNoteOff()) {
+            auto& waiting = open[key];
+            if (waiting.empty()) continue;
+            notes_[waiting.front()].off = m.getTimeStamp();
+            waiting.pop_front();
+          }
         }
+        // A note the file never lets go of, or one as long as nothing, is
+        // played short rather than not at all.
+        for (size_t k = first; k < notes_.size(); ++k)
+          if (notes_[k].off <= notes_[k].on) notes_[k].off = notes_[k].on + kShortestNoteSeconds;
         if (any) staves_.push_back({t, TRANS("Staff") + " " + juce::String(t) +
                                            (trackName.isNotEmpty() ? " (" + trackName + ")" : juce::String())});
       }
@@ -655,9 +844,30 @@ void ScorePanel::readTimeline() {
   }
   const auto map = juce::JSON::parse(juce::String::fromUTF8(engraver_->timemapJson().c_str()));
   if (const auto* entries = map.getArray())
-    for (const auto& entry : *entries)
+    for (const auto& entry : *entries) {
+      const double ms = static_cast<double>(entry["tstamp"]);
+      if (entry.hasProperty("measureOn") && (measureMs_.empty() || ms > measureMs_.back() + 0.5))
+        measureMs_.push_back(ms);
       if (const auto* on = entry["on"].getArray())
-        for (const auto& id : *on) noteStartMs_.emplace(id.toString().toStdString(), static_cast<double>(entry["tstamp"]));
+        for (const auto& id : *on) {
+          const auto key = id.toString().toStdString();
+          noteStartMs_.emplace(key, ms);
+          noteTimes_[key].push_back(ms);
+        }
+    }
+  // The ornamented notes among the MIDI's, by their time and pitch, each time
+  // a repeat plays them.
+  ornamented_.clear();
+  for (const auto& [id, o] : playback_.ornaments()) {
+    const auto times = noteTimes_.find(id);
+    if (times == noteTimes_.end()) continue;
+    for (const double ms : times->second)
+      for (size_t k = 0; k < notes_.size(); ++k)
+        if (notes_[k].pitch == o.pitch && std::abs(notes_[k].on * 1000.0 - ms) < 3.0) {
+          ornamented_.emplace(k, o);
+          break;
+        }
+  }
 }
 
 // --- layout and engraving ------------------------------------------------
@@ -685,20 +895,20 @@ void ScorePanel::resized() {
   zoomReset_.setBounds(bar.removeFromLeft(52));
   zoomIn_.setBounds(bar.removeFromLeft(28));
   bar.removeFromLeft(8);
-  twoUp_.setBounds(bar.removeFromLeft(86));
-  bar.removeFromLeft(8);
   play_.setBounds(bar.removeFromLeft(64));
-  tempo_.setBounds(bar.removeFromLeft(118));
+  tempo_.setBounds(bar.removeFromLeft(108));
   bar.removeFromLeft(4);
   manuals_.setBounds(bar.removeFromLeft(90));
   bar.removeFromLeft(8);
   mark_.setBounds(bar.removeFromLeft(70));
   bar.removeFromLeft(8);
   regPrev_.setBounds(bar.removeFromLeft(28));
-  regLabel_.setBounds(bar.removeFromLeft(90));
+  regLabel_.setBounds(bar.removeFromLeft(80));
   regNext_.setBounds(bar.removeFromLeft(28));
   if (detach_.isVisible()) detach_.setBounds(bar.removeFromRight(76));
-  invert_.setBounds(bar.removeFromRight(70));
+  view_.setBounds(bar.removeFromRight(70));
+  bar.removeFromRight(4);
+  console_.setBounds(bar.removeFromRight(84));
   if (loaded_) requestEngrave();
 }
 
@@ -718,17 +928,20 @@ void ScorePanel::engrave() {
   // A page holds at least the staff names, the clefs and one measure, about
   // 700 Verovio units across: on a narrow page the zoom stops there.
   int scale = std::min(kScale * zoom_ / 100, std::max(10, area.getWidth() * 100 / 700));
-  engraver_->setPage(area.getWidth(), area.getHeight(), scale);
+  engraver_->setPage(area.getWidth(), area.getHeight(), scale, line_);
   // And one whole system from top to bottom: a taller one would run off the
-  // page, so the scale steps down until the first page's systems fit.
+  // page, so the scale steps down until the first page's systems fit. On one
+  // line, the page is as high as its system, which must fit the panel.
   for (int tries = 0; tries < 4 && scale > 10; ++tries) {
     ScorePageGeometry first;
     parseScorePage(engraver_->renderPage(1), first);
     float bottom = 0;
     for (const auto& sys : first.systems) bottom = std::max(bottom, sys.area.getBottom() + sys.lineGap * 2.0f);
-    if (first.height <= 0 || bottom <= first.height) break;
-    scale = std::max(10, static_cast<int>(scale * first.height / bottom * 0.97f));
-    engraver_->setPage(area.getWidth(), area.getHeight(), scale);
+    const float room = line_ ? static_cast<float>(area.getHeight()) : first.height;
+    const float need = line_ ? first.height : bottom;
+    if (first.height <= 0 || need <= room) break;
+    scale = std::max(10, static_cast<int>(scale * room / need * 0.97f));
+    engraver_->setPage(area.getWidth(), area.getHeight(), scale, line_);
   }
   drawnZoom_ = (scale * 100 + kScale / 2) / kScale;
   // The cursor's notes sound at the start, or at the playing position while
@@ -753,10 +966,14 @@ void ScorePanel::engrave() {
         at = id;
       }
   }
-  const int p = at.empty() ? 1 : engraver_->pageWithElement(at);
+  const int p = at.empty() || line_ ? 1 : engraver_->pageWithElement(at);
   page_ = std::clamp(p > 0 ? p : page_, 1, std::max(1, pageCount()));
-  if (twoPages_ && page_ > 1 && page_ == pageCount() && pageCount() % 2 == 0) --page_;
+  if (slotCount() == 2 && page_ > 1 && page_ == pageCount() && pageCount() % 2 == 0) --page_;
   renderShown();
+  if (line_) {
+    scrollX_ = 0;
+    keepInView();
+  }
 }
 
 void ScorePanel::renderShown() {
@@ -768,7 +985,8 @@ void ScorePanel::renderShown() {
       continue;
     }
     s.page = p;
-    s.drawable = parseScorePage(engraver_->renderPage(p), s.geometry);
+    s.drawable = parseScorePage(engraver_->renderPage(p), s.geometry,
+                                blueLines_ ? juce::Colour(0xff2f5fa8) : juce::Colour());
     s.image = {};
   }
   refreshButtons();
@@ -825,6 +1043,7 @@ void ScorePanel::setTwoPages(bool two) {
   twoUp_.setToggleState(two, juce::dontSendNotification);
   if (loaded_) engrave();
   refreshButtons();
+  settingsChanged();
 }
 
 void ScorePanel::setZoom(int percent) {
@@ -833,6 +1052,7 @@ void ScorePanel::setZoom(int percent) {
   zoom_ = z;
   if (loaded_) engrave();
   refreshButtons();
+  settingsChanged();
 }
 
 void ScorePanel::setInverted(bool inverted) {
@@ -840,6 +1060,363 @@ void ScorePanel::setInverted(bool inverted) {
   invert_.setToggleState(inverted, juce::dontSendNotification);
   for (auto& s : shown_) s.image = {};
   repaint();
+  settingsChanged();
+}
+
+// --- one line, the paper ---------------------------------------------------
+
+void ScorePanel::setLineView(bool line) {
+  if (line_ == line) return;
+  line_ = line;
+  scrollX_ = 0;
+  if (loaded_) engrave();
+  refreshButtons();
+  settingsChanged();
+}
+
+void ScorePanel::setPaper(Paper paper) {
+  if (paper_ == paper) return;
+  paper_ = paper;
+  for (auto& s : shown_) s.image = {};
+  repaint();
+  settingsChanged();
+}
+
+void ScorePanel::setBlueLines(bool blue) {
+  if (blueLines_ == blue) return;
+  blueLines_ = blue;
+  if (loaded_) renderShown();
+  settingsChanged();
+}
+
+// On one line, the page's pixels to the panel's: the line's height fitted
+// into the panel's, never larger than engraved.
+float ScorePanel::lineScale() const {
+  const auto& geo = shown_[0].geometry;
+  const auto area = slotArea(0);
+  if (geo.height <= 0) return 1.0f;
+  return std::min(1.0f, static_cast<float>(area.getHeight()) / geo.height);
+}
+
+// A screen's width on, or back (most of one, so a bar stays in sight).
+void ScorePanel::scrollLine(float screens) {
+  const auto& geo = shown_[0].geometry;
+  const float visible = static_cast<float>(slotArea(0).getWidth()) / lineScale();
+  const float most = std::max(0.0f, geo.width - visible);
+  scrollX_ = std::clamp(scrollX_ + screens * visible * 0.85f, 0.0f, most);
+  if (!playing()) {
+    // Stopped: the start moves to the first note in sight, as a page turned does.
+    double best = -1;
+    for (const auto& [id, n] : geo.notes) {
+      if (n.head.x < scrollX_ || n.head.x > scrollX_ + visible) continue;
+      const auto it = noteStartMs_.find(id);
+      if (it != noteStartMs_.end() && (best < 0 || it->second < best)) best = it->second;
+    }
+    if (best >= 0) {
+      const float keep = scrollX_;
+      setStart(best / 1000.0);
+      scrollX_ = keep;
+    }
+  }
+  refreshButtons();
+  repaint();
+}
+
+// On one line, the cursor kept in sight: when it nears the right edge, or is
+// left of the view, the line moves so it stands a little in from the left.
+void ScorePanel::keepInView() {
+  if (!line_ || shown_[0].drawable == nullptr) return;
+  const auto& geo = shown_[0].geometry;
+  float x = -1;
+  for (const auto& id : cursorNotes_)
+    if (const auto it = geo.notes.find(id); it != geo.notes.end()) x = std::max(x, it->second.head.x);
+  if (x < 0) return;
+  const float visible = static_cast<float>(slotArea(0).getWidth()) / lineScale();
+  if (x >= scrollX_ + visible * 0.05f && x <= scrollX_ + visible * 0.8f) return;
+  const float most = std::max(0.0f, geo.width - visible);
+  scrollX_ = std::clamp(x - visible * 0.15f, 0.0f, most);
+  refreshButtons();
+  repaint();
+}
+
+void ScorePanel::chooseView() {
+  juce::PopupMenu menu;
+  menu.addItem(1, TRANS("Pages"), true, !line_);
+  menu.addItem(2, TRANS("One line, scrolling with the playing"), true, line_);
+  menu.addItem(7, TRANS("Two pages"), !line_, twoPages_);
+  // The paper and the staff lines' colour (setPaper, setBlueLines) wait for
+  // a style screen of their own.
+  menu.addSeparator();
+  menu.addItem(8, TRANS("Invert"), true, inverted_);
+  if (detached_) {
+    menu.addSeparator();
+    menu.addItem(6, TRANS("Keep this window on top"), true, keptOnTop());
+  }
+  showMenu(menu, juce::PopupMenu::Options().withTargetComponent(&view_),
+           [safe = juce::Component::SafePointer<ScorePanel>(this)](int chosen) {
+             if (safe == nullptr) return;
+             switch (chosen) {
+               case 1: safe->setLineView(false); break;
+               case 2: safe->setLineView(true); break;
+               case 6: safe->setKeptOnTop(!safe->keptOnTop()); break;
+               case 7: safe->setTwoPages(!safe->twoPages_); break;
+               case 8: safe->setInverted(!safe->inverted()); break;
+               default: break;
+             }
+           });
+}
+
+// A console's buttons for the score, learned as any other: the menu names
+// what each is mapped to; choosing one learns it, or clears it.
+void ScorePanel::chooseConsoleButtons() {
+  auto& map = proc_.midiMap();
+  if (map.learning()) {
+    proc_.cancelLearn();
+    return;
+  }
+  struct Item {
+    ScoreCommandId id;
+    juce::String name;
+  };
+  const std::vector<Item> items = {
+      {ScoreCommandId::PlayStop, TRANS("Play / Stop")},
+      {ScoreCommandId::Back, TRANS("A measure back")},
+      {ScoreCommandId::Forward, TRANS("A measure on")},
+      {ScoreCommandId::JumpPrevious, TRANS("The jump mark before")},
+      {ScoreCommandId::JumpNext, TRANS("The next jump mark")},
+      {ScoreCommandId::PageBack, TRANS("Page back")},
+      {ScoreCommandId::PageForward, TRANS("Page forward")},
+  };
+  juce::PopupMenu menu;
+  menu.addSectionHeader(TRANS("Learn a console button for"));
+  for (const auto& item : items) {
+    const auto id = static_cast<int>(item.id);
+    // The page turns are the program's page buttons, which also turn a score
+    // app's page.
+    const auto kind = item.id == ScoreCommandId::PageBack      ? MidiTargetKind::ScorePageBack
+                      : item.id == ScoreCommandId::PageForward ? MidiTargetKind::ScorePageForward
+                                                               : MidiTargetKind::ScoreCommand;
+    const Id target = kind == MidiTargetKind::ScoreCommand ? static_cast<Id>(id) : 0;
+    const bool mapped = !map.bindingsFor(kind, target).empty();
+    juce::PopupMenu sub;
+    sub.addItem(id * 10 + 1, TRANS("Learn"));
+    sub.addItem(id * 10 + 2, TRANS("Clear"), mapped);
+    menu.addSubMenu(item.name, sub, true, nullptr, mapped);
+  }
+  showMenu(menu, juce::PopupMenu::Options().withTargetComponent(&console_),
+           [safe = juce::Component::SafePointer<ScorePanel>(this)](int chosen) {
+             if (safe == nullptr || chosen < 10) return;
+             const int id = chosen / 10;
+             const auto kind = id == static_cast<int>(ScoreCommandId::PageBack)      ? MidiTargetKind::ScorePageBack
+                               : id == static_cast<int>(ScoreCommandId::PageForward) ? MidiTargetKind::ScorePageForward
+                                                                                    : MidiTargetKind::ScoreCommand;
+             const Id target = kind == MidiTargetKind::ScoreCommand ? static_cast<Id>(id) : 0;
+             if (chosen % 10 == 1) safe->proc_.beginLearn(kind, target, false);
+             else safe->proc_.setObjectBindings(kind, target, {});
+           });
+}
+
+// --- the score's settings ----------------------------------------------------
+
+std::string ScorePanel::settingsText() const {
+  std::ostringstream out;
+  const double bpm = tempoBpm();
+  if (std::abs(bpm - std::round(scoreBpm_)) >= 0.5) out << "tempo " << juce::roundToInt(bpm) << "\n";
+  for (const auto& s : staves_) {
+    const auto it = keyboards_.find(s.number);
+    const bool mute = muted(s.number);
+    if (it == keyboards_.end() && !mute) continue;
+    // The manual by its place on a console: the same on another organ.
+    const int code = it == keyboards_.end() ? -1 : it->second == 0 ? 0 : proc_.assignmentCodeOf(it->second);
+    out << "staff " << s.number << " " << code << " " << (mute ? 1 : 0) << "\n";
+  }
+  if (line_) out << "view line\n";
+  if (twoPages_) out << "pages two\n";
+  if (zoom_ != 100) out << "zoom " << zoom_ << "\n";
+  if (inverted_) out << "inverted\n";
+  if (paper_ == Paper::Cream) out << "paper cream\n";
+  if (blueLines_) out << "lines blue\n";
+  return out.str();
+}
+
+void ScorePanel::applySettings(const std::string& text) {
+  const juce::ScopedValueSetter<bool> applying(applyingSettings_, true);
+  std::istringstream in(text);
+  std::string line;
+  bool line2 = false, two = false, inverted = false, blue = false;
+  int zoom = 100;
+  Paper paper = Paper::White;
+  while (std::getline(in, line)) {
+    std::istringstream words(line);
+    std::string key;
+    words >> key;
+    if (key == "tempo") {
+      double bpm = 0;
+      if (words >> bpm && bpm > 0) setTempoBpm(bpm);
+    } else if (key == "staff") {
+      int staff = 0, code = -1, mute = 0;
+      if (!(words >> staff >> code)) continue;
+      words >> mute;
+      if (code == 0) keyboards_[staff] = 0;
+      else if (code > 0) savedCodes_[staff] = code;
+      if (mute != 0) muted_.insert(staff);
+    } else if (key == "view") {
+      std::string v;
+      words >> v;
+      line2 = v == "line";
+    } else if (key == "pages") {
+      std::string v;
+      words >> v;
+      two = v == "two";
+    } else if (key == "zoom") {
+      words >> zoom;
+    } else if (key == "inverted") {
+      inverted = true;
+    } else if (key == "paper") {
+      std::string v;
+      words >> v;
+      if (v == "cream") paper = Paper::Cream;
+    } else if (key == "lines") {
+      std::string v;
+      words >> v;
+      blue = v == "blue";
+    }
+  }
+  // Each staff's manual, by its place, on this organ's keyboard there.
+  for (const auto& [staff, code] : savedCodes_)
+    for (const Id kb : proc_.playableKeyboards())
+      if (proc_.assignmentCodeOf(kb) == code) {
+        keyboards_[staff] = kb;
+        break;
+      }
+  line_ = line2;
+  twoPages_ = two;
+  twoUp_.setToggleState(two, juce::dontSendNotification);
+  zoom_ = std::clamp(zoom, 50, 250);
+  inverted_ = inverted;
+  invert_.setToggleState(inverted, juce::dontSendNotification);
+  paper_ = paper;
+  blueLines_ = blue;
+  for (auto& s : shown_) s.image = {};
+  refreshButtons();
+}
+
+// A setting changed: written into the score's file with the marks, a
+// moment later.
+void ScorePanel::settingsChanged() {
+  if (!loaded_ || applyingSettings_) return;
+  marksChanged();
+}
+
+void ScorePanel::setMuted(int staff, bool mute) {
+  if (mute) muted_.insert(staff);
+  else muted_.erase(staff);
+  if (playing()) restart();
+  settingsChanged();
+}
+
+double ScorePanel::tempoBpm() const { return tempo_.getValue(); }
+
+void ScorePanel::setTempoBpm(double bpm) {
+  tempo_.setValue(std::round(bpm), juce::sendNotificationSync);
+}
+
+// --- moving about -------------------------------------------------------------
+
+// Playing again from where it is, with what changed (a manual, a mute).
+void ScorePanel::restart() {
+  startMs_ = proc_.scorePlayer().positionSeconds() * 1000.0;
+  play();
+}
+
+// The start, and the playing if it plays, to a moment of the score.
+void ScorePanel::moveTo(double ms) {
+  ms = std::max(0.0, ms);
+  if (playing()) {
+    startMs_ = ms;
+    play();
+    return;
+  }
+  setStart(ms / 1000.0);
+  // Its page in sight.
+  if (!line_ && !cursorNotes_.empty()) {
+    const int p = engraver_->pageWithElement(cursorNotes_.front());
+    if (p >= 1 && (p < page_ || p >= page_ + slotCount())) {
+      page_ = std::clamp(p, 1, std::max(1, pageCount()));
+      renderShown();
+    }
+  }
+}
+
+bool ScorePanel::stepMeasure(int step) {
+  if (!loaded_ || measureMs_.empty() || step == 0) return false;
+  const double now = playing() ? proc_.scorePlayer().positionSeconds() * 1000.0 : startMs_;
+  // The measure the point is in; a step back from a little way into it goes
+  // to its own start, as a player's "back" does.
+  auto it = std::upper_bound(measureMs_.begin(), measureMs_.end(), now + 1.0);
+  int at = static_cast<int>(it - measureMs_.begin()) - 1;
+  if (at < 0) at = 0;
+  int to = at + step;
+  if (step < 0 && now - measureMs_[static_cast<size_t>(at)] > 250.0) to = at + step + 1;
+  if (to < 0 || to >= static_cast<int>(measureMs_.size())) return false;
+  moveTo(measureMs_[static_cast<size_t>(to)]);
+  return true;
+}
+
+std::vector<int> ScorePanel::jumpOrder() const {
+  std::vector<int> out;
+  for (size_t i = 0; i < marks_.marks.size(); ++i)
+    if (marks_.marks[i].kind == ScoreMark::Kind::Jump) out.push_back(static_cast<int>(i));
+  std::stable_sort(out.begin(), out.end(), [this](int a, int b) { return markMs(a) < markMs(b); });
+  return out;
+}
+
+bool ScorePanel::stepJump(int step) {
+  if (!loaded_ || step == 0) return false;
+  const double now = playing() ? proc_.scorePlayer().positionSeconds() * 1000.0 : startMs_;
+  const auto order = jumpOrder();
+  int target = -1;
+  if (step > 0) {
+    for (const int i : order)
+      if (markMs(i) > now + 1.0) {
+        target = i;
+        break;
+      }
+  } else {
+    // While playing, a step back from just past a mark goes to the one before.
+    const double from = playing() ? now - 1500.0 : now - 1.0;
+    for (const int i : order)
+      if (markMs(i) < from) target = i;
+  }
+  if (target < 0) return false;
+  goToMark(target);
+  return true;
+}
+
+void ScorePanel::goToMark(int index) {
+  if (index < 0 || index >= static_cast<int>(marks_.marks.size())) return;
+  const double ms = markMs(index);
+  if (ms < std::numeric_limits<double>::max()) moveTo(ms);
+}
+
+void ScorePanel::setMarkStates(int index, const std::string& states) {
+  if (index < 0 || index >= static_cast<int>(marks_.marks.size())) return;
+  remember();
+  marks_.marks[static_cast<size_t>(index)].states = states;
+  marksChanged();
+}
+
+// The console's buttons, raised on the audio thread, done here.
+void ScorePanel::takeConsoleCommands() {
+  for (int n = proc_.takeScoreCommand(ScoreCommandId::PlayStop); n > 0; --n) playing() ? stop() : play();
+  for (int n = proc_.takeScoreCommand(ScoreCommandId::Back); n > 0; --n) stepMeasure(-1);
+  for (int n = proc_.takeScoreCommand(ScoreCommandId::Forward); n > 0; --n) stepMeasure(1);
+  for (int n = proc_.takeScoreCommand(ScoreCommandId::JumpPrevious); n > 0; --n) stepJump(-1);
+  for (int n = proc_.takeScoreCommand(ScoreCommandId::JumpNext); n > 0; --n) stepJump(1);
+  for (int n = proc_.takeScoreCommand(ScoreCommandId::PageBack); n > 0; --n)
+    line_ ? scrollLine(-1.0f) : showPage(page_ - slotCount());
+  for (int n = proc_.takeScoreCommand(ScoreCommandId::PageForward); n > 0; --n)
+    line_ ? scrollLine(1.0f) : showPage(page_ + slotCount());
 }
 
 // The tempo box over a quarter of the score's tempo to four times it, at the
@@ -854,11 +1431,20 @@ void ScorePanel::showTempo() {
 
 void ScorePanel::refreshButtons() {
   const int count = pageCount();
-  prev_.setEnabled(loaded_ && page_ > 1);
-  next_.setEnabled(loaded_ && page_ + slotCount() <= count);
-  pageLabel_.setText(loaded_ ? juce::String(page_) + " / " + juce::String(count) : juce::String(),
-                     juce::dontSendNotification);
-  for (auto* b : {&zoomOut_, &zoomIn_, &zoomReset_, &twoUp_, &play_, &manuals_}) b->setEnabled(loaded_);
+  if (line_) {
+    // One line: the arrows scroll it a screen at a time.
+    const float visible = static_cast<float>(slotArea(0).getWidth()) / lineScale();
+    prev_.setEnabled(loaded_ && scrollX_ > 0.5f);
+    next_.setEnabled(loaded_ && scrollX_ + visible < shown_[0].geometry.width - 0.5f);
+    pageLabel_.setText(loaded_ ? TRANS("Line") : juce::String(), juce::dontSendNotification);
+  } else {
+    prev_.setEnabled(loaded_ && page_ > 1);
+    next_.setEnabled(loaded_ && page_ + slotCount() <= count);
+    pageLabel_.setText(loaded_ ? juce::String(page_) + " / " + juce::String(count) : juce::String(),
+                       juce::dontSendNotification);
+  }
+  for (auto* b : {&zoomOut_, &zoomIn_, &zoomReset_, &play_, &manuals_}) b->setEnabled(loaded_);
+  twoUp_.setEnabled(loaded_ && !line_);
   tempo_.setEnabled(loaded_);
   zoomReset_.setButtonText(juce::String(loaded_ ? drawnZoom_ : zoom_) + "%");
   // Stopped by the page's size: a larger zoom would draw the same page.
@@ -885,7 +1471,12 @@ Id ScorePanel::keyboardForStaff(int staff) const {
   int last = 0;
   for (const auto& s : staves_) last = std::max(last, s.number);
   const auto isPedal = [this](Id kb) { return proc_.assignmentCodeOf(kb) == 1; };
-  if (staves_.size() >= 3 && staff == last)
+  // A part the score names Pedal (Pedal, Ped., Pedale, Pédale) plays the
+  // pedal, however many staves there are.
+  const auto named = std::find_if(staves_.begin(), staves_.end(), [staff](const Staff& s) { return s.number == staff; });
+  const bool pedalPart =
+      named != staves_.end() && (named->name.containsIgnoreCase("ped") || named->name.containsIgnoreCase("péd"));
+  if (pedalPart || (staves_.size() >= 3 && staff == last))
     for (const Id kb : playable)
       if (isPedal(kb)) return kb;
   // A hand's staff on a manual: the organ's preferred keyboard, unless that
@@ -899,10 +1490,9 @@ Id ScorePanel::keyboardForStaff(int staff) const {
 
 void ScorePanel::setKeyboardForStaff(int staff, Id keyboard) {
   keyboards_[staff] = keyboard;
-  if (playing()) {
-    startMs_ = proc_.scorePlayer().positionSeconds() * 1000.0;
-    play();
-  }
+  savedCodes_.erase(staff);
+  if (playing()) restart();
+  settingsChanged();
 }
 
 void ScorePanel::chooseManuals() {
@@ -910,26 +1500,136 @@ void ScorePanel::chooseManuals() {
   std::vector<std::pair<Id, juce::String>> keyboards;
   for (const Id kb : proc_.playableKeyboards())
     keyboards.emplace_back(kb, juce::String::fromUTF8(proc_.keyboardName(kb).c_str()));
-  auto dialog = std::make_unique<ManualsDialog>(juce::Component::SafePointer<ScorePanel>(this), staves_, keyboards);
+  auto dialog = std::make_unique<ManualsDialog>(juce::Component::SafePointer<ScorePanel>(this), staves_, keyboards, -1);
   juce::CallOutBox::launchAsynchronously(std::move(dialog), manuals_.getScreenBounds(), nullptr);
+}
+
+// --- manual changes (#1273) ------------------------------------------------
+
+namespace {
+// "1:2 2:3": each staff and the assignment code of its manual, 0 for none.
+std::map<int, int> parseManuals(const std::string& text) {
+  std::map<int, int> out;
+  std::istringstream in(text);
+  std::string pair;
+  while (in >> pair) {
+    const auto colon = pair.find(':');
+    if (colon == std::string::npos) continue;
+    out[std::atoi(pair.substr(0, colon).c_str())] = std::atoi(pair.substr(colon + 1).c_str());
+  }
+  return out;
+}
+
+std::string writeManuals(const std::map<int, int>& staves) {
+  std::string out;
+  for (const auto& [staff, code] : staves) out += (out.empty() ? "" : " ") + std::to_string(staff) + ":" + std::to_string(code);
+  return out;
+}
+}  // namespace
+
+Id ScorePanel::markKeyboardForStaff(int markIndex, int staff) const {
+  if (markIndex < 0 || markIndex >= static_cast<int>(marks_.marks.size())) return keyboardForStaff(staff);
+  const auto staves = parseManuals(marks_.marks[static_cast<size_t>(markIndex)].states);
+  const auto it = staves.find(staff);
+  if (it == staves.end()) return keyboardForStaff(staff);
+  if (it->second == 0) return 0;
+  for (const Id kb : proc_.playableKeyboards())
+    if (proc_.assignmentCodeOf(kb) == it->second) return kb;
+  return keyboardForStaff(staff);
+}
+
+void ScorePanel::setMarkKeyboardForStaff(int markIndex, int staff, Id keyboard) {
+  if (markIndex < 0 || markIndex >= static_cast<int>(marks_.marks.size())) return;
+  auto staves = parseManuals(marks_.marks[static_cast<size_t>(markIndex)].states);
+  staves[staff] = keyboard == 0 ? 0 : proc_.assignmentCodeOf(keyboard);
+  setMarkStates(markIndex, writeManuals(staves));
+  if (playing()) restart();
+}
+
+Id ScorePanel::keyboardForStaffAt(int staff, double ms) const {
+  // The last manual change reached by this moment, on any pass of a repeat.
+  int last = -1;
+  double lastMs = -1;
+  for (size_t i = 0; i < marks_.marks.size(); ++i) {
+    if (marks_.marks[i].kind != ScoreMark::Kind::Manuals) continue;
+    const auto times = noteTimes_.find(marks_.marks[i].note);
+    if (times == noteTimes_.end()) continue;
+    for (const double t : times->second)
+      if (t <= ms + 1.0 && t > lastMs) {
+        lastMs = t;
+        last = static_cast<int>(i);
+      }
+  }
+  return last < 0 ? keyboardForStaff(staff) : markKeyboardForStaff(last, staff);
 }
 
 // --- playing -------------------------------------------------------------
 
-std::vector<ScorePlayer::Event> ScorePanel::eventsForPlaying() const {
+std::vector<ScorePlayer::Event> ScorePanel::eventsForPlaying(double fromSeconds) const {
   std::map<int, int> channels;
   for (const auto& s : staves_) {
     const Id kb = keyboardForStaff(s.number);
     channels[s.number] = kb != 0 ? proc_.clickChannelForKeyboard(kb) : 0;
   }
+  // With manual changes (#1273), each note asks for the manual in force when
+  // it starts.
+  const bool changes = std::any_of(marks_.marks.begin(), marks_.marks.end(),
+                                   [](const ScoreMark& m) { return m.kind == ScoreMark::Kind::Manuals; });
+  const auto channelAt = [&](int staff, double seconds) {
+    if (!changes) return channels[staff];
+    const Id kb = keyboardForStaffAt(staff, seconds * 1000.0);
+    return kb != 0 ? proc_.clickChannelForKeyboard(kb) : 0;
+  };
   std::vector<ScorePlayer::Event> events;
   events.reserve(notes_.size() * 2);
-  for (const auto& n : notes_) {
-    const int ch = channels[n.staff];
+  // An ornament's notes: thirty-seconds of the score's beat, between 50 and
+  // 125 ms, fewer and faster on a short note.
+  const double step = std::clamp(60.0 / std::max(1.0, scoreBpm_) / 8.0, 0.05, 0.125);
+  for (size_t k = 0; k < notes_.size(); ++k) {
+    const auto& n = notes_[k];
+    if (muted(n.staff)) continue;
+    const int ch = channelAt(n.staff, n.on);
     if (ch < 1 || ch > 16) continue;
-    const auto c = static_cast<uint8_t>(ch), p = static_cast<uint8_t>(n.pitch & 127);
-    events.push_back({n.on, c, p, true});
-    events.push_back({std::max(n.off, n.on), c, p, false});
+    const auto c = static_cast<uint8_t>(ch);
+    const double off = std::max(n.off, n.on);
+    // A note already sounding where the playing starts is struck there: a
+    // start in the middle of a held chord, or Play after Stop, sounds at
+    // once instead of waiting for the next note.
+    const auto note = [&](double from, double to, int pitch) {
+      if (to <= fromSeconds) return;
+      from = std::max(from, fromSeconds);
+      const auto p = static_cast<uint8_t>(std::clamp(pitch, 0, 127));
+      events.push_back({from, c, p, true});
+      events.push_back({std::max(from, to), c, p, false});
+    };
+    const auto found = ornamented_.find(k);
+    if (found == ornamented_.end()) {
+      note(n.on, off, n.pitch);
+      continue;
+    }
+    const auto& o = found->second;
+    const double length = off - n.on;
+    std::vector<int> figure;  // the ornament's notes before the main note held to the end
+    switch (o.kind) {
+      case ScoreOrnament::Kind::Trill: {
+        // From the note above, as a baroque trill starts, to the end: the
+        // main note last.
+        const int count = std::max(2, static_cast<int>(length / step) & ~1);
+        for (int i = 0; i < count - 1; ++i) figure.push_back(i % 2 == 0 ? n.pitch + o.upper : n.pitch);
+        break;
+      }
+      case ScoreOrnament::Kind::Mordent: figure = {n.pitch, n.pitch + o.lower}; break;
+      case ScoreOrnament::Kind::InvertedMordent: figure = {n.pitch, n.pitch + o.upper}; break;
+      case ScoreOrnament::Kind::Turn: figure = {n.pitch + o.upper, n.pitch, n.pitch + o.lower}; break;
+      case ScoreOrnament::Kind::InvertedTurn: figure = {n.pitch + o.lower, n.pitch, n.pitch + o.upper}; break;
+    }
+    const double each = std::min(step, length / static_cast<double>(figure.size() + 1));
+    double t = n.on;
+    for (const int pitch : figure) {
+      note(t, t + each, pitch);
+      t += each;
+    }
+    note(t, off, n.pitch);
   }
   ScorePlayer::orderEvents(events);
   return events;
@@ -946,7 +1646,8 @@ void ScorePanel::play() {
   lastPlayMs_ = startMs_;
   // A note the time map places at the start may sit a rounding below it in
   // the MIDI: start a moment earlier so it is played.
-  proc_.scorePlayer().play(eventsForPlaying(), std::max(0.0, (startMs_ - 2.0) / 1000.0));
+  const double from = std::max(0.0, (startMs_ - 2.0) / 1000.0);
+  proc_.scorePlayer().play(eventsForPlaying(from), from);
   wasPlaying_ = true;
   startTimer(33);
   refreshButtons();
@@ -968,6 +1669,7 @@ void ScorePanel::setStart(double seconds) {
     if (const auto* ids = at["notes"].getArray())
       for (const auto& id : *ids) cursorNotes_.push_back(id.toString().toStdString());
   }
+  keepInView();
   repaint();
 }
 
@@ -984,12 +1686,13 @@ void ScorePanel::followPlaying() {
       for (const auto& id : *notes) ids.push_back(id.toString().toStdString());
     const int page = static_cast<int>(at["page"]);
     // The page turns as the playing reaches the next one.
-    if (page >= 1 && (page < page_ || page >= page_ + slotCount())) {
+    if (!line_ && page >= 1 && (page < page_ || page >= page_ + slotCount())) {
       page_ = std::clamp(page, 1, std::max(1, pageCount()));
       renderShown();
     }
     if (!ids.empty() && ids != cursorNotes_) {
       cursorNotes_ = std::move(ids);
+      keepInView();
       repaint();
     }
     return;
@@ -1006,9 +1709,13 @@ void ScorePanel::followPlaying() {
 
 void ScorePanel::timerCallback() {
   if (needsEngrave_ && juce::Time::getMillisecondCounter() >= engraveDue_) engrave();
-  if (loaded_) followPlaying();
+  if (loaded_) {
+    takeConsoleCommands();
+    followPlaying();
+  }
   if (marksDirty_ && juce::Time::getMillisecondCounter() >= saveDue_) saveMarks();
-  if (!needsEngrave_ && !wasPlaying_ && !marksDirty_) stopTimer();
+  // With a score open the console's buttons are listened for.
+  if (!loaded_ && !needsEngrave_ && !wasPlaying_ && !marksDirty_) stopTimer();
 }
 
 // --- drawing -------------------------------------------------------------
@@ -1032,6 +1739,14 @@ juce::Point<float> ScorePanel::notePosition(const std::string& id) const {
 juce::AffineTransform ScorePanel::pageToPanel(int slot) const {
   const auto& geo = shown_[slot].geometry;
   if (geo.width <= 0 || geo.height <= 0) return {};
+  if (line_) {
+    // One line: as high as the panel allows, scrolled along, centred up and down.
+    const auto area = slotArea(slot).toFloat();
+    const float s = lineScale();
+    return juce::AffineTransform::translation(-scrollX_, 0)
+        .scaled(s)
+        .translated(area.getX(), area.getY() + (area.getHeight() - geo.height * s) * 0.5f);
+  }
   return juce::RectanglePlacement(juce::RectanglePlacement::centred | juce::RectanglePlacement::onlyReduceInSize)
       .getTransformToFit({0, 0, geo.width, geo.height}, slotArea(slot).toFloat());
 }
@@ -1040,20 +1755,32 @@ void ScorePanel::drawSlot(juce::Graphics& g, int slot) {
   auto& s = shown_[slot];
   if (s.drawable == nullptr) return;
   const float density = std::max(1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
-  const auto bounds = juce::Rectangle<float>(0, 0, s.geometry.width, s.geometry.height).transformedBy(pageToPanel(slot));
+  auto bounds = juce::Rectangle<float>(0, 0, s.geometry.width, s.geometry.height).transformedBy(pageToPanel(slot));
+  // On one line, only the part in sight is drawn.
+  if (line_) bounds = bounds.getIntersection(slotArea(slot).toFloat());
+  // On whole screen pixels: the image is then copied, not resampled, and the
+  // notation keeps the edges it was drawn with.
+  bounds.setPosition(std::round(bounds.getX() * density) / density, std::round(bounds.getY() * density) / density);
   const int w = juce::roundToInt(bounds.getWidth() * density), h = juce::roundToInt(bounds.getHeight() * density);
   if (w <= 0 || h <= 0) return;
-  if (!s.image.isValid() || s.image.getWidth() != w || s.image.getHeight() != h || s.density != density) {
+  bounds.setSize(static_cast<float>(w) / density, static_cast<float>(h) / density);
+  if (!s.image.isValid() || s.image.getWidth() != w || s.image.getHeight() != h || s.density != density ||
+      (line_ && s.scroll != scrollX_)) {
     s.image = juce::Image(juce::Image::RGB, w, h, true);
     s.density = density;
+    s.scroll = scrollX_;
     {
       juce::Graphics ig(s.image);
-      ig.fillAll(juce::Colours::white);
+      // The paper: white, or cream, a little sepia (#1012).
+      ig.fillAll(paper_ == Paper::Cream ? juce::Colour(0xfff6efdc) : juce::Colours::white);
       // The whole page onto the image, by the page's own size: drawWithin
       // would fit the ink, and the notes would leave the geometry's places.
-      s.drawable->draw(ig, 1.0f,
-                       juce::AffineTransform::scale(static_cast<float>(w) / s.geometry.width,
-                                                    static_cast<float>(h) / s.geometry.height));
+      // On one line, from where it is scrolled to, at the line's scale.
+      const auto toImage =
+          line_ ? juce::AffineTransform::translation(-scrollX_, 0).scaled(lineScale() * density)
+                : juce::AffineTransform::scale(static_cast<float>(w) / s.geometry.width,
+                                               static_cast<float>(h) / s.geometry.height);
+      s.drawable->draw(ig, 1.0f, toImage);
     }
     if (inverted_) {
       juce::Image::BitmapData data(s.image, juce::Image::BitmapData::readWrite);
@@ -1112,6 +1839,32 @@ void ScorePanel::paint(juce::Graphics& g) {
   }
   for (int slot = 0; slot < slotCount(); ++slot) drawSlot(g, slot);
   drawMarks(g);
+  // The measure the playing is in, or the start point while stopped, as the
+  // score numbers it (mdehn38, #1271).
+  if (const auto bar = currentBar(); bar.isNotEmpty()) {
+    const auto text = TRANS("Bar %1").replace("%1", bar);
+    const auto area = pageArea().removeFromTop(24).removeFromLeft(90).toFloat().translated(4.0f, 4.0f);
+    g.setColour(juce::Colour(0xcc1b1e24));
+    g.fillRoundedRectangle(area, 4.0f);
+    g.setColour(juce::Colours::white);
+    g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
+    g.drawText(text, area, juce::Justification::centred, false);
+  }
+}
+
+juce::String ScorePanel::currentBar() const {
+  if (!loaded_ || measureMs_.empty()) return {};
+  const double ms = playing() ? proc_.scorePlayer().positionSeconds() * 1000.0 : startMs_;
+  const auto it = std::upper_bound(measureMs_.begin(), measureMs_.end(), ms + 1.0);
+  const size_t k = it == measureMs_.begin() ? 0 : static_cast<size_t>(it - measureMs_.begin()) - 1;
+  // Its written number: on a repeat, the measure played again by its own.
+  const auto& order = playback_.order();
+  const auto& numbers = playback_.numbers();
+  if (k < order.size() && order.size() == measureMs_.size()) {
+    const auto index = static_cast<size_t>(order[k]);
+    if (index < numbers.size() && !numbers[index].empty()) return juce::String::fromUTF8(numbers[index].c_str());
+  }
+  return juce::String(static_cast<int>(k) + 1);
 }
 
 std::string ScorePanel::noteAt(juce::Point<float> at, float within) const {
@@ -1186,8 +1939,38 @@ void ScorePanel::mouseUp(const juce::MouseEvent& e) {
   repaint();
 }
 
+// The keys of a player at the computer (#1012): Space plays and stops, the
+// arrows go a measure back or on and to the jump marks, the page keys turn
+// the pages.
 bool ScorePanel::keyPressed(const juce::KeyPress& key) {
   if (key == juce::KeyPress('z', juce::ModifierKeys::commandModifier, 0)) return undo();
+  if (!loaded_ || key.getModifiers().isAnyModifierKeyDown()) return false;
+  const int code = key.getKeyCode();
+  if (code == juce::KeyPress::spaceKey) {
+    playing() ? stop() : play();
+    return true;
+  }
+  if (code == juce::KeyPress::leftKey) return stepMeasure(-1) || true;
+  if (code == juce::KeyPress::rightKey) return stepMeasure(1) || true;
+  // Home and End: the first measure, and the last (mdehn38, #1271).
+  if (code == juce::KeyPress::homeKey) {
+    moveTo(0.0);
+    return true;
+  }
+  if (code == juce::KeyPress::endKey) {
+    if (!measureMs_.empty()) moveTo(measureMs_.back());
+    return true;
+  }
+  if (code == juce::KeyPress::upKey) return stepJump(-1) || true;
+  if (code == juce::KeyPress::downKey) return stepJump(1) || true;
+  if (code == juce::KeyPress::pageUpKey) {
+    line_ ? scrollLine(-1.0f) : showPage(page_ - slotCount());
+    return true;
+  }
+  if (code == juce::KeyPress::pageDownKey) {
+    line_ ? scrollLine(1.0f) : showPage(page_ + slotCount());
+    return true;
+  }
   return false;
 }
 
@@ -1201,7 +1984,8 @@ double ScorePanel::markMs(int index) const {
 std::vector<int> ScorePanel::registrationOrder() const {
   std::vector<int> out;
   for (size_t i = 0; i < marks_.marks.size(); ++i)
-    if (marks_.marks[i].kind == ScoreMark::Kind::Registration) out.push_back(static_cast<int>(i));
+    if (marks_.marks[i].kind == ScoreMark::Kind::Registration || marks_.marks[i].kind == ScoreMark::Kind::Combination)
+      out.push_back(static_cast<int>(i));
   std::stable_sort(out.begin(), out.end(), [this](int a, int b) { return markMs(a) < markMs(b); });
   return out;
 }
@@ -1229,11 +2013,32 @@ int ScorePanel::addMark(ScoreMark::Kind kind, const std::string& note, const juc
   if (kind == ScoreMark::Kind::Registration) {
     if (m.text.empty()) m.text = (TRANS("Registration") + " " + juce::String(registrationOrder().size() + 1)).toStdString();
     m.states = writeScoreStates({captureScoreState(proc_)});
+  } else if (kind == ScoreMark::Kind::Jump) {
+    if (m.text.empty()) m.text = (TRANS("Jump") + " " + juce::String(jumpOrder().size() + 1)).toStdString();
+  } else if (kind == ScoreMark::Kind::Manuals) {
+    // Each staff on the manual it plays here now; changed in its window.
+    std::map<int, int> staves;
+    const double at = noteStartMs_.count(note) != 0 ? noteStartMs_.at(note) : 0.0;
+    for (const auto& s : staves_) {
+      const Id kb = keyboardForStaffAt(s.number, at);
+      staves[s.number] = kb == 0 ? 0 : proc_.assignmentCodeOf(kb);
+    }
+    m.states = writeManuals(staves);
+    if (m.text.empty()) m.text = TRANS("Manual change").toStdString();
+  } else if (kind == ScoreMark::Kind::Combination) {
+    // The general lit now, or the sequencer's step; general 1 when neither.
+    const auto& player = proc_.playerCombinations();
+    const int general = player.litGeneral();
+    const bool step = general <= 0 && player.frame() > 0;
+    const int n = general > 0 ? general : step ? player.frame() : 1;
+    m.states = std::string(step ? "step " : "general ") + std::to_string(n);
+    if (m.text.empty())
+      m.text = ((step ? TRANS("Step") : TRANS("General")) + " " + juce::String(n)).toStdString();
   }
   marks_.marks.push_back(std::move(m));
   const int index = static_cast<int>(marks_.marks.size()) - 1;
   // A registration stored now is the one the organ has.
-  if (kind == ScoreMark::Kind::Registration) currentReg_ = index;
+  if (kind == ScoreMark::Kind::Registration || kind == ScoreMark::Kind::Combination) currentReg_ = index;
   marksChanged();
   return index;
 }
@@ -1314,7 +2119,8 @@ bool ScorePanel::undo() {
   marks_.marks = std::move(undo_.back());
   undo_.pop_back();
   if (currentReg_ >= static_cast<int>(marks_.marks.size()) ||
-      (currentReg_ >= 0 && marks_.marks[static_cast<size_t>(currentReg_)].kind != ScoreMark::Kind::Registration))
+      (currentReg_ >= 0 && marks_.marks[static_cast<size_t>(currentReg_)].kind != ScoreMark::Kind::Registration &&
+       marks_.marks[static_cast<size_t>(currentReg_)].kind != ScoreMark::Kind::Combination))
     currentReg_ = -1;
   marksChanged();
   return true;
@@ -1325,6 +2131,20 @@ bool ScorePanel::undo() {
 void ScorePanel::recallRegistration(int index) {
   if (index < 0 || index >= static_cast<int>(marks_.marks.size())) return;
   const auto& m = marks_.marks[static_cast<size_t>(index)];
+  if (m.kind == ScoreMark::Kind::Combination) {
+    // By piston, the same on every organ: a general pressed, or a step of
+    // the sequencer gone to.
+    currentReg_ = index;
+    const auto piston = juce::String::fromUTF8(m.states.c_str());
+    const int n = piston.fromFirstOccurrenceOf(" ", false, false).getIntValue();
+    if (n >= 1) {
+      if (piston.startsWith("step")) proc_.stepperGoto(n);
+      else proc_.pressGeneral(n);
+    }
+    refreshButtons();
+    repaint();
+    return;
+  }
   if (m.kind != ScoreMark::Kind::Registration) return;
   currentReg_ = index;
   const auto states = parseScoreStates(m.states);
@@ -1359,10 +2179,18 @@ bool ScorePanel::stepRegistration(int step) {
 // The playing has gone from one moment to the next: the last registration
 // passed on the way is set.
 void ScorePanel::registrationsReached(double fromMs, double toMs) {
+  // The last one passed; on a repeat, the marks of the measures played again
+  // are reached again.
   int last = -1;
+  double lastMs = -1;
   for (const int i : registrationOrder()) {
-    const double ms = markMs(i);
-    if (ms > fromMs && ms <= toMs) last = i;
+    const auto it = noteTimes_.find(marks_.marks[static_cast<size_t>(i)].note);
+    if (it == noteTimes_.end()) continue;
+    for (const double ms : it->second)
+      if (ms > fromMs && ms <= toMs && ms >= lastMs) {
+        last = i;
+        lastMs = ms;
+      }
   }
   if (last >= 0 && last != currentReg_) recallRegistration(last);
 }
@@ -1424,6 +2252,37 @@ void ScorePanel::drawMarks(juce::Graphics& g) {
         const float y = r.getY() + r.getHeight() * static_cast<float>(line) / 4.6f;
         g.drawLine(r.getX() + 3.0f, y, r.getRight() - 4.0f, y, 1.0f);
       }
+    } else if (m.kind == ScoreMark::Kind::Jump) {
+      // A jump mark: a green flag on its pole.
+      g.setColour(juce::Colours::white);
+      g.fillRoundedRectangle(r, 3.0f);
+      const float pole = r.getX() + r.getWidth() * 0.28f;
+      g.setColour(juce::Colour(0xff2f3a2f));
+      g.drawLine(pole, r.getY() + 2.0f, pole, r.getBottom() - 2.0f, 1.6f);
+      juce::Path flag;
+      flag.addTriangle(pole, r.getY() + 2.5f, r.getRight() - 2.5f, r.getY() + r.getHeight() * 0.36f, pole,
+                       r.getY() + r.getHeight() * 0.68f);
+      g.setColour(juce::Colour(0xff2e9e4f));
+      g.fillPath(flag);
+    } else if (m.kind == ScoreMark::Kind::Manuals) {
+      // A manual change: a keyboard's keys, white bars on a teal square.
+      g.setColour(juce::Colour(0xff1f8a8a));
+      g.fillRoundedRectangle(r, 3.0f);
+      g.setColour(juce::Colours::white);
+      for (int k = 0; k < 3; ++k) {
+        const float x = r.getX() + 3.0f + static_cast<float>(k) * (r.getWidth() - 6.0f) / 3.0f;
+        g.fillRect(juce::Rectangle<float>(x + 0.5f, r.getY() + 4.0f, (r.getWidth() - 6.0f) / 3.0f - 1.5f,
+                                          r.getHeight() - 8.0f));
+      }
+    } else if (m.kind == ScoreMark::Kind::Combination) {
+      // A combination: a piston, square, with G for a general or S for a
+      // sequencer step. Orange when set now.
+      g.setColour(i == currentReg_ ? juce::Colour(0xffff8c1a) : juce::Colour(0xff6a4fb3));
+      g.fillRoundedRectangle(r, 4.0f);
+      g.setColour(juce::Colours::white);
+      g.drawRoundedRectangle(r.reduced(0.5f), 4.0f, 1.2f);
+      g.setFont(juce::FontOptions(r.getHeight() * 0.62f, juce::Font::bold));
+      g.drawText(juce::String(m.states.rfind("step", 0) == 0 ? "S" : "G"), r, juce::Justification::centred, false);
     } else {
       // A registration: a stop knob. Filled orange for the one set now, blue
       // for the others, grey for one not set on this organ.
@@ -1448,8 +2307,15 @@ void ScorePanel::openMark(int index, bool fresh) {
   std::unique_ptr<juce::Component> editor;
   if (m.kind == ScoreMark::Kind::Note)
     editor = std::make_unique<MarkNoteEditor>(safe, index, juce::String::fromUTF8(m.text.c_str()), fresh);
-  else
+  else if (m.kind == ScoreMark::Kind::Manuals) {
+    std::vector<std::pair<Id, juce::String>> keyboards;
+    for (const Id kb : proc_.playableKeyboards())
+      keyboards.emplace_back(kb, juce::String::fromUTF8(proc_.keyboardName(kb).c_str()));
+    editor = std::make_unique<ManualsDialog>(safe, staves_, keyboards, index);
+  } else if (m.kind == ScoreMark::Kind::Registration)
     editor = std::make_unique<MarkRegistrationEditor>(safe, index, proc_);
+  else
+    editor = std::make_unique<MarkPlaceEditor>(safe, index);
   auto area = markBounds(index).toNearestInt();
   if (area.isEmpty()) area = getLocalBounds().withSizeKeepingCentre(1, 1);
   juce::CallOutBox::launchAsynchronously(std::move(editor), localAreaToGlobal(area), nullptr);
@@ -1459,6 +2325,9 @@ void ScorePanel::addMarkMenu(const std::string& note, juce::Rectangle<int> scree
   juce::PopupMenu menu;
   menu.addItem(1, TRANS("Add a note here"));
   menu.addItem(2, TRANS("Add a registration here (the organ as it is now)"));
+  menu.addItem(4, TRANS("Add a combination here (a general or a sequencer step, for every organ)"));
+  menu.addItem(5, TRANS("Add a jump mark here"));
+  menu.addItem(6, TRANS("Add a manual change here (each staff on the manual set now)"));
   // Also Ctrl+Z; here for a touch screen, which has no keys.
   menu.addSeparator();
   menu.addItem(3, TRANS("Undo the last change to the marks"), !undo_.empty());
@@ -1469,8 +2338,12 @@ void ScorePanel::addMarkMenu(const std::string& note, juce::Rectangle<int> scree
                          safe->undo();
                          return;
                        }
-                       const int index = safe->addMark(
-                           chosen == 1 ? ScoreMark::Kind::Note : ScoreMark::Kind::Registration, note);
+                       const auto kind = chosen == 1   ? ScoreMark::Kind::Note
+                                         : chosen == 2 ? ScoreMark::Kind::Registration
+                                         : chosen == 4 ? ScoreMark::Kind::Combination
+                                         : chosen == 6 ? ScoreMark::Kind::Manuals
+                                                       : ScoreMark::Kind::Jump;
+                       const int index = safe->addMark(kind, note);
                        if (index >= 0) safe->openMark(index, true);
                      });
 }

@@ -910,6 +910,7 @@ VoicingEqSettings VoicingEqPanel::shown() const {
 
 void VoicingEqPanel::apply() {
   proc_.setVoicingEq(shown());
+  proc_.voicingEqEdited();
   seenChanges_ = proc_.voicingEqChanges();
   fillPresets();
   save_.setButtonText(TRANS("Save for this organ"));

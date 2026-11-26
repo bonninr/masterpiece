@@ -178,9 +178,14 @@ OpenPanel::OpenPanel(MasterpieceProcessor& p, std::function<void(const juce::Fil
   addAndMakeVisible(another_);
   another_.setTooltip(TRANS("Any organ on this computer, in the file dialog"));
   another_.onClick = [this] {
+    // After the window has closed (#1259): a file dialog started while the
+    // Open window was still closing was dismissed with it on Windows, and
+    // with an organ loaded this window always comes first.
     auto browse = browse_;
     close();
-    if (browse) browse();
+    juce::MessageManager::callAsync([browse] {
+      if (browse) browse();
+    });
   };
   // Installing and uninstalling, from the Installed list (#1024).
   addChildComponent(install_);
@@ -206,6 +211,8 @@ OpenPanel::OpenPanel(MasterpieceProcessor& p, std::function<void(const juce::Fil
   refresh();
 }
 
+OpenPanel::~OpenPanel() = default;
+
 void OpenPanel::refresh() {
   rowViews_.clear();
   const bool installed = showsInstalled();
@@ -222,7 +229,11 @@ void OpenPanel::refresh() {
       const juce::File& f = installed_.getReference(i);
       const auto name = f.getFileNameWithoutExtension();
       if (query.isNotEmpty() && !name.toLowerCase().contains(query)) continue;
-      juce::String detail = f.getParentDirectory().getParentDirectory().getFullPathName();
+      // Played from its RAR packages: where the RAR is, not the folder
+      // Masterpiece unpacked it into (#1259).
+      const juce::File archive = MasterpieceProcessor::packagedArchiveOf(f);
+      juce::String detail = archive != juce::File() ? archive.getFullPathName()
+                                                    : f.getParentDirectory().getParentDirectory().getFullPathName();
       if (const auto kind = formatOf(f); kind.isNotEmpty()) detail = kind + ": " + detail;
       auto row = std::make_unique<Row>(*this, -(i + 1), name, detail, false, false);
       rows_.addAndMakeVisible(*row);

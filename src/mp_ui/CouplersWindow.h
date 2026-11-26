@@ -51,6 +51,8 @@ private:
   MasterpieceProcessor& proc_;
   juce::ToggleButton extra_{TRANS("Extra couplers")};
   juce::ToggleButton bass_{TRANS("Bass and melody couplers")};
+  juce::Label bassTopLabel_;
+  juce::ComboBox bassTop_;
   juce::Label note_;
   std::vector<std::unique_ptr<juce::Label>> headers_;
   struct Entry {

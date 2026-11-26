@@ -2127,6 +2127,9 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::ScorePageBack:
           turnScorePage(action.kind == MidiTargetKind::ScorePageForward);
           continue;
+        case MidiTargetKind::ScoreCommand:
+          queueScoreCommand(static_cast<int>(action.targetId));
+          continue;
         // Raised here, carried out on the message thread. Never from a take
         // being played: a button's press in a take is not the player's.
         case MidiTargetKind::RecorderRecord:
@@ -2798,6 +2801,7 @@ juce::String MasterpieceProcessor::settingsBody() const {
   text << "compress " << (!samples_.codeSamples() ? 0 : compressSetting(samples_.codeLevel())) << "\n";
   text << "programcouplers " << (programCouplers_ ? 1 : 0) << "\n";
   text << "basscouplers " << (bassCouplers_ ? 1 : 0) << "\n";
+  if (bassTop_.load() > 0) text << "bassrange " << bassTop_.load() << "\n";
   if (pedalManual_.load() != 0) text << "pedalmanual " << pedalManual_.load() << "\n";
   text << "releases " << static_cast<int>(samples_.releaseChoice()) << "\n";
   text << "releaselength " << samples_.releaseMaxMs() << "\n";
@@ -2939,6 +2943,7 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
   }
   else if (key == "programcouplers") programCouplers_ = on;
   else if (key == "basscouplers") bassCouplers_ = on;
+  else if (key == "bassrange") bassTop_.store(juce::jlimit(0, 127, val.getIntValue()));
   else if (key == "pedalmanual") pedalManual_.store(val.getIntValue());
   else if (key == "releases")
     samples_.setReleaseChoice(static_cast<SampleLibrary::ReleaseChoice>(juce::jlimit(0, 3, val.getIntValue())));
@@ -3336,6 +3341,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   voicing_.usingB = false;
   pageWindows_.clear();
   pedalManual_.store(0);
+  bassTop_.store(0);
   combinationSet_.clear();
   combWindow_ = {};
   voicingEqSettings_ = defaultEq_;
@@ -3739,6 +3745,10 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (learnAlsoSends_) text << "learnalsosends 1\n";
   if (stepperLevels_) text << "stepperlevels 1\n";
   if (levelSize_ != 10) text << "levelsize " << levelSize_ << "\n";
+  if (levelsFromZero_) text << "levelsfromzero 1\n";
+  if (stopListSize_ != 0) text << "stoplistsize " << stopListSize_ << "\n";
+  if (pistonSize_ != 0) text << "pistonsize " << pistonSize_ << "\n";
+  if (bigFrameNumber_) text << "bigframenumber 1\n";
   if (midiFeedbackOn_.load() != 127 || midiFeedbackOff_.load() != -1)
     text << "midifeedbackvalues " << midiFeedbackOn_.load() << " " << midiFeedbackOff_.load() << "\n";
   for (const auto& [role, channel] : defaultConsole_) {
@@ -3999,6 +4009,14 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       midiFeedback_ = val.getIntValue() != 0;
     } else if (key == "stepperlevels") {
       stepperLevels_ = val.getIntValue() != 0;
+    } else if (key == "levelsfromzero") {
+      levelsFromZero_ = val.getIntValue() != 0;
+    } else if (key == "stoplistsize") {
+      stopListSize_ = std::clamp(val.getIntValue(), 0, kMaxViewSize);
+    } else if (key == "pistonsize") {
+      pistonSize_ = std::clamp(val.getIntValue(), 0, kMaxViewSize);
+    } else if (key == "bigframenumber") {
+      bigFrameNumber_ = val.getIntValue() != 0;
     } else if (key == "levelsize") {
       levelSize_ = std::clamp(val.getIntValue(), 1, kMaxLevelSize);
     } else if (key == "learnalsosends") {
@@ -4657,19 +4675,35 @@ void MasterpieceProcessor::setOrgansFolder(const juce::File& dir) {
   writeGlobalFile();
 }
 
+bool MasterpieceProcessor::isUnpackedPackage(const juce::File& dir) {
+  return !readArchiveMarker(dir.getFullPathName().toStdString()).empty();
+}
+
 juce::Array<juce::File> MasterpieceProcessor::installedOrgans() const {
   juce::Array<juce::File> out;
   std::vector<juce::File> roots{organsFolder()};
+  // A folder Masterpiece unpacked an organ's RAR packages into is not a
+  // library (#1259): it was remembered as one, and its organs stayed listed
+  // after the RARs were removed.
   for (const auto& lib : libraries_)
-    if (std::find(roots.begin(), roots.end(), lib) == roots.end()) roots.push_back(lib);
+    if (!isUnpackedPackage(lib) && std::find(roots.begin(), roots.end(), lib) == roots.end()) roots.push_back(lib);
   for (const auto& root : roots)
     for (const auto& path : mp::installedOrganFiles(root.getFullPathName().toStdString()))
       out.addIfNotAlreadyThere(juce::File(juce::String::fromUTF8(path.c_str())));
+  // The organs played from their RAR packages, listed while the RAR is there.
+  for (const auto& packaged : packagedRoots()) {
+    for (const auto& dir : packaged.findChildFiles(juce::File::findDirectories, false)) {
+      const std::string archive = readArchiveMarker(dir.getFullPathName().toStdString());
+      if (archive.empty() || !juce::File(juce::String::fromUTF8(archive.c_str())).existsAsFile()) continue;
+      for (const auto& path : mp::installedOrganFiles(dir.getFullPathName().toStdString()))
+        out.addIfNotAlreadyThere(juce::File(juce::String::fromUTF8(path.c_str())));
+    }
+  }
   return out;
 }
 
 void MasterpieceProcessor::rememberSampleLibrary(const juce::File& root) {
-  if (!root.isDirectory()) return;
+  if (!root.isDirectory() || isUnpackedPackage(root)) return;
   if (!root.getChildFile("OrganInstallationPackages").isDirectory()) return;
   if (std::find(libraries_.begin(), libraries_.end(), root) != libraries_.end())
     return;
@@ -4887,6 +4921,30 @@ bool MasterpieceProcessor::saveMidiMap() const {
   console.clearKeyboardBindings();
   console.keepOnlyConsoleSendsAndShortcuts();
   const auto cf = consoleMidiFile();
+  {
+    using Key = std::pair<MidiTargetKind, Id>;
+    std::map<Key, std::vector<MidiBinding>> byManual;
+    for (const auto& b : midiMap_.bindings()) {
+      const Id m = divisionalByManual(b.targetKind, b.targetId);
+      if (m == 0) continue;
+      MidiBinding c = b;
+      c.targetId = m;
+      byManual[{b.targetKind, m}].push_back(c);
+    }
+    // What the console file held by manual for pistons this organ has none
+    // for: another organ's, kept.
+    MidiMap previous;
+    if (cf.existsAsFile() && previous.fromText(cf.loadFileAsString().toStdString())) {
+      std::map<Key, std::vector<MidiBinding>> kept;
+      for (const auto& b : previous.bindings())
+        if ((b.targetKind == MidiTargetKind::PlayerDivisional ||
+             b.targetKind == MidiTargetKind::PlayerDivisionalCancel) &&
+            b.targetId < 0 && byManual.count({b.targetKind, b.targetId}) == 0)
+          kept[{b.targetKind, b.targetId}].push_back(b);
+      for (auto& [key, list] : kept) byManual.emplace(key, std::move(list));
+    }
+    for (const auto& [key, list] : byManual) console.setBindingsFor(key.first, key.second, list);
+  }
   cf.getParentDirectory().createDirectory();
   mp::writeTextFile(cf, juce::String(console.toText()));
 
@@ -4932,6 +4990,15 @@ void MasterpieceProcessor::applyConsoleMidi() {
     }
   for (const auto& b : own.bindings())
     if (taken.count(b.source) == 0) midiMap_.bindFrom(own, b);
+  // The console's divisional pistons by manual (#1259), on the division that
+  // manual plays here, unless this organ maps that piston itself.
+  for (const auto& b : console.bindings()) {
+    const Id id = divisionalFromManual(b.targetKind, b.targetId);
+    if (id == 0 || taken.count(b.source) != 0 || !midiMap_.bindingsFor(b.targetKind, id).empty()) continue;
+    MidiBinding here = b;
+    here.targetId = id;
+    midiMap_.bindFrom(console, here);
+  }
   // The console's lamps and computer keys come with it too. Only its buttons
   // came before: on an organ with no file of its own, or one saved before the
   // lamp was set, the recorder's lamps stayed dark. A target the console has
@@ -4943,6 +5010,31 @@ void MasterpieceProcessor::applyConsoleMidi() {
   for (const auto& k : console.shortcuts())
     if (MidiMap::isConsoleTarget(k.targetKind)) keyed.insert({k.targetKind, k.targetId});
   for (const auto& [kind, id] : keyed) midiMap_.setShortcutsFor(kind, id, console.shortcutsFor(kind, id));
+}
+
+Id MasterpieceProcessor::divisionalByManual(MidiTargetKind kind, Id targetId) const {
+  if (targetId <= 0) return 0;
+  const bool piston = kind == MidiTargetKind::PlayerDivisional;
+  if (!piston && kind != MidiTargetKind::PlayerDivisionalCancel) return 0;
+  const Id division = piston ? playerDivisionalDivision(targetId) : targetId;
+  const int manual = divisionKeyboard(model_, division);
+  if (manual < 0) return 0;
+  return piston ? -(1 + manual * 100 + playerDivisionalPiston(targetId)) : -(1 + manual);
+}
+
+Id MasterpieceProcessor::divisionalFromManual(MidiTargetKind kind, Id byManual) const {
+  if (byManual >= 0) return 0;
+  const bool piston = kind == MidiTargetKind::PlayerDivisional;
+  if (!piston && kind != MidiTargetKind::PlayerDivisionalCancel) return 0;
+  const Id code = -byManual - 1;
+  const int manual = piston ? static_cast<int>(code / 100) : static_cast<int>(code);
+  // The lowest-numbered division that manual plays, so the choice is the
+  // same at every load.
+  Id best = 0;
+  for (const auto& [id, d] : model_.divisions)
+    if (divisionKeyboard(model_, id) == manual && (best == 0 || id < best)) best = id;
+  if (best == 0) return 0;
+  return piston ? playerDivisionalTarget(best, static_cast<int>(code % 100)) : best;
 }
 
 int MasterpieceProcessor::consoleRoleOf(Id keyboardId) const {
@@ -5120,6 +5212,43 @@ void MasterpieceProcessor::resolveSamplePitches() {
          << tally[i];
   }
   juce::Logger::writeToLog(line);
+
+  // The organ's own pitch, where the definition does not state it (mattrixed,
+  // #1271): Alessandria states none and its A pipes are recorded at 448 Hz.
+  // Taken as 440, "the organ's own" was called 440 while it sounded at 448,
+  // and choosing 440 changed nothing. Read from the A pipes of octave ranks
+  // alone, so neither an unequal temperament nor a mutation leans it.
+  if (!model_.basePitchDeclared) {
+    std::vector<double> cents;
+    for (const auto& [rankId, rank] : model_.ranks) {
+      (void)rankId;
+      if (rank.isNoise || rank.noiseEffect) continue;
+      for (const auto& pipe : rank.pipes) {
+        if (pipe.midiNote < 0 || pipe.midiNote % 12 != 9 || pipe.borrowedFromPipeId != 0) continue;
+        const int harm = pipe.basePitch64ftHarmonicNum > 0 ? pipe.basePitch64ftHarmonicNum : 8;
+        if ((harm & (harm - 1)) != 0) continue;  // 16', 8', 4', 2'..., not a quint or a tierce
+        const double nominal = 440.0 * std::pow(2.0, (pipe.midiNote - 69) / 12.0) * harm / 8.0;
+        for (const auto& layer : pipe.layers)
+          for (const auto& a : layer.attacks) {
+            const double hz = a.sample.resolvedPitchHz;
+            if (!(hz > 0.0)) continue;
+            const double c = 1200.0 * std::log2(hz / nominal);
+            if (std::abs(c) < 150.0) cents.push_back(c);
+          }
+      }
+    }
+    if (cents.size() >= 3) {
+      const auto mid = cents.begin() + static_cast<std::ptrdiff_t>(cents.size() / 2);
+      std::nth_element(cents.begin(), mid, cents.end());
+      const double median = *mid;
+      if (std::abs(median) >= 1.5) {
+        model_.basePitchHz = std::round(4400.0 * std::pow(2.0, median / 1200.0)) / 10.0;
+        juce::Logger::writeToLog("pitch: no base pitch stated; the organ's own A from " +
+                                 juce::String(static_cast<int>(cents.size())) + " A pipes: " +
+                                 juce::String(model_.basePitchHz, 1) + " Hz");
+      }
+    }
+  }
 }
 
 void MasterpieceProcessor::loadTremulantShapes(const std::string& organRootDir) {
@@ -5525,7 +5654,7 @@ bool MasterpieceProcessor::applyVoicingStep(MidiTargetKind kind) {
       case MidiTargetKind::VoicingTuneUp: field = VoicingField::Tuning; by = 1.0f; break;
       default: return false;
     }
-    if (!stepVoicing(voicing_.live(), model_, voicingTarget_, field, by, field == VoicingField::Level ? 12.0f : 50.0f))
+    if (!stepVoicing(voicing_.live(), model_, voicingTarget_, field, by, voicingRange(field)))
       return false;
   }
   voicingSteps_.fetch_add(1, std::memory_order_acq_rel);
@@ -5668,8 +5797,7 @@ int MasterpieceProcessor::extremeFor(Id keyboard, int midiNote) const {
     lowest = std::min(lowest, held.midiNote);
     highest = std::max(highest, held.midiNote);
   }
-  return (midiNote <= lowest ? CouplerMatrix::kLowestHeld : 0) |
-         (midiNote >= highest ? CouplerMatrix::kHighestHeld : 0);
+  return CouplerMatrix::extremeOf(midiNote, lowest, highest, bassTop_.load(std::memory_order_relaxed));
 }
 
 void MasterpieceProcessor::reflowExtremes(Id keyboard) {
@@ -6777,6 +6905,26 @@ void MasterpieceProcessor::setGeneralName(int n, const juce::String& name) {
   combinationsDirty_.store(true, std::memory_order_release);
 }
 
+void MasterpieceProcessor::clearGeneral(int n) {
+  const AudioLock audio(*this);
+  if (!player_.generalSet(n) && player_.generalName(n).empty()) return;
+  player_.clearGeneral(n);
+  combinationsDirty_.store(true, std::memory_order_release);
+}
+
+void MasterpieceProcessor::setDivisionalName(Id divisionId, int n, const juce::String& name) {
+  if (juce::String(juce::CharPointer_UTF8(player_.divisionalName(divisionId, n).c_str())) == name.trim()) return;
+  player_.setDivisionalName(divisionId, n, name.toStdString());
+  combinationsDirty_.store(true, std::memory_order_release);
+}
+
+void MasterpieceProcessor::clearDivisional(Id divisionId, int n) {
+  const AudioLock audio(*this);
+  if (!player_.divisionalSet(divisionId, n) && player_.divisionalName(divisionId, n).empty()) return;
+  player_.clearDivisional(divisionId, n);
+  combinationsDirty_.store(true, std::memory_order_release);
+}
+
 void MasterpieceProcessor::pressGeneral(int n) {
   const AudioLock audio(*this);
   const auto read = [this](const PlayerCombinations::Element& e) {
@@ -7060,6 +7208,8 @@ int MasterpieceProcessor::fillReadyMadeGenerals() {
     if (general > PlayerCombinations::kMaxGenerals) break;
     player_.storeGeneral(general, [&](const PlayerCombinations::Element& e) {
       const auto i = static_cast<size_t>(&e - elements.data());
+      // What the suggestion leaves alone keeps its state as it is now.
+      if (i < s.kept.size() && s.kept[i] != 0) return playerElementEngaged(e);
       return i < s.drawn.size() && s.drawn[i] != 0;
     });
     player_.setGeneralName(general, s.name);
@@ -7216,6 +7366,10 @@ void MasterpieceProcessor::fireCombination(Id comboId) {
     // how an organist builds a sequence for a piece.
     combinations_.capture(comboId, [this](Id id) { return switchEngaged(id); });
     combinationsDirty_.store(true, std::memory_order_release);
+    // The organ's own cells for it show what was stored.
+    recallScratch_.clear();
+    combinations_.memoryStatesOf(comboId, recallScratch_);
+    for (const auto& change : recallScratch_) setSwitchEngaged(change.switchId, change.engage);
     return;
   }
   // The organ's own General Cancel (type 100) does the same, when asked.
@@ -7588,6 +7742,9 @@ void MasterpieceProcessor::followSwitch(Id movedId, bool nowEngaged) {
 
   // The mechanical sound belongs to the switch that actually moved.
   triggerNoiseFor(movedId, nowEngaged);
+  // A crescendo page's cell: what its step recalls from now on (#1171), on
+  // either network.
+  if (combinations_.memoryMoved(movedId, nowEngaged)) combinationsDirty_.store(true, std::memory_order_release);
   if (eventMode()) return;
   palletMoved(movedId, nowEngaged);
   divisionInputMoved(movedId, nowEngaged);
@@ -7756,7 +7913,34 @@ bool MasterpieceProcessor::saveCombinationsIfDirty() {
   return saveCombinations();
 }
 
+int MasterpieceProcessor::soundingTonePipes() const {
+  int n = 0;
+  voices_.forEachSounding([&](Id pipeId) {
+    const auto r = rankOfPipe_.find(pipeId);
+    if (r == rankOfPipe_.end()) return;
+    const auto rank = model_.ranks.find(r->second);
+    if (rank != model_.ranks.end() && !rank->second.isNoise && !rank->second.noiseEffect) ++n;
+  });
+  return n;
+}
+
+void MasterpieceProcessor::showCombinationMemory() {
+  // The cells of a crescendo page show what its steps hold: the organ's own
+  // program, or the player's saved one (#1171, #1274).
+  std::vector<CombinationSystem::Change> cells;
+  combinations_.memoryStates(cells);
+  if (cells.empty()) return;
+  const AudioLock audio(*this);
+  for (const auto& c : cells) setSwitchEngaged(c.switchId, c.engage);
+}
+
 bool MasterpieceProcessor::loadCombinations() {
+  const bool ok = readCombinations();
+  showCombinationMemory();
+  return ok;
+}
+
+bool MasterpieceProcessor::readCombinations() {
   const auto f = combinationFileFor(loadedOdf_);
   if (f.getFullPathName().isEmpty() || !f.existsAsFile()) return false;
   std::istringstream in(f.loadFileAsString().toStdString());
@@ -7876,12 +8060,19 @@ void MasterpieceProcessor::buildCouplerInputs() {
   // pallet; the stops name only their action noises. Nothing pressed those
   // inputs, and only the noises sounded. The key now closes the division's
   // input as a coupler does.
-  std::unordered_set<Id> inputOnly;
+  std::unordered_set<Id>& inputOnly = inputOnlyDivisions_;
+  inputOnly.clear();
   {
+    // Only the pallets of pipes that sound the organ's tone. Friesach's inputs
+    // lead to the pallets of its key noises (#967) while its stops name the
+    // ranks: taken as played through its inputs, its couplers pressed those
+    // inputs alone, and only the noises sounded (#1272).
     std::unordered_set<Id> pallets;
-    for (const auto& [rankId, rank] : model_.ranks)
+    for (const auto& [rankId, rank] : model_.ranks) {
+      if (rank.isNoise || rank.noiseEffect) continue;
       for (const Pipe& pipe : rank.pipes)
         if (pipe.palletSwitchId != 0) pallets.insert(pipe.palletSwitchId);
+    }
     if (!pallets.empty()) {
       std::unordered_map<Id, std::vector<Id>> next;
       for (const auto& l : model_.switchLinkages)
@@ -7939,7 +8130,8 @@ void MasterpieceProcessor::buildCouplerInputs() {
       reached.push_back(static_cast<Id>(a.destDivision));
     }
     for (const Id division : reached)
-      addCoupledInputs(static_cast<Id>(a.conditionSwitchId), division, ranked.count(division) == 0);
+      addCoupledInputs(static_cast<Id>(a.conditionSwitchId), division,
+                       ranked.count(division) == 0 || inputOnly.count(division) != 0);
     if (a.destIsKeyboard && a.destKeyboard != 0)
       throughKeyboards.push_back(
           {static_cast<Id>(a.conditionSwitchId), static_cast<Id>(a.destKeyboard), reached});
@@ -8439,7 +8631,8 @@ void MasterpieceProcessor::buildProgramCouplers() {
     // for the key the walk carries, and moves with the chord's lowest or
     // highest key (reflowExtremes).
     for (const auto& c : programCouplersList_)
-      if (ranked.count(c.srcDivision) == 0) addCoupledInputs(c.switchId, c.srcDivision, true);
+      if (ranked.count(c.srcDivision) == 0 || inputOnlyDivisions_.count(c.srcDivision) != 0)
+        addCoupledInputs(c.switchId, c.srcDivision, true);
   }
 
   // The organ's own generals store the program couplers, and its general
@@ -11274,16 +11467,75 @@ constexpr const char* kDefinitionPatterns =
     "*.Organ.Hauptwerk.xml;*.CustomOrgan.Hauptwerk.xml";
 }  // namespace
 
+std::set<int> MasterpieceProcessor::requiredPackagesOf(const juce::File& odf) {
+  // Read once per file and size: the list sits at the end of a definition
+  // that can run to tens of megabytes, and the File menu asks every time.
+  struct Seen {
+    juce::Time modified;
+    juce::int64 size = 0;
+    std::set<int> packages;
+  };
+  static std::map<juce::String, Seen> cache;
+  const auto key = odf.getFullPathName();
+  const auto modified = odf.getLastModificationTime();
+  const auto size = odf.getSize();
+  if (const auto it = cache.find(key); it != cache.end() && it->second.modified == modified && it->second.size == size)
+    return it->second.packages;
+  std::set<int> packages;
+  const juce::String text = odf.loadFileAsString();
+  const int start = text.indexOf("ObjectType=\"RequiredInstallationPackage\"");
+  if (start >= 0) {
+    const int end = text.indexOf(start, "</ObjectList>");
+    const juce::String list = text.substring(start, end < 0 ? text.length() : end);
+    // The full spelling and the compact one (<o><a>id</a>...).
+    for (const juce::String open : {juce::String("<InstallationPackageID>"), juce::String("<o><a>")}) {
+      for (int at = list.indexOf(open); at >= 0; at = list.indexOf(at + 1, open)) {
+        const int id = list.substring(at + open.length()).getIntValue();
+        if (id > 0) packages.insert(id);
+      }
+    }
+  }
+  cache[key] = {modified, size, packages};
+  return packages;
+}
+
 juce::Array<juce::File> MasterpieceProcessor::organVersions(const juce::File& odf) {
   juce::Array<juce::File> out;
   if (!odf.existsAsFile()) return out;
   const juce::File package = packageFolderOf(odf);
-  if (package != juce::File())
+  if (package != juce::File()) {
     package.findChildFiles(out, juce::File::findFiles, true, kDefinitionPatterns);
-  else
+  } else {
     odf.getParentDirectory().findChildFiles(out, juce::File::findFiles, false, kDefinitionPatterns);
+    // A Hauptwerk organs folder keeps every organ's definition in one
+    // OrganDefinitions (#1259): there, a version is a definition of the same
+    // packages, its perspectives or a full and a light one, not every organ.
+    // A definition that names no packages cannot be told apart: all stay.
+    const auto mine = odf.getParentDirectory().getFileName().equalsIgnoreCase("OrganDefinitions")
+                          ? requiredPackagesOf(odf)
+                          : std::set<int>{};
+    if (!mine.empty()) {
+      juce::Array<juce::File> same;
+      for (const auto& f : out) {
+        if (f == odf) {
+          same.add(f);
+          continue;
+        }
+        const auto theirs = requiredPackagesOf(f);
+        if (std::any_of(theirs.begin(), theirs.end(), [&](int p) { return mine.count(p) != 0; })) same.add(f);
+      }
+      out = same;
+    }
+  }
   out.sort();
   return out;
+}
+
+juce::File MasterpieceProcessor::packagedArchiveOf(const juce::File& odf) {
+  const juce::File package = packageFolderOf(odf);
+  if (package == juce::File()) return {};
+  const std::string archive = readArchiveMarker(package.getFullPathName().toStdString());
+  return archive.empty() ? juce::File() : juce::File(juce::String::fromUTF8(archive.c_str()));
 }
 
 void MasterpieceProcessor::rememberDefinition(const juce::File& odf) {

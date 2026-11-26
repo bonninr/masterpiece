@@ -264,6 +264,14 @@ public:
   // (Lemmer near, far, surround), or full and light. These are the
   // definitions beside this one -- in its package, or in its folder.
   static juce::Array<juce::File> organVersions(const juce::File& odf);
+  // The installation packages a definition needs (RequiredInstallationPackage).
+  static std::set<int> requiredPackagesOf(const juce::File& odf);
+  // A folder Masterpiece unpacked an organ's RAR packages into (it carries
+  // the archive marker): never a sample library.
+  static bool isUnpackedPackage(const juce::File& dir);
+  // The RAR an organ played from its packages comes from; none for an
+  // installed one.
+  static juce::File packagedArchiveOf(const juce::File& odf);
   // A package remembers which of its definitions was opened last, in the
   // folder Masterpiece unpacked it into -- never in an installed sample set,
   // which is not ours to write to. None: an empty File.
@@ -311,6 +319,9 @@ public:
   // as takeAudioLoad() does.
   int64_t lateBlocksTotal() const { return lateBlocks_.load(std::memory_order_relaxed); }
   int soundingVoices() const { return soundingVoices_.load(std::memory_order_relaxed); }
+  // Voices of tone pipes sounding, noises and effects left out: what a
+  // coupler or a stop is heard to add. Between blocks, for tests and probes.
+  int soundingTonePipes() const;
   // A stop held off because a demo ships no pipework for it. Set at load.
   bool stopLocked(Id stopId) const { return lockedStops_.count(stopId) > 0; }
   // Ask the running load to stop. Returns immediately; the load ends at the
@@ -551,7 +562,11 @@ public:
   bool copyCombinationSetTo(const std::string& name) const;
   bool deleteCombinationSet(const std::string& name) const;
   bool saveCombinations() const;
+  // Reads the player's file, then shows the stored states on the organ's
+  // memory switches (a crescendo page's cells).
   bool loadCombinations();
+  bool readCombinations();
+  void showCombinationMemory();
   // Capture can happen on the audio thread — a piston is a MIDI message like
   // any other — and the audio thread must not write a file. So a capture only
   // raises a flag, and the message thread does the writing.
@@ -659,6 +674,11 @@ public:
   // A name for a general ("Tutti", "Plenum"), saved with the combination set
   // in use. Empty clears it.
   void setGeneralName(int n, const juce::String& name);
+  // Empty a general: unused again, its name gone (#1221).
+  void clearGeneral(int n);
+  // The same for a divisional (JPIL04, #1221): "Cornet", "Fonds 8' 4'".
+  void setDivisionalName(Id divisionId, int n, const juce::String& name);
+  void clearDivisional(Id divisionId, int n);
   void pressGeneralCancel();
   void pressDivisional(Id divisionId, int n);
   void pressDivisionalCancel(Id divisionId);
@@ -910,6 +930,13 @@ public:
   // The role a keyboard plays on a console: 0 the pedal, 1 the first manual,
   // -1 none.
   int consoleRoleOf(Id keyboardId) const;
+  // A divisional piston or cancel named by the console's manual (#1259):
+  // 0 for the Pedal, 1 for the first manual and so on, as the console
+  // profiles number them. Kept in the console's file with negative ids, so
+  // a console's divisional pistons work on every organ, on whatever division
+  // that manual plays there. 0 when the division's manual is not known.
+  Id divisionalByManual(MidiTargetKind kind, Id targetId) const;
+  Id divisionalFromManual(MidiTargetKind kind, Id byManual) const;
 
   void setKeyboardForChannel(int channel, Id keyboardId, int deviceId = 0,
                              bool exclusive = true) {
@@ -1835,8 +1862,20 @@ public:
   // Page turns for a score app (ScorePageMessage): sent on the MIDI output
   // with the next audio block, from any thread. The message is kept in the
   // global settings.
+  // The score panel turns its own page with it too.
   void turnScorePage(bool forward) {
     (forward ? scorePagesForward_ : scorePagesBack_).fetch_add(1, std::memory_order_acq_rel);
+    queueScoreCommand(static_cast<int>(forward ? ScoreCommandId::PageForward : ScoreCommandId::PageBack));
+  }
+  // The score panel's commands from a console (ScoreCommandId), from any
+  // thread; the panel takes them on the message thread. How many times each
+  // was given since it was last taken.
+  void queueScoreCommand(int id) {
+    if (id >= 1 && id <= kScoreCommandCount)
+      scoreCommands_[static_cast<size_t>(id - 1)].fetch_add(1, std::memory_order_acq_rel);
+  }
+  int takeScoreCommand(ScoreCommandId id) {
+    return scoreCommands_[static_cast<size_t>(static_cast<int>(id) - 1)].exchange(0, std::memory_order_acq_rel);
   }
   ScorePageMessage scorePageMessage() const { return unpackScorePage(scorePage_.load(std::memory_order_acquire)); }
   void setScorePageMessage(const ScorePageMessage& m);
@@ -1933,6 +1972,40 @@ public:
   // How many frames a level holds now: the level size with levels shown,
   // ten as the sequencer has them.
   int levelStep() const { return stepperLevels_ || simpleMode() ? levelSize_ : 10; }
+  // The generals of a level numbered from 0 instead of 1 (#1259): consoles
+  // built for Hauptwerk label their pistons 0 to 9. Only the labels change.
+  bool levelsFromZero() const { return levelsFromZero_; }
+  void setLevelsFromZero(bool on) {
+    if (levelsFromZero_ == on) return;
+    levelsFromZero_ = on;
+    writeGlobalFile();
+  }
+  // Sizes for a touch screen or a glance from the bench, the program's own:
+  // 0 as drawn, 1 large, 2 larger. The stop list's buttons (fabiomancini67,
+  // #1271) and the Combinations window's pistons (mdehn38, #1221).
+  static constexpr int kMaxViewSize = 2;
+  int stopListSize() const { return stopListSize_; }
+  void setStopListSize(int size) {
+    size = std::clamp(size, 0, kMaxViewSize);
+    if (stopListSize_ == size) return;
+    stopListSize_ = size;
+    writeGlobalFile();
+  }
+  int pistonSize() const { return pistonSize_; }
+  void setPistonSize(int size) {
+    size = std::clamp(size, 0, kMaxViewSize);
+    if (pistonSize_ == size) return;
+    pistonSize_ = size;
+    writeGlobalFile();
+  }
+  // The sequencer's frame shown as its number alone, in large bright figures
+  // (fabiomancini67, #1271).
+  bool bigFrameNumber() const { return bigFrameNumber_; }
+  void setBigFrameNumber(bool on) {
+    if (bigFrameNumber_ == on) return;
+    bigFrameNumber_ = on;
+    writeGlobalFile();
+  }
   // Ready-made registrations (#1221): PP, P, MF, F, Plein jeu and Tutti,
   // built from this organ's stop names (PlayerCombinations::
   // suggestRegistrations), stored in the generals not yet set, from the
@@ -2004,6 +2077,13 @@ public:
   // Moves on with every change, so a panel open on it can follow a preset
   // recalled from MIDI.
   int voicingEqChanges() const { return voicingEqChanges_; }
+  // Edited on the Organ EQ tab (#1259): the organ's own EQ from then on,
+  // saved as its other settings are. A score's registration recalling an EQ
+  // does not call this.
+  void voicingEqEdited() {
+    organOwnsEq_ = true;
+    markSettingsDirty();
+  }
   // The organ's sound after the voicing EQ and before the room, for the
   // Equalizer tab's spectrum. Fed only while a window has it open.
   SpectrumTap& spectrum() { return spectrum_; }
@@ -2284,6 +2364,10 @@ public:
     if (sessionLoading_) sessionLoading_->bassCouplers = on;
   }
   bool bassCouplers() const { return bassCouplers_; }
+  // The bass couplers' range (#1242): the lowest key held passes them only
+  // at or below this note; 0 for the whole keyboard. Saved with the organ.
+  int bassCouplerTop() const { return bassTop_.load(std::memory_order_relaxed); }
+  void setBassCouplerTop(int midiNote) { bassTop_.store(juce::jlimit(0, 127, midiNote), std::memory_order_relaxed); }
   // A GrandOrgue set's tremulant pitch and swell filter (#833), chosen on
   // the same tab: off by default, saved with the organ, applied at its load
   // (OdfLoader::Options).
@@ -3127,6 +3211,10 @@ private:
   bool midiSendsHoldEcho_ = false;
   bool learnAlsoSends_ = false;
   bool stepperLevels_ = false;
+  bool levelsFromZero_ = false;
+  int stopListSize_ = 0;
+  int pistonSize_ = 0;
+  bool bigFrameNumber_ = false;
   int levelSize_ = 10;
   // The echo's values for a lit and a dark button (#1185): 1..127, and
   // 0..127 or -1 for a Note Off.
@@ -3347,6 +3435,7 @@ private:
   // Whether the program couplers are offered. Off by default.
   bool programCouplers_ = false;
   bool bassCouplers_ = false;
+  std::atomic<int> bassTop_{0};
   // A GrandOrgue set's tremulant pitch and swell filter (#833). Off by
   // default; grandOrgueSet_ is the loaded definition's kind.
   bool goTremulantPitch_ = false, goSwellFilter_ = false;
@@ -3431,6 +3520,7 @@ private:
   // Page turns asked for and not yet sent, and the message, packed so the
   // audio thread reads it in one load.
   std::atomic<int> scorePagesForward_{0}, scorePagesBack_{0}, scorePagesTurned_{0};
+  std::array<std::atomic<int>, kScoreCommandCount> scoreCommands_{};
   std::atomic<uint32_t> scorePage_{packScorePage(ScorePageMessage{})};
   static uint32_t packScorePage(const ScorePageMessage& m) {
     return static_cast<uint32_t>(m.kind & 3) | static_cast<uint32_t>(m.channel & 31) << 2 |
@@ -3978,6 +4068,10 @@ private:
     bool rankless = false;  // no stop of the division names a rank
   };
   std::map<CoupledInputKey, CoupledInput> coupledInput_;
+  // Divisions played through their inputs alone (#1228): a key, a coupler
+  // and a program coupler all close their inputs. Built by
+  // buildCouplerInputs, read by buildProgramCouplers.
+  std::unordered_set<Id> inputOnlyDivisions_;
   // Which note holds which of the engine's switches, so the last note out
   // closes what it opened. Reserved at load: the audio thread adds to it.
   std::vector<std::pair<uint64_t, Id>> coupledHeld_;

@@ -1,0 +1,4 @@
+"Divisional %1" = "Combinazione divisionale %1"
+"Divisional %1: %2" = "Combinazione divisionale %1: %2"
+"Name of divisional %1 of %2" = "Nome della combinazione divisionale %1 di %2"
+"A name shown on the piston, such as Cornet or Plein jeu. Empty shows its number." = "Un nome mostrato sul pistone, come Cornetto o Ripieno. Vuoto mostra il suo numero."

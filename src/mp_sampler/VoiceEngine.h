@@ -855,6 +855,13 @@ public:
     for (Voice& v : voices_)
       if (v.phase != VoicePhase::Idle) v.voicingTarget = gainOf(v.pipeId);
   }
+  // The pipe of each voice sounding, for a count by kind. Read between
+  // blocks: the tests and probes.
+  template <class F>
+  void forEachSounding(F&& f) const {
+    for (const Voice& v : voices_)
+      if (v.phase != VoicePhase::Idle) f(v.pipeId);
+  }
   // --- streaming --------------------------------------------------------
   // How far ahead of each voice the streamer keeps, in seconds. Generous: a
   // voice consumes one frame per output frame, so a couple of seconds of slack
