@@ -15465,6 +15465,20 @@ public:
     MP_CHECK(mp::perspectiveOf("Front (Diffuse): HW Fagott 16 (tremmed)") == "front (diffuse)",
              "the prefix wins over the stop's own bracket");
     MP_CHECK(mp::perspectiveOf("HW: Principal 8").empty(), "a division before a colon is not one");
+    // More words, and a position word misspelt by one letter (Chemnitz).
+    MP_CHECK(mp::perspectiveOf("Principal 8 Room") == "room", "room");
+    MP_CHECK(mp::perspectiveOf("Hall: Gedackt 8") == "hall", "hall");
+    MP_CHECK(mp::perspectiveOf("Octave 4 (semidry)") == "semidry", "semidry");
+    MP_CHECK(mp::perspectiveOf("Octave 4 (semi-dry)") == "semi-dry", "semi-dry, as written");
+    MP_CHECK(mp::perspectiveOf("Hinten: Subbass 16") == "hinten", "German");
+    MP_CHECK(mp::perspectiveOf("Bourdon 8 lointain") == "lointain", "French");
+    MP_CHECK(mp::perspectiveOf("Difuse: 1. Principal 8") == "diffuse", "one letter missing");
+    MP_CHECK(mp::perspectiveOf("Direkt: 1. Principal 8") == "direct", "one letter changed");
+    MP_CHECK(mp::perspectiveOf("Principal 8 (Surrond)") == "surround", "in a bracket");
+    MP_CHECK(mp::perspectiveOf("Principal 8 Diffsue") == "diffuse", "two letters swapped");
+    MP_CHECK(mp::perspectiveOf("Front (Difuse): HW Fagott 16") == "front (diffuse)", "within a prefix");
+    MP_CHECK(mp::perspectiveOf("Cornet Mixte").empty(), "a short word a letter off is the stop's own");
+    MP_CHECK(mp::perspectiveOf("Dfiusee: Principal 8").empty(), "two letters off is no position");
 
     mp::OrganModel m;
     mp::Id id = 1;
