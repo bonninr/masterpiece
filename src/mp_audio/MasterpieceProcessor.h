@@ -262,6 +262,14 @@ public:
   // (Lemmer near, far, surround), or full and light. These are the
   // definitions beside this one -- in its package, or in its folder.
   static juce::Array<juce::File> organVersions(const juce::File& odf);
+  // The installation packages a definition needs (RequiredInstallationPackage).
+  static std::set<int> requiredPackagesOf(const juce::File& odf);
+  // A folder Masterpiece unpacked an organ's RAR packages into (it carries
+  // the archive marker): never a sample library.
+  static bool isUnpackedPackage(const juce::File& dir);
+  // The RAR an organ played from its packages comes from; none for an
+  // installed one.
+  static juce::File packagedArchiveOf(const juce::File& odf);
   // A package remembers which of its definitions was opened last, in the
   // folder Masterpiece unpacked it into -- never in an installed sample set,
   // which is not ours to write to. None: an empty File.

@@ -229,7 +229,11 @@ void OpenPanel::refresh() {
       const juce::File& f = installed_.getReference(i);
       const auto name = f.getFileNameWithoutExtension();
       if (query.isNotEmpty() && !name.toLowerCase().contains(query)) continue;
-      juce::String detail = f.getParentDirectory().getParentDirectory().getFullPathName();
+      // Played from its RAR packages: where the RAR is, not the folder
+      // Masterpiece unpacked it into (#1259).
+      const juce::File archive = MasterpieceProcessor::packagedArchiveOf(f);
+      juce::String detail = archive != juce::File() ? archive.getFullPathName()
+                                                    : f.getParentDirectory().getParentDirectory().getFullPathName();
       if (const auto kind = formatOf(f); kind.isNotEmpty()) detail = kind + ": " + detail;
       auto row = std::make_unique<Row>(*this, -(i + 1), name, detail, false, false);
       rows_.addAndMakeVisible(*row);

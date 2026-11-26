@@ -4660,19 +4660,35 @@ void MasterpieceProcessor::setOrgansFolder(const juce::File& dir) {
   writeGlobalFile();
 }
 
+bool MasterpieceProcessor::isUnpackedPackage(const juce::File& dir) {
+  return !readArchiveMarker(dir.getFullPathName().toStdString()).empty();
+}
+
 juce::Array<juce::File> MasterpieceProcessor::installedOrgans() const {
   juce::Array<juce::File> out;
   std::vector<juce::File> roots{organsFolder()};
+  // A folder Masterpiece unpacked an organ's RAR packages into is not a
+  // library (#1259): it was remembered as one, and its organs stayed listed
+  // after the RARs were removed.
   for (const auto& lib : libraries_)
-    if (std::find(roots.begin(), roots.end(), lib) == roots.end()) roots.push_back(lib);
+    if (!isUnpackedPackage(lib) && std::find(roots.begin(), roots.end(), lib) == roots.end()) roots.push_back(lib);
   for (const auto& root : roots)
     for (const auto& path : mp::installedOrganFiles(root.getFullPathName().toStdString()))
       out.addIfNotAlreadyThere(juce::File(juce::String::fromUTF8(path.c_str())));
+  // The organs played from their RAR packages, listed while the RAR is there.
+  for (const auto& packaged : packagedRoots()) {
+    for (const auto& dir : packaged.findChildFiles(juce::File::findDirectories, false)) {
+      const std::string archive = readArchiveMarker(dir.getFullPathName().toStdString());
+      if (archive.empty() || !juce::File(juce::String::fromUTF8(archive.c_str())).existsAsFile()) continue;
+      for (const auto& path : mp::installedOrganFiles(dir.getFullPathName().toStdString()))
+        out.addIfNotAlreadyThere(juce::File(juce::String::fromUTF8(path.c_str())));
+    }
+  }
   return out;
 }
 
 void MasterpieceProcessor::rememberSampleLibrary(const juce::File& root) {
-  if (!root.isDirectory()) return;
+  if (!root.isDirectory() || isUnpackedPackage(root)) return;
   if (!root.getChildFile("OrganInstallationPackages").isDirectory()) return;
   if (std::find(libraries_.begin(), libraries_.end(), root) != libraries_.end())
     return;
@@ -11155,16 +11171,75 @@ constexpr const char* kDefinitionPatterns =
     "*.Organ.Hauptwerk.xml;*.CustomOrgan.Hauptwerk.xml";
 }  // namespace
 
+std::set<int> MasterpieceProcessor::requiredPackagesOf(const juce::File& odf) {
+  // Read once per file and size: the list sits at the end of a definition
+  // that can run to tens of megabytes, and the File menu asks every time.
+  struct Seen {
+    juce::Time modified;
+    juce::int64 size = 0;
+    std::set<int> packages;
+  };
+  static std::map<juce::String, Seen> cache;
+  const auto key = odf.getFullPathName();
+  const auto modified = odf.getLastModificationTime();
+  const auto size = odf.getSize();
+  if (const auto it = cache.find(key); it != cache.end() && it->second.modified == modified && it->second.size == size)
+    return it->second.packages;
+  std::set<int> packages;
+  const juce::String text = odf.loadFileAsString();
+  const int start = text.indexOf("ObjectType=\"RequiredInstallationPackage\"");
+  if (start >= 0) {
+    const int end = text.indexOf(start, "</ObjectList>");
+    const juce::String list = text.substring(start, end < 0 ? text.length() : end);
+    // The full spelling and the compact one (<o><a>id</a>...).
+    for (const juce::String open : {juce::String("<InstallationPackageID>"), juce::String("<o><a>")}) {
+      for (int at = list.indexOf(open); at >= 0; at = list.indexOf(at + 1, open)) {
+        const int id = list.substring(at + open.length()).getIntValue();
+        if (id > 0) packages.insert(id);
+      }
+    }
+  }
+  cache[key] = {modified, size, packages};
+  return packages;
+}
+
 juce::Array<juce::File> MasterpieceProcessor::organVersions(const juce::File& odf) {
   juce::Array<juce::File> out;
   if (!odf.existsAsFile()) return out;
   const juce::File package = packageFolderOf(odf);
-  if (package != juce::File())
+  if (package != juce::File()) {
     package.findChildFiles(out, juce::File::findFiles, true, kDefinitionPatterns);
-  else
+  } else {
     odf.getParentDirectory().findChildFiles(out, juce::File::findFiles, false, kDefinitionPatterns);
+    // A Hauptwerk organs folder keeps every organ's definition in one
+    // OrganDefinitions (#1259): there, a version is a definition of the same
+    // packages, its perspectives or a full and a light one, not every organ.
+    // A definition that names no packages cannot be told apart: all stay.
+    const auto mine = odf.getParentDirectory().getFileName().equalsIgnoreCase("OrganDefinitions")
+                          ? requiredPackagesOf(odf)
+                          : std::set<int>{};
+    if (!mine.empty()) {
+      juce::Array<juce::File> same;
+      for (const auto& f : out) {
+        if (f == odf) {
+          same.add(f);
+          continue;
+        }
+        const auto theirs = requiredPackagesOf(f);
+        if (std::any_of(theirs.begin(), theirs.end(), [&](int p) { return mine.count(p) != 0; })) same.add(f);
+      }
+      out = same;
+    }
+  }
   out.sort();
   return out;
+}
+
+juce::File MasterpieceProcessor::packagedArchiveOf(const juce::File& odf) {
+  const juce::File package = packageFolderOf(odf);
+  if (package == juce::File()) return {};
+  const std::string archive = readArchiveMarker(package.getFullPathName().toStdString());
+  return archive.empty() ? juce::File() : juce::File(juce::String::fromUTF8(archive.c_str()));
 }
 
 void MasterpieceProcessor::rememberDefinition(const juce::File& odf) {
