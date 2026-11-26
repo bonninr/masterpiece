@@ -89,6 +89,27 @@ public:
     panel.rebuild();
     MP_CHECK(general() != nullptr && general()->getWidth() == plainW, "no names, the narrow pistons again");
 
+    // #1259: levels numbered from 0, as Hauptwerk consoles label them.
+    const bool levelsWere = proc.stepperLevels(), zeroWas = proc.levelsFromZero();
+    proc.setSimpleMode(false, false);
+    proc.setStepperLevels(true);
+    proc.setLevelsFromZero(true);
+    panel.showView();
+    const auto tipped = [&panel](const juce::String& tip) {
+      for (auto* c : panel.getChildren())
+        if (auto* b = dynamic_cast<juce::Button*>(c); b != nullptr && b->getTooltip() == tip) return b;
+      return static_cast<juce::Button*>(nullptr);
+    };
+    auto* first = tipped("General 0 of this level");
+    MP_CHECK(first != nullptr && first->getButtonText() == "0", "from 0: the first general reads 0");
+    proc.setLevelsFromZero(false);
+    panel.showView();
+    auto* first1 = tipped("General 1 of this level");
+    MP_CHECK(first1 != nullptr && first1->getButtonText() == "1", "from 1: the first general reads 1");
+    MP_CHECK(tipped("General 0 of this level") == nullptr, "and none reads 0");
+    proc.setLevelsFromZero(zeroWas);
+    proc.setStepperLevels(levelsWere);
+
     proc.setSimpleMode(was, false);
   }
 };

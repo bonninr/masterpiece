@@ -1916,6 +1916,14 @@ public:
   // How many frames a level holds now: the level size with levels shown,
   // ten as the sequencer has them.
   int levelStep() const { return stepperLevels_ || simpleMode() ? levelSize_ : 10; }
+  // The generals of a level numbered from 0 instead of 1 (#1259): consoles
+  // built for Hauptwerk label their pistons 0 to 9. Only the labels change.
+  bool levelsFromZero() const { return levelsFromZero_; }
+  void setLevelsFromZero(bool on) {
+    if (levelsFromZero_ == on) return;
+    levelsFromZero_ = on;
+    writeGlobalFile();
+  }
   // Ready-made registrations (#1221): PP, P, MF, F, Plein jeu and Tutti,
   // built from this organ's stop names (PlayerCombinations::
   // suggestRegistrations), stored in the generals not yet set, from the
@@ -3091,6 +3099,7 @@ private:
   bool midiSendsHoldEcho_ = false;
   bool learnAlsoSends_ = false;
   bool stepperLevels_ = false;
+  bool levelsFromZero_ = false;
   int levelSize_ = 10;
   // The echo's values for a lit and a dark button (#1185): 1..127, and
   // 0..127 or -1 for a Note Off.

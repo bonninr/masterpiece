@@ -2,3 +2,8 @@
 "Learn on and off (two messages)..." = "Ein und aus lernen (zwei Meldungen)..."
 "Learn one message as" = "Eine Meldung lernen als"
 "Install another package..." = "Weiteres Paket installieren..."
+"Levels, numbered from 1" = "Ebenen, ab 1 nummeriert"
+"Levels, numbered from 0" = "Ebenen, ab 0 nummeriert"
+"%1 a level" = "%1 pro Ebene"
+"Fewer generals in each level" = "Weniger Generalsetzer je Ebene"
+"More generals in each level" = "Mehr Generalsetzer je Ebene"

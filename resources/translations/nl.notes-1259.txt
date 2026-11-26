@@ -2,3 +2,8 @@
 "Learn on and off (two messages)..." = "Aan en uit leren (twee berichten)..."
 "Learn one message as" = "Eén bericht leren als"
 "Install another package..." = "Nog een pakket installeren..."
+"Levels, numbered from 1" = "Niveaus, genummerd vanaf 1"
+"Levels, numbered from 0" = "Niveaus, genummerd vanaf 0"
+"%1 a level" = "%1 per niveau"
+"Fewer generals in each level" = "Minder generalen per niveau"
+"More generals in each level" = "Meer generalen per niveau"

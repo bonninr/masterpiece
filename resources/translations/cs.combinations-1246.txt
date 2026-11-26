@@ -1,5 +1,4 @@
 "Sequencer" = "Sekvencer"
-"Levels of %1 generals" = "Úrovně po %1 kombinacích"
 "The stepper as GrandOrgue's sequencer, frames 000 to 998, or as levels of generals: - and + step through the generals, the level buttons move a level, and the numbered buttons pick a general of the level" = "Krokovač jako sekvencer GrandOrgue, kroky 000 až 998, nebo jako úrovně kombinací: - a + procházejí kombinacemi, tlačítka úrovně mění úroveň a číslovaná tlačítka vybírají kombinaci úrovně"
 "Frame %1, empty" = "Krok %1, prázdný"
 "Level %1, general %2" = "Úroveň %1, kombinace %2"

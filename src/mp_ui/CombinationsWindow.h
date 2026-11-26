@@ -100,6 +100,8 @@ private:
   bool levels_ = false;
   static constexpr int kStyleW = 170;
   juce::ComboBox style_;
+  juce::TextButton fewerLevel_{"-"}, moreLevel_{"+"};
+  juce::Label levelSize_;
   juce::TextButton insertFrame_{TRANS("Insert")};
   juce::TextButton deleteFrame_{TRANS("Delete")};
 
