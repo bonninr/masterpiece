@@ -1833,8 +1833,20 @@ public:
   // Page turns for a score app (ScorePageMessage): sent on the MIDI output
   // with the next audio block, from any thread. The message is kept in the
   // global settings.
+  // The score panel turns its own page with it too.
   void turnScorePage(bool forward) {
     (forward ? scorePagesForward_ : scorePagesBack_).fetch_add(1, std::memory_order_acq_rel);
+    queueScoreCommand(static_cast<int>(forward ? ScoreCommandId::PageForward : ScoreCommandId::PageBack));
+  }
+  // The score panel's commands from a console (ScoreCommandId), from any
+  // thread; the panel takes them on the message thread. How many times each
+  // was given since it was last taken.
+  void queueScoreCommand(int id) {
+    if (id >= 1 && id <= kScoreCommandCount)
+      scoreCommands_[static_cast<size_t>(id - 1)].fetch_add(1, std::memory_order_acq_rel);
+  }
+  int takeScoreCommand(ScoreCommandId id) {
+    return scoreCommands_[static_cast<size_t>(static_cast<int>(id) - 1)].exchange(0, std::memory_order_acq_rel);
   }
   ScorePageMessage scorePageMessage() const { return unpackScorePage(scorePage_.load(std::memory_order_acquire)); }
   void setScorePageMessage(const ScorePageMessage& m);
@@ -3420,6 +3432,7 @@ private:
   // Page turns asked for and not yet sent, and the message, packed so the
   // audio thread reads it in one load.
   std::atomic<int> scorePagesForward_{0}, scorePagesBack_{0}, scorePagesTurned_{0};
+  std::array<std::atomic<int>, kScoreCommandCount> scoreCommands_{};
   std::atomic<uint32_t> scorePage_{packScorePage(ScorePageMessage{})};
   static uint32_t packScorePage(const ScorePageMessage& m) {
     return static_cast<uint32_t>(m.kind & 3) | static_cast<uint32_t>(m.channel & 31) << 2 |

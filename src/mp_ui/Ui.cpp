@@ -2974,6 +2974,11 @@ void MasterpieceEditor::setScoreDetached(bool detached) {
         [this] { setScoreDetached(false); });
     if (scoreWindowBounds_.getWidth() > 100) scoreWindow_->setBounds(scoreWindowBounds_);
     else scoreWindow_->centreWithSize(1100, 760);
+    // Over the console's window, when the player asks (#1012).
+    scoreWindow_->setAlwaysOnTop(score_->keptOnTop());
+    score_->onKeepOnTop = [this](bool top) {
+      if (scoreWindow_ != nullptr) scoreWindow_->setAlwaysOnTop(top);
+    };
     score_->setVisible(true);
     scoreWindow_->setVisible(true);
     // The score's tab goes: from it, back to the base view.
@@ -3239,6 +3244,10 @@ void MasterpieceEditor::showFileMenu() {
                     versions[i] == loaded);
     menu.addSubMenu(TRANS("Other versions of this organ"), other);
   }
+#if MP_HAS_SCORE
+  // A score straight from the start (#1012): the score panel, and its file.
+  menu.addItem(40, TRANS("Open score..."));
+#endif
   // A phone or a tablet has no folder to save a file to that this can reach.
   if (!kMobile) {
     // An organ's packages put in the organs folder, and taken out (#1024).
@@ -3266,6 +3275,12 @@ void MasterpieceEditor::showFileMenu() {
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this), versions](int c) {
                        if (safe == nullptr || c == 0) return;
                        if (c == 1) safe->showOpenMenu();
+#if MP_HAS_SCORE
+                       if (c == 40) {
+                         safe->showScore();
+                         if (safe->score_ != nullptr) safe->score_->openScoreDialog();
+                       }
+#endif
                        if (c == 20) safe->importSettings();
                        if (c == 21) safe->exportSettings(true);
                        if (c == 22) safe->exportSettings(false);

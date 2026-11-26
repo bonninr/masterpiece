@@ -1081,4 +1081,340 @@ public:
 };
 static ScorePanelMarksTest g_scorePanelMarks;
 
+// --- #1012: repeats, ornaments, the score's settings, practice -------------
+
+namespace {
+
+// A whole note, with an id and what else it needs.
+std::string wholeNote(const char* id, char step, int octave, const std::string& extra = {}) {
+  return std::string("<note id=\"") + id + "\"><pitch><step>" + step + "</step><octave>" + std::to_string(octave) +
+         "</octave></pitch><duration>4</duration><type>whole</type>" + extra + "</note>";
+}
+
+std::string barline(const char* where, const std::string& inside) {
+  return std::string("<barline location=\"") + where + "\">" + inside + "</barline>";
+}
+
+// A score of one part or two, its measures given as their contents.
+std::string practiceScore(const std::vector<std::string>& right, const std::vector<std::string>& pedal = {},
+                          int fifths = 0) {
+  std::string s =
+      "<?xml version=\"1.0\" encoding=\"UTF-8\"?><score-partwise version=\"3.1\"><part-list>"
+      "<score-part id=\"P1\"><part-name>Right</part-name></score-part>";
+  if (!pedal.empty()) s += "<score-part id=\"P2\"><part-name>Pedal</part-name></score-part>";
+  s += "</part-list>";
+  const auto part = [&](const char* id, const std::vector<std::string>& measures, const char* clef, int line) {
+    s += std::string("<part id=\"") + id + "\">";
+    for (size_t i = 0; i < measures.size(); ++i) {
+      s += "<measure number=\"" + std::to_string(i + 1) + "\">";
+      if (i == 0)
+        s += "<attributes><divisions>1</divisions><key><fifths>" + std::to_string(fifths) +
+             "</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>" + clef +
+             "</sign><line>" + std::to_string(line) + "</line></clef></attributes>"
+             "<direction><direction-type><words>Moderato</words></direction-type><sound tempo=\"60\"/></direction>";
+      s += measures[i] + "</measure>";
+    }
+    s += "</part>";
+  };
+  part("P1", right, "G", 2);
+  if (!pedal.empty()) part("P2", pedal, "F", 4);
+  return s + "</score-partwise>";
+}
+
+const std::string kForward = barline("left", "<repeat direction=\"forward\"/>");
+const std::string kBackward = barline("right", "<repeat direction=\"backward\"/>");
+
+}  // namespace
+
+// The order the measures are played in, and the ornaments' neighbours.
+class ScoreRepeatsTest final : public mp::test::Test {
+public:
+  ScoreRepeatsTest() : Test("functional.score.repeats", Category::Functional) {}
+  void run() override {
+    const auto orderOf = [](const std::vector<std::string>& measures) {
+      mp::ScorePlayback p;
+      p.load(practiceScore(measures));
+      std::string out;
+      for (const int i : p.order()) out += std::to_string(i);
+      return out;
+    };
+    MP_CHECK(orderOf({wholeNote("a", 'C', 5), wholeNote("b", 'D', 5), wholeNote("c", 'E', 5)}) == "012",
+             "no repeats: each measure once");
+    MP_CHECK(orderOf({wholeNote("a", 'C', 5), kForward + wholeNote("b", 'D', 5) + kBackward, wholeNote("c", 'E', 5)}) ==
+                 "0112",
+             "a repeat: the measure twice");
+    MP_CHECK(orderOf({wholeNote("a", 'C', 5) + kBackward, wholeNote("b", 'D', 5)}) == "001",
+             "a repeat with no start: from the top");
+    MP_CHECK(orderOf({kForward + wholeNote("a", 'C', 5),
+                      barline("left", "<ending number=\"1\" type=\"start\"/>") + wholeNote("b", 'D', 5) +
+                          barline("right", "<ending number=\"1\" type=\"stop\"/><repeat direction=\"backward\"/>"),
+                      barline("left", "<ending number=\"2\" type=\"start\"/>") + wholeNote("c", 'E', 5) +
+                          barline("right", "<ending number=\"2\" type=\"discontinue\"/>"),
+                      wholeNote("d", 'F', 5)}) == "01023",
+             "first and second endings: " + orderOf({kForward + wholeNote("a", 'C', 5),
+                      barline("left", "<ending number=\"1\" type=\"start\"/>") + wholeNote("b", 'D', 5) +
+                          barline("right", "<ending number=\"1\" type=\"stop\"/><repeat direction=\"backward\"/>"),
+                      barline("left", "<ending number=\"2\" type=\"start\"/>") + wholeNote("c", 'E', 5) +
+                          barline("right", "<ending number=\"2\" type=\"discontinue\"/>"),
+                      wholeNote("d", 'F', 5)}));
+    MP_CHECK(orderOf({wholeNote("a", 'C', 5) + kBackward,
+                      wholeNote("b", 'D', 5) + "<direction><direction-type><words>Fine</words></direction-type>"
+                                               "<sound fine=\"yes\"/></direction>",
+                      wholeNote("c", 'E', 5) + "<direction><direction-type><words>D.C. al Fine</words>"
+                                               "</direction-type><sound dacapo=\"yes\"/></direction>"}) == "001201",
+             "da capo al fine, no repeat the second time");
+    MP_CHECK(orderOf({wholeNote("a", 'C', 5),
+                      "<direction><direction-type><segno/></direction-type><sound segno=\"s\"/></direction>" +
+                          wholeNote("b", 'D', 5),
+                      wholeNote("c", 'E', 5) + "<sound tocoda=\"c\"/>",
+                      wholeNote("d", 'F', 5) + "<sound dalsegno=\"s\"/>",
+                      "<direction><direction-type><coda/></direction-type><sound coda=\"c\"/></direction>" +
+                          wholeNote("e", 'G', 5)}) == "0123124",
+             "dal segno al coda");
+
+    // The unrolled copy names the notes played again after the page's.
+    mp::ScorePlayback p;
+    p.load(practiceScore({wholeNote("a", 'C', 5), kForward + wholeNote("b", 'D', 5) + kBackward}));
+    const std::string unrolled = p.unrolled();
+    MP_CHECK(p.repeats() && unrolled.find("id=\"b-mpr2\"") != std::string::npos, "the second time is b-mpr2");
+    MP_CHECK(unrolled.find("<repeat") == std::string::npos, "and the repeat signs are gone");
+    MP_CHECK(mp::ScorePlayback::originalId("b-mpr2") == "b" && mp::ScorePlayback::originalId("b") == "b" &&
+                 mp::ScorePlayback::originalId("x-mprq") == "x-mprq",
+             "back to the page's id");
+
+    // Ornaments: the neighbour in the key, or the one the accidental names.
+    const auto orn = [](const char* tag, char step, int fifths, const std::string& mark = {}) {
+      mp::ScorePlayback q;
+      q.load(practiceScore({wholeNote("n", step, 5, "<notations><ornaments><" + std::string(tag) + "/>" + mark +
+                                                        "</ornaments></notations>")},
+                           {}, fifths));
+      const auto it = q.ornaments().find("n");
+      return it == q.ornaments().end() ? mp::ScoreOrnament{} : it->second;
+    };
+    MP_CHECK(orn("trill-mark", 'E', 0).upper == 1, "a trill on E in C: to F, a semitone");
+    MP_CHECK(orn("trill-mark", 'E', 1).upper == 2, "in G: to F sharp, a tone");
+    MP_CHECK(orn("trill-mark", 'E', 0, "<accidental-mark>sharp</accidental-mark>").upper == 2,
+             "a sharp over the sign: F sharp");
+    MP_CHECK(orn("mordent", 'C', 0).kind == mp::ScoreOrnament::Kind::Mordent && orn("mordent", 'C', 0).lower == -1,
+             "a mordent on C: down to B, a semitone");
+    MP_CHECK(orn("inverted-mordent", 'D', -1).kind == mp::ScoreOrnament::Kind::InvertedMordent &&
+                 orn("inverted-mordent", 'D', -1).upper == 2,
+             "a Pralltriller on D in F: up to E");
+    MP_CHECK(orn("turn", 'A', 0).pitch == 81, "the note's own pitch, A5 = 81");
+  }
+};
+static ScoreRepeatsTest g_scoreRepeats;
+
+// The jump and combination marks and the settings, in the file and back.
+class ScoreMarksKindsTest final : public mp::test::Test {
+public:
+  ScoreMarksKindsTest() : Test("functional.score.marks-kinds", Category::Functional) {}
+  void run() override {
+    std::string xml = practiceScore({wholeNote("a", 'C', 5), wholeNote("b", 'D', 5)});
+    // A score with an identification already: the settings join it.
+    const std::string ident = "<identification><encoding><software>MuseScore</software></encoding></identification>";
+    xml.insert(xml.find("<part-list>"), ident);
+    mp::ScoreMarks marks;
+    MP_CHECK(marks.load(xml), "the score reads");
+    MP_CHECK(marks.settings.empty(), "no settings yet");
+    marks.marks.push_back({mp::ScoreMark::Kind::Jump, marks.notes()[1], "Second", ""});
+    marks.marks.push_back({mp::ScoreMark::Kind::Combination, marks.notes()[0], "Tutti", "general 7"});
+    marks.settings = "tempo 90\nstaff 2 1 1\nview line\n";
+    const std::string saved = marks.save();
+    MP_CHECK(saved.find("<miscellaneous-field name=\"masterpiece-settings\">") != std::string::npos,
+             "the settings are written in a miscellaneous field");
+    MP_CHECK(saved.find("MuseScore</software></encoding><miscellaneous>") != std::string::npos,
+             "after the score's own identification");
+    mp::ScoreMarks again;
+    MP_CHECK(again.load(saved), "it reads back");
+    MP_CHECK(again.settings == marks.settings, "the settings: " + again.settings);
+    // Read back in the file's order: the combination's note comes first.
+    MP_CHECK(again.marks.size() == 2 && again.marks[1].kind == mp::ScoreMark::Kind::Jump &&
+                 again.marks[1].text == "Second" && again.marks[0].kind == mp::ScoreMark::Kind::Combination &&
+                 again.marks[0].states == "general 7",
+             "the jump and the combination");
+    MP_CHECK(again.engraving().find("masterpiece-settings") == std::string::npos, "the engraver does not see them");
+    // Saved again with no settings: the field goes, and the file is as it was.
+    again.settings.clear();
+    again.marks.clear();
+    mp::ScoreMarks plain;
+    plain.load(again.save());
+    MP_CHECK(plain.save().find("miscellaneous") == std::string::npos, "no settings, no field");
+    // A score with no identification gets one before its part list.
+    mp::ScoreMarks bare;
+    bare.load(practiceScore({wholeNote("a", 'C', 5)}));
+    bare.settings = "zoom 120\n";
+    const std::string b = bare.save();
+    MP_CHECK(b.find("<identification><miscellaneous>") != std::string::npos &&
+                 b.find("</identification><part-list>") != std::string::npos,
+             "an identification made before the part list");
+  }
+};
+static ScoreMarksKindsTest g_scoreMarksKinds;
+
+// The panel as a player practises with it (#1012): the repeats and a trill
+// played, a staff muted, a measure back and on, the jump marks, a console's
+// buttons, the settings kept, one line, the paper.
+class ScorePracticeTest final : public mp::test::Test {
+public:
+  ScorePracticeTest() : Test("functional.score.practice", Category::Functional) {}
+  void run() override {
+    juce::ScopedJuceInitialiser_GUI gui;
+    const auto fonts = unpackedFonts();
+    ScoreOrgan organ;
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, kBlock);
+    MP_CHECK(proc.loadOrgan(organ.odf, 0, false).ok, "the organ loads");
+    proc.setStopEngaged(901, true);
+    proc.setStopEngaged(902, true);
+    runBlock(proc);
+
+    // |: C5 :| D5 with a trill, over |: C3 :| G3; a quarter a second.
+    const std::string xml = practiceScore(
+        {kForward + wholeNote("r1", 'C', 5) + kBackward,
+         wholeNote("r2", 'D', 5, "<notations><ornaments><trill-mark/></ornaments></notations>")},
+        {kForward + wholeNote("p1", 'C', 3) + kBackward, wholeNote("p2", 'G', 3)});
+    mp::ui::ScorePanel panel(proc, fonts);
+    panel.setSize(1000, 600);
+    MP_CHECK(panel.openData(juce::MemoryBlock(xml.data(), xml.size()), "practice.musicxml"), "the score opens");
+    const auto& m = panel.measureStarts();
+    MP_CHECK(m.size() == 3 && std::abs(m[1] - 4000.0) < 5.0 && std::abs(m[2] - 8000.0) < 5.0,
+             "three measures played, 4 s apart: " + std::to_string(m.size()));
+
+    // Played: C5 twice, then D5 trilled with E5, to the end on D5.
+    const auto events = panel.playedEvents();
+    int c5 = 0, d5 = 0, e5 = 0;
+    double lastOn = -1;
+    int lastPitch = 0;
+    for (const auto& e : events) {
+      if (!e.on) continue;
+      if (e.note == 72) ++c5;
+      if (e.note == 74 && e.seconds >= 7.99) ++d5;
+      if (e.note == 76) ++e5;
+      if (e.seconds >= lastOn && e.note > 60) {
+        lastOn = e.seconds;
+        lastPitch = e.note;
+      }
+    }
+    MP_CHECK(c5 == 2, "the repeat plays C5 twice: " + std::to_string(c5));
+    MP_CHECK(e5 > 10 && d5 > 10, "the trill alternates D5 and E5: " + std::to_string(d5) + "/" + std::to_string(e5));
+    MP_CHECK(lastPitch == 74, "and ends on D5");
+
+    // A staff muted: none of its notes go to the organ, and it is saved.
+    panel.setMuted(2, true);
+    bool pedal = false;
+    for (const auto& e : panel.playedEvents()) pedal = pedal || e.note == 48 || e.note == 55;
+    MP_CHECK(!pedal, "the pedal staff, muted, plays nothing");
+
+    // A measure on and back, from the start point.
+    panel.setStart(0);
+    MP_CHECK(panel.stepMeasure(1) && std::abs(panel.startSeconds() - 4.0) < 0.01, "a measure on: 4 s");
+    MP_CHECK(panel.stepMeasure(1) && std::abs(panel.startSeconds() - 8.0) < 0.01, "and another: 8 s");
+    MP_CHECK(!panel.stepMeasure(1), "none after the last");
+    MP_CHECK(panel.stepMeasure(-1) && std::abs(panel.startSeconds() - 4.0) < 0.01, "back one: 4 s");
+    MP_CHECK(!panel.cursorNotes().empty() && panel.cursorNotes().front().find("-mpr") == std::string::npos,
+             "the cursor on the second time names the page's notes");
+
+    // A jump mark on D5, gone to from the top.
+    panel.setStart(0);
+    const int jump = panel.addMark(mp::ScoreMark::Kind::Jump, "mpn2");
+    MP_CHECK(jump >= 0 && panel.jumpOrder().size() == 1, "a jump mark is added");
+    MP_CHECK(panel.stepJump(1) && std::abs(panel.startSeconds() - 8.0) < 0.01,
+             "the next jump mark: D5 at 8 s, " + std::to_string(panel.startSeconds()));
+    MP_CHECK(!panel.stepJump(1), "none after it");
+
+    // A console's buttons: a measure back, then Play.
+    proc.queueScoreCommand(static_cast<int>(mp::ScoreCommandId::Back));
+    panel.takeConsoleCommands();
+    MP_CHECK(std::abs(panel.startSeconds() - 4.0) < 0.01, "a console's Back: 4 s");
+    proc.queueScoreCommand(static_cast<int>(mp::ScoreCommandId::PlayStop));
+    panel.takeConsoleCommands();
+    MP_CHECK(panel.playing(), "a console's Play plays");
+    proc.queueScoreCommand(static_cast<int>(mp::ScoreCommandId::PlayStop));
+    panel.takeConsoleCommands();
+    MP_CHECK(!panel.playing(), "and stops");
+
+    // A combination: the general lit when it was added.
+    const int comb = panel.addMark(mp::ScoreMark::Kind::Combination, "mpn1");
+    MP_CHECK(comb >= 0 && panel.marks()[static_cast<size_t>(comb)].states.rfind("general ", 0) == 0,
+             "a combination holds a general");
+    MP_CHECK(panel.registrationOrder().size() == 1, "and plays as a registration does");
+
+    // The settings, and another panel opening the same score with them.
+    panel.setTempoBpm(90);
+    panel.setLineView(true);
+    const std::string settings = panel.settingsText();
+    MP_CHECK(settings.find("tempo 90") != std::string::npos && settings.find("staff 2 ") != std::string::npos &&
+                 settings.find("view line") != std::string::npos,
+             "the settings name the tempo, the muted staff and the view: " + settings);
+    mp::ui::ScorePanel second(proc, fonts);
+    second.setSize(1000, 600);
+    second.openData(juce::MemoryBlock(xml.data(), xml.size()), "practice.musicxml");
+    second.applySettings(settings);
+    MP_CHECK(second.muted(2) && second.lineView() && std::abs(second.tempoBpm() - 90.0) < 0.5,
+             "applied: muted, one line, 90 BPM");
+
+    // One line: a single page, drawn; the paper and the staff lines.
+    auto page = panel.render();
+    savePicture(page, "panel-practice-line.png");
+    MP_CHECK(panel.pageCount() == 1, "one line is one page");
+    // Ink on the paper: dark pixels inside the box the paper covers (the
+    // panel's own background is dark too).
+    const auto inkOf = [](const juce::Image& im) {
+      int x0 = im.getWidth(), x1 = -1, y0 = im.getHeight(), y1 = -1;
+      for (int y = 40; y < im.getHeight(); ++y)
+        for (int x = 0; x < im.getWidth(); ++x)
+          if (im.getPixelAt(x, y).getBrightness() > 0.95f) {
+            x0 = std::min(x0, x), x1 = std::max(x1, x), y0 = std::min(y0, y), y1 = std::max(y1, y);
+          }
+      int dark = 0;
+      for (int y = y0; y <= y1; ++y)
+        for (int x = x0; x <= x1; ++x)
+          if (im.getPixelAt(x, y).getBrightness() < 0.3f) ++dark;
+      return dark;
+    };
+    MP_CHECK(inkOf(page) > 300, "and drawn: " + std::to_string(inkOf(page)));
+    panel.setLineView(false);
+    panel.setPaper(mp::ui::ScorePanel::Paper::Cream);
+    panel.setBlueLines(true);
+    page = panel.render();
+    savePicture(page, "panel-practice-cream.png");
+    int cream = 0, blue = 0;
+    for (int y = 40; y < page.getHeight(); ++y)
+      for (int x = 0; x < page.getWidth(); ++x) {
+        const auto c = page.getPixelAt(x, y);
+        if (c.getRed() > 240 && c.getGreen() > 230 && c.getBlue() < 225 && c.getBlue() > 200) ++cream;
+        // Thin lines, smoothed into the paper: bluer than the paper is.
+        if (c.getBlue() > c.getRed() + 25) ++blue;
+      }
+    MP_CHECK(cream > 10000, "cream paper: " + std::to_string(cream));
+    MP_CHECK(blue > 2000, "blue staff lines: " + std::to_string(blue));
+  }
+};
+static ScorePracticeTest g_scorePractice;
+
+// The engraver plays an unrolled copy and answers by the page's ids.
+class ScoreUnrolledEngraverTest final : public mp::test::Test {
+public:
+  ScoreUnrolledEngraverTest() : Test("functional.score.unrolled-engraver", Category::Functional) {}
+  void run() override {
+    const auto fonts = unpackedFonts();
+    const std::string xml =
+        practiceScore({wholeNote("a", 'C', 5), kForward + wholeNote("b", 'D', 5) + kBackward});
+    mp::ScorePlayback p;
+    p.load(xml);
+    mp::ScoreEngraver eng(fonts.getFullPathName().toStdString());
+    MP_CHECK(eng.load(xml, p.unrolled()) && eng.unrolled(), "the unrolled copy loads");
+    const std::string map = eng.timemapJson();
+    MP_CHECK(map.find("-mpr") == std::string::npos && countOf(map, "\"b\"") >= 2,
+             "the time map names b on both passes");
+    MP_CHECK(map.find("measureOn") != std::string::npos, "and the measures");
+    const std::string at = eng.elementsAtTime(9000);  // in the second pass of b
+    MP_CHECK(at.find("\"b\"") != std::string::npos && at.find("\"page\":1") != std::string::npos,
+             "the cursor on the second pass: b on page 1, " + at);
+    MP_CHECK(eng.pageCount() == 1, "the page shows the score as written");
+  }
+};
+static ScoreUnrolledEngraverTest g_scoreUnrolledEngraver;
+
 #endif  // MP_TEST_HAS_SCORE

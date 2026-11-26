@@ -186,6 +186,7 @@ const char* targetName(MidiTargetKind k) {
     case MidiTargetKind::Temperament: return "temperament";
     case MidiTargetKind::ScorePageForward: return "score-page-forward";
     case MidiTargetKind::ScorePageBack: return "score-page-back";
+    case MidiTargetKind::ScoreCommand: return "score-command";
     case MidiTargetKind::RecorderRecord: return "recorder-record";
     case MidiTargetKind::RecorderPlay: return "recorder-play";
     case MidiTargetKind::VoicingLevelDown: return "voicing-level-down";
@@ -249,6 +250,7 @@ MidiTargetKind targetKindFrom(const std::string& s) {
   if (s == "temperament") return MidiTargetKind::Temperament;
   if (s == "score-page-forward") return MidiTargetKind::ScorePageForward;
   if (s == "score-page-back") return MidiTargetKind::ScorePageBack;
+  if (s == "score-command") return MidiTargetKind::ScoreCommand;
   if (s == "recorder-record") return MidiTargetKind::RecorderRecord;
   if (s == "recorder-play") return MidiTargetKind::RecorderPlay;
   if (s == "voicing-level-down") return MidiTargetKind::VoicingLevelDown;
@@ -653,6 +655,7 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
     case MidiTargetKind::Temperament:
     case MidiTargetKind::ScorePageForward:
     case MidiTargetKind::ScorePageBack:
+    case MidiTargetKind::ScoreCommand:
     case MidiTargetKind::RecorderRecord:
     case MidiTargetKind::RecorderPlay:
     case MidiTargetKind::VoicingLevelDown:

@@ -2127,6 +2127,9 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::ScorePageBack:
           turnScorePage(action.kind == MidiTargetKind::ScorePageForward);
           continue;
+        case MidiTargetKind::ScoreCommand:
+          queueScoreCommand(static_cast<int>(action.targetId));
+          continue;
         // Raised here, carried out on the message thread. Never from a take
         // being played: a button's press in a take is not the player's.
         case MidiTargetKind::RecorderRecord:

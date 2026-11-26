@@ -21,14 +21,20 @@ public:
 
   // Takes MusicXML text. A compressed .mxl is unpacked by the caller. On
   // failure the previous score is dropped and error() says why.
-  bool load(const std::string& musicXml);
+  // `playedXml`, when given, is the same score with its repeats unrolled
+  // (ScorePlayback::unrolled): the MIDI, the time map and the cursor come
+  // from it, by the page's note ids, and the pages from `musicXml`.
+  bool load(const std::string& musicXml, const std::string& playedXml = {});
   bool loaded() const { return loaded_; }
   const std::string& error() const { return error_; }
+  // Played from an unrolled copy.
+  bool unrolled() const;
 
   // Page size in pixels, and the size of the notation in percent of
   // Verovio's own. Engraves again when a loaded score meets a changed
-  // setting: the lines break again to the new width.
-  void setPage(int widthPx, int heightPx, int scalePercent);
+  // setting: the lines break again to the new width. `line`: the whole
+  // score on one line instead, as wide as it is, on a single page (#1012).
+  void setPage(int widthPx, int heightPx, int scalePercent, bool line = false);
 
   int pageCount() const;
 
@@ -40,7 +46,9 @@ public:
   // at the tempo the score asks for. Empty when nothing is loaded.
   std::string midiBase64();
   // When each note starts and stops, by element id, in milliseconds of the
-  // MIDI above: a JSON array of {"tstamp": ms, "on": [ids], "off": [ids], ...}.
+  // MIDI above: a JSON array of {"tstamp": ms, "on": [ids], "off": [ids], ...},
+  // and "measureOn" where a measure starts. A note played again on a repeat
+  // has an entry for each time.
   // The MIDI is what the keys play, so the cursor keeps to it (#964).
   std::string timemapJson();
   // The page an element is engraved on, 0 if none. Searches the whole

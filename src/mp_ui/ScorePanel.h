@@ -23,11 +23,13 @@
 
 #include "../mp_score/ScoreEngraver.h"
 #include "../mp_score/ScoreMarks.h"
+#include "../mp_score/ScorePlayback.h"
 #include "../mp_audio/ScorePlayer.h"
 #include "../mp_core/OrganModel.h"
 
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -69,8 +71,10 @@ struct ScorePageGeometry {
 
 // Reads the geometry from a page's SVG, and turns the SVG into the form JUCE
 // draws (Verovio's nested <svg> becomes a group, its viewBox moved to the
-// root). Both from one parse.
-std::unique_ptr<juce::Drawable> parseScorePage(const std::string& svg, ScorePageGeometry& geometry);
+// root). Both from one parse. Staff lines drawn in `lines` when it is not
+// transparent; otherwise in the ink's colour.
+std::unique_ptr<juce::Drawable> parseScorePage(const std::string& svg, ScorePageGeometry& geometry,
+                                               juce::Colour lines = {});
 
 class ScorePanel : public juce::Component, private juce::Timer {
 public:
@@ -98,6 +102,18 @@ public:
   int drawnZoom() const { return drawnZoom_; }
   void setInverted(bool inverted);
   bool inverted() const { return inverted_; }
+  // The whole score on one line that scrolls with the playing, instead of
+  // pages (#1012).
+  void setLineView(bool line);
+  bool lineView() const { return line_; }
+  // Where the line is scrolled to, in the page's pixels.
+  float lineScroll() const { return scrollX_; }
+  // The paper: white, or cream, a little sepia; and staff lines in blue.
+  enum class Paper { White, Cream };
+  void setPaper(Paper paper);
+  Paper paper() const { return paper_; }
+  void setBlueLines(bool blue);
+  bool blueLines() const { return blueLines_; }
 
   // The staves, by number from 1, with the name the score gives each part.
   struct Staff {
@@ -110,6 +126,16 @@ public:
   // others.
   Id keyboardForStaff(int staff) const;
   void setKeyboardForStaff(int staff, Id keyboard);
+  // A staff left silent, for the player to play it (#1012); its notes still
+  // shown and followed.
+  void setMuted(int staff, bool muted);
+  bool muted(int staff) const { return muted_.count(staff) != 0; }
+
+  // The score's own settings (#1012), saved into its file with the marks:
+  // the tempo, each staff's manual (by its place on a console, so the same
+  // on another organ) and muting, and the view. As text, for tests.
+  std::string settingsText() const;
+  void applySettings(const std::string& text);
 
   // Playing, from the cursor: where it was stopped, the note last clicked, or
   // the first note of the page turned to.
@@ -119,6 +145,24 @@ public:
   double startSeconds() const { return startMs_ / 1000.0; }
   // Moves the cursor to a moment of the score, as a click on a note does.
   void setStart(double seconds);
+  // The tempo now, in beats a minute, and set (the score's own to start with).
+  double tempoBpm() const;
+  void setTempoBpm(double bpm);
+
+  // A measure back or on (the arrow keys, a console's buttons): from where
+  // the playing is, or from the start point while stopped. False at an end.
+  bool stepMeasure(int step);
+  // When each measure starts, in milliseconds of the playing, in order.
+  const std::vector<double>& measureStarts() const { return measureMs_; }
+  // The jump marks in the order they come, and a step to the one after or
+  // before where the playing is (the up and down keys, a console's buttons).
+  std::vector<int> jumpOrder() const;
+  bool stepJump(int step);
+  // The ornaments and repeats as played, for tests: the events handed to the
+  // player.
+  std::vector<ScorePlayer::Event> playedEvents() const { return eventsForPlaying(); }
+  // Takes the console's score buttons now (as the panel's timer does).
+  void takeConsoleCommands();
 
   // The notes the cursor marks now, by id, for tests.
   const std::vector<std::string>& cursorNotes() const { return cursorNotes_; }
@@ -138,6 +182,11 @@ public:
   // A registration takes the organ's state at once.
   int addMark(ScoreMark::Kind kind, const std::string& note, const juce::String& text = {});
   void setMarkText(int index, const juce::String& text);
+  // A combination's piston, "general 3" or "step 12".
+  void setMarkStates(int index, const std::string& states);
+  // To a jump mark's note: the start moves there, and the playing goes on
+  // from it.
+  void goToMark(int index);
   void moveMark(int index, const std::string& note);
   void deleteMark(int index);
   // A registration: the organ's state now, for this organ, beside the
@@ -155,8 +204,9 @@ public:
   // shown page.
   juce::Rectangle<float> markBounds(int index) const;
 
-  // The registration marks in the order they are played, and the one set
-  // last (-1 for none). Stepping sets the next or the one before and shows
+  // The registration marks (and the combination marks, which press a
+  // general or go to a sequencer step) in the order they are played, and the
+  // one set last (-1 for none). Stepping sets the next or the one before and shows
   // its page; a page turned forward sets the first one on it.
   std::vector<int> registrationOrder() const;
   int currentRegistration() const { return currentReg_; }
@@ -171,6 +221,13 @@ public:
   std::function<void()> onDetachToggle;
   void setDetachable(bool can);
   void setDetached(bool detached);
+  // Its window kept over the others (#1012): chosen in View, while detached.
+  // Kept with the program's settings.
+  std::function<void(bool)> onKeepOnTop;
+  bool keptOnTop() const;
+  void setKeptOnTop(bool top);
+  // The file chooser, as Open score... does.
+  void openScoreDialog() { chooseFile(); }
 
   void paint(juce::Graphics& g) override;
   void resized() override;
@@ -195,7 +252,7 @@ private:
   double firstNoteMsOnPage(int slot) const;
   juce::Rectangle<int> pageArea() const;
   juce::Rectangle<int> slotArea(int slot) const;
-  int slotCount() const { return twoPages_ ? 2 : 1; }
+  int slotCount() const { return twoPages_ && !line_ ? 2 : 1; }
   std::string noteAt(juce::Point<float> at, float within) const;
   int markAt(juce::Point<float> at) const;
   double markMs(int index) const;
@@ -205,6 +262,14 @@ private:
   void addMarkMenu(const std::string& note, juce::Rectangle<int> screenArea);
   void registrationsReached(double fromMs, double toMs);
   void pageTurnedTo(int page);
+  void settingsChanged();
+  void restart();
+  void moveTo(double ms);
+  void keepInView();
+  void scrollLine(float pages);
+  float lineScale() const;
+  void chooseView();
+  void chooseConsoleButtons();
 
   MasterpieceProcessor& proc_;
   juce::File fonts_;
@@ -216,6 +281,7 @@ private:
     std::unique_ptr<juce::Drawable> drawable;
     juce::Image image;  // drawn from it at the screen's pixel density, inverted when asked
     float density = 0.0f;
+    float scroll = -1.0f;  // on one line: where the image starts, in the page's pixels
   };
   Shown shown_[2];
 
@@ -229,8 +295,17 @@ private:
   std::vector<Staff> staves_;
   std::map<int, Id> keyboards_;
   // When each note starts, from the time map: for the start of a page and a
-  // click on a note.
+  // click on a note. The first time; noteTimes_ has every time a repeat
+  // plays it.
   std::map<std::string, double> noteStartMs_;
+  std::map<std::string, std::vector<double>> noteTimes_;
+  std::vector<double> measureMs_;
+  std::map<size_t, ScoreOrnament> ornamented_;  // by index in notes_
+  std::set<int> muted_;
+  mp::ScorePlayback playback_;
+  // A staff's manual saved by its place on the console (the keyboard's
+  // assignment code), applied once the staves are known.
+  std::map<int, int> savedCodes_;
 
   juce::TextButton open_{TRANS("Open score...")};
   juce::TextButton prev_{"<"}, next_{">"};
@@ -246,6 +321,8 @@ private:
   void showTempo();
   juce::TextButton manuals_{TRANS("Manuals...")};
   juce::TextButton invert_{TRANS("Invert")};
+  juce::TextButton view_{TRANS("View...")};
+  juce::TextButton console_{TRANS("Buttons...")};
   juce::TextButton detach_{TRANS("Detach")};
   juce::TextButton mark_{TRANS("Mark...")};
   juce::TextButton regPrev_{"<"}, regNext_{">"};
@@ -269,8 +346,14 @@ private:
   int drawnZoom_ = 100;
   bool twoPages_ = false;
   bool inverted_ = false;
+  bool line_ = false;
+  float scrollX_ = 0.0f;
+  Paper paper_ = Paper::White;
+  bool blueLines_ = false;
+  bool applyingSettings_ = false;
   bool loaded_ = false;
   bool detachable_ = false;
+  bool detached_ = false;
   bool needsEngrave_ = false;
   juce::uint32 engraveDue_ = 0;  // Time::getMillisecondCounter() when the pending engraving runs
   bool wasPlaying_ = false;
