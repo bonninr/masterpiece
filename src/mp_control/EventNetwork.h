@@ -192,6 +192,9 @@ private:
     int value = 0;
     int32_t sw = -1;
     bool engInc = false, engDec = false, disInc = false, disDec = false;
+    // Its switch fires a combination the organ names it for: a crescendo's
+    // step (Düren's C_Act rows, #1274).
+    bool piston = false;
   };
 
   // ---- keys, divisions, pipes ----

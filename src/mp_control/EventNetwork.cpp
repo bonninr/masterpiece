@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <unordered_set>
 
 namespace mp {
 
@@ -547,13 +549,18 @@ void EventNetwork::resetControls(const OrganModel& model, const std::unordered_s
 
   // Stage rows, per control, in threshold order.
   stageRows_.clear();
+  std::unordered_set<Id> pistons;
+  for (const auto& [id, combination] : model.combinations) {
+    (void)id;
+    if (combination.activatingSwitchId != 0) pistons.insert(combination.activatingSwitchId);
+  }
   std::vector<std::pair<int32_t, StageRow>> rows;
   for (const ContinuousControlStageSwitch& r : model.controlStageSwitches) {
     const int32_t c = controlSlot(r.controlId);
     const int32_t s = switchSlot(r.controlledSwitchId);
     if (c < 0 || s < 0) continue;
     rows.push_back({c, {r.value, s, r.engageWhenIncreasing, r.engageWhenDecreasing, r.disengageWhenIncreasing,
-                        r.disengageWhenDecreasing}});
+                        r.disengageWhenDecreasing, pistons.count(r.controlledSwitchId) != 0}});
   }
   std::stable_sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) {
     return a.first != b.first ? a.first < b.first : a.second.value < b.second.value;
@@ -722,12 +729,48 @@ void EventNetwork::fireStageRows(int32_t c, int from, int to) {
   const int32_t* e = stageRowsByControl_.end(c);
   if (b == e || from == to) return;
   const bool rising = to > from;
+  // A crescendo step left on the way down: the step below is the one now, and
+  // its combination is what the shoe should play (#1274). Its rows engaged on
+  // the way up and are most likely engaged still, so they are released and
+  // engaged again, and their switches fire the step's combination once more.
+  // Rows sharing the threshold left are one step: the first does it.
+  int belowOf = std::numeric_limits<int>::min();
+  auto stepBelow = [&](const StageRow& left) {
+    if (left.value == belowOf) return;
+    belowOf = left.value;
+    int below = -1;
+    for (const int32_t* r = b; r != e; ++r) {
+      const StageRow& y = stageRows_[static_cast<size_t>(*r)];
+      if (y.value < left.value && y.engInc && y.piston && y.sw != left.sw) below = std::max(below, y.value);
+    }
+    if (below < 0) return;
+    for (const int32_t* r = b; r != e; ++r) {
+      const StageRow& y = stageRows_[static_cast<size_t>(*r)];
+      if (y.value != below || !y.engInc || !y.piston) continue;
+      push(now_, Ev::SetSwitch, y.sw, 0);
+      push(now_, Ev::SetSwitch, y.sw, 1);
+    }
+  };
   auto row = [&](int32_t r) {
     const StageRow& x = stageRows_[static_cast<size_t>(r)];
-    const bool crossed = rising ? (from < x.value && x.value <= to) : (to <= x.value && x.value < from);
+    // Half-open, so that arriving exactly on a threshold counts and leaving it
+    // does not count twice. Except for a row that engages one way and
+    // releases the other: its switch is on while the value is at or past the
+    // threshold, so its release counts on leaving the threshold, not on
+    // arriving at it (Düren's 13, #1274; a swell's open detent at 123).
+    const bool onFromBelow = x.engInc && x.disDec && !x.engDec;
+    const bool onFromAbove = x.engDec && x.disInc && !x.engInc;
+    bool crossed = rising ? (from < x.value && x.value <= to) : (to <= x.value && x.value < from);
+    if (rising && onFromAbove) crossed = from <= x.value && x.value < to;
+    if (!rising && onFromBelow) crossed = to < x.value && x.value <= from;
     if (!crossed) return;
-    if (rising ? x.engInc : x.engDec) push(now_, Ev::SetSwitch, x.sw, 1);
-    else if (rising ? x.disInc : x.disDec) push(now_, Ev::SetSwitch, x.sw, 0);
+    if (rising ? x.engInc : x.engDec) {
+      push(now_, Ev::SetSwitch, x.sw, 1);
+    } else if (rising ? x.disInc : x.disDec) {
+      push(now_, Ev::SetSwitch, x.sw, 0);
+      // A blower's or a noise's own release row means just that.
+      if (!rising && x.engInc && x.piston) stepBelow(x);
+    }
   };
   if (rising)
     for (const int32_t* r = b; r != e; ++r) row(*r);
