@@ -21,3 +21,7 @@
 "Add a jump mark here" = "Hier een springmarkering toevoegen"
 "View..." = "Weergave..."
 "Buttons..." = "Knoppen..."
+"From this note on" = "Vanaf deze noot"
+"Add a manual change here (each staff on the manual set now)" = "Hier een klavierwissel toevoegen (elke notenbalk op het nu gekozen klavier)"
+"Manual change" = "Klavierwissel"
+"Bar %1" = "Maat %1"

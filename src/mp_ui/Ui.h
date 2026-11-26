@@ -97,6 +97,8 @@ public:
   void refresh();
   // The height the grid needs at a given width: the columns follow the width.
   int heightFor(int width) const;
+  // A stop's tile height, at the size chosen in View.
+  int stopHeight() const;
   void resized() override;
   void paint(juce::Graphics& g) override;
   // Put the keyboard focus on the first stop: where a player who cannot see
@@ -710,6 +712,7 @@ private:
   // the combinations window -- and then a press lets capture go.
   juce::TextButton setter_{TRANS("Set")};
   FrameLabel stepFrame_;
+  juce::String frameTip_;  // its own tooltip, while the large number shows the whole line
   // The console already shows the organ's own manuals; a second giant
   // keyboard underneath is duplicate furniture, so it is off by default and
   // there for a machine with no MIDI console attached.

@@ -22,6 +22,7 @@
 #include <cstring>
 #include <fstream>
 #include <functional>
+#include <map>
 #include <sstream>
 
 using mp::test::Category;
@@ -1354,6 +1355,33 @@ public:
              "a combination holds a general");
     MP_CHECK(panel.registrationOrder().size() == 1, "and plays as a registration does");
 
+    // The bar number, as written, on each pass; Home and End.
+    panel.setStart(0);
+    MP_CHECK(panel.currentBar() == "1", "bar 1 at the start");
+    panel.stepMeasure(1);
+    MP_CHECK(panel.currentBar() == "1", "and again on the repeat: " + panel.currentBar().toStdString());
+    panel.keyPressed(juce::KeyPress(juce::KeyPress::endKey));
+    MP_CHECK(std::abs(panel.startSeconds() - 8.0) < 0.01 && panel.currentBar() == "2", "End: the last bar, 2");
+    panel.keyPressed(juce::KeyPress(juce::KeyPress::homeKey));
+    MP_CHECK(panel.startSeconds() < 0.01, "Home: the top");
+
+    // A manual change on D5 (#1273): from there the right hand plays the
+    // pedal; before it, the manual.
+    const int change = panel.addMark(mp::ScoreMark::Kind::Manuals, "mpn2");
+    MP_CHECK(change >= 0, "a manual change is added");
+    panel.setMarkKeyboardForStaff(change, 1, 701);
+    MP_CHECK(panel.keyboardForStaffAt(1, 1000.0) == 702 && panel.keyboardForStaffAt(1, 9000.0) == 701,
+             "the right hand: the manual before the change, the pedal after");
+    const int pedalChannel = proc.clickChannelForKeyboard(701);
+    bool before = true, after = true;
+    for (const auto& e : panel.playedEvents()) {
+      if (!e.on || e.note < 60) continue;
+      if (e.seconds < 7.9) before = before && e.channel != pedalChannel;
+      else after = after && e.channel == pedalChannel;
+    }
+    MP_CHECK(before && after, "and the notes go there");
+    panel.deleteMark(change);
+
     // The settings, and another panel opening the same score with them.
     panel.setTempoBpm(90);
     panel.setLineView(true);
@@ -1445,6 +1473,48 @@ public:
   }
 };
 static ScoreNoConsoleTest g_scoreNoConsole;
+
+// Two voices sharing a note leave no key held (JPIL04, #1012): each note-off
+// ends the oldest note on its key, and every note has a length.
+class ScoreUnisonVoicesTest final : public mp::test::Test {
+public:
+  ScoreUnisonVoicesTest() : Test("functional.score.unison-voices", Category::Functional) {}
+  void run() override {
+    juce::ScopedJuceInitialiser_GUI gui;
+    const auto fonts = unpackedFonts();
+    ScoreOrgan organ;
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, kBlock);
+    MP_CHECK(proc.loadOrgan(organ.odf, 0, false).ok, "the organ loads");
+    mp::ui::ScorePanel panel(proc, fonts);
+    panel.setSize(1000, 700);
+    const std::string xml = readScoreFixture("unison-voices.musicxml");
+    MP_CHECK(panel.openData(juce::MemoryBlock(xml.data(), xml.size()), "unison-voices.musicxml"), "the score opens");
+    const auto events = panel.playedEvents();
+    MP_CHECK(!events.empty(), "it has notes");
+    // Counted as the player counts: a key goes down with its first note and
+    // up with its last.
+    std::map<int, int> held;
+    double c5Up = -1.0;
+    for (const auto& e : events) {
+      int& n = held[e.channel * 128 + e.note];
+      if (e.on) {
+        ++n;
+      } else if (n > 0 && --n == 0 && e.note == 72) {
+        c5Up = e.seconds;
+      }
+      MP_CHECK(e.on || n >= 0, "no key goes below none");
+    }
+    for (const auto& [key, n] : held)
+      MP_CHECK(n == 0, "key " + std::to_string(key % 128) + " is let go at the end, held by " + std::to_string(n));
+    // The engraver writes one note-off for the shared C5, at the end of the
+    // shorter note: the key is held at least that long, and let go.
+    MP_CHECK(c5Up > 0.45 && c5Up < 1.1, "C5 is held through the lower voice's half note, to " + std::to_string(c5Up) + " s");
+    for (size_t i = 0; i + 1 < events.size(); ++i)
+      MP_CHECK(events[i].seconds <= events[i + 1].seconds, "the events are in time order");
+  }
+};
+static ScoreUnisonVoicesTest g_scoreUnisonVoices;
 
 // The engraver plays an unrolled copy and answers by the page's ids.
 class ScoreUnrolledEngraverTest final : public mp::test::Test {

@@ -1,0 +1,6 @@
+"Normal" = "Normaal"
+"Large" = "Groot"
+"Larger" = "Groter"
+"Stop list size" = "Grootte van de registerlijst"
+"Piston size" = "Grootte van de combinatieknoppen"
+"Large frame number" = "Groot stapnummer"

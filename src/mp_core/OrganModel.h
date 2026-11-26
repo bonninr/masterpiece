@@ -552,6 +552,10 @@ struct CombinationElement {
   // Flip the stored state on the way out. A handful of elements are wired
   // this way so that one piston can pull some stops and cancel others.
   bool invertWhenActivating = false;
+  // A switch that holds the stored state, shown and changed on the console:
+  // a cell of Düren's and Alessandria's crescendo page, one per stop and step
+  // (#1171, #1274). Clicking it changes what the step recalls. 0 for none.
+  Id memorySwitchId = 0;
 };
 
 // A piston. `type` is Hauptwerk's CombinationTypeCode, which is two things at
@@ -1069,6 +1073,9 @@ struct OrganModel {
   Id uniqueOrganId = 0;
   std::string organVersion;
   double basePitchHz = 440.0;
+  // Whether the definition states it. A set that does not (Alessandria) has
+  // its own pitch read from its samples at load (mattrixed, #1271).
+  bool basePitchDeclared = false;
   // AudioOut_AmplitudeLevelAdjustDecibels on _General: the producer's
   // output trim, applied to everything the organ makes so sets recorded at
   // different levels play at a comparable loudness.

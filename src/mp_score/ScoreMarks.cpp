@@ -12,6 +12,7 @@ constexpr const char* kNoteTag = "masterpiece-note";
 constexpr const char* kRegistrationTag = "masterpiece-registration";
 constexpr const char* kJumpTag = "masterpiece-jump";
 constexpr const char* kCombinationTag = "masterpiece-combination";
+constexpr const char* kManualsTag = "masterpiece-manuals";
 constexpr const char* kSettingsField = "masterpiece-settings";
 
 const char* tagOf(ScoreMark::Kind kind) {
@@ -20,6 +21,7 @@ const char* tagOf(ScoreMark::Kind kind) {
     case ScoreMark::Kind::Registration: return kRegistrationTag;
     case ScoreMark::Kind::Jump: return kJumpTag;
     case ScoreMark::Kind::Combination: return kCombinationTag;
+    case ScoreMark::Kind::Manuals: return kManualsTag;
   }
   return kNoteTag;
 }
@@ -129,7 +131,9 @@ bool ScoreMarks::load(const std::string& musicXml) {
     if (!other) continue;
     const std::string body = other.child_value();
     const std::string head = firstLine(body);
-    if (head != kNoteTag && head != kRegistrationTag && head != kJumpTag && head != kCombinationTag) continue;
+    if (head != kNoteTag && head != kRegistrationTag && head != kJumpTag && head != kCombinationTag &&
+        head != kManualsTag)
+      continue;
     pugi::xml_node note;
     for (auto n = direction.next_sibling(); n && !note; n = n.next_sibling())
       if (std::string(n.name()) == "note") note = n;
@@ -148,6 +152,7 @@ bool ScoreMarks::load(const std::string& musicXml) {
     } else {
       m.kind = head == kJumpTag          ? ScoreMark::Kind::Jump
                : head == kCombinationTag ? ScoreMark::Kind::Combination
+               : head == kManualsTag     ? ScoreMark::Kind::Manuals
                                          : ScoreMark::Kind::Registration;
       const std::string rest = afterFirstLine(body);
       m.text = firstLine(rest);

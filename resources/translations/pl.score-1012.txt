@@ -21,3 +21,7 @@
 "Add a jump mark here" = "Dodaj tu znacznik skoku"
 "View..." = "Widok..."
 "Buttons..." = "Przyciski..."
+"From this note on" = "Od tej nuty"
+"Add a manual change here (each staff on the manual set now)" = "Dodaj tu zmianę manuału (każda pięciolinia na manuale wybranym teraz)"
+"Manual change" = "Zmiana manuału"
+"Bar %1" = "Takt %1"

@@ -23,6 +23,7 @@
 
 #include <functional>
 #include <string>
+#include <map>
 #include <vector>
 
 namespace mp {
@@ -138,6 +139,18 @@ public:
   // A general back to unused (#1221): nothing stored, no name, unlit.
   void clearGeneral(int n);
   bool divisionalSet(Id divisionId, int n) const;
+  // A divisional's name, as a general's (JPIL04, #1221): "Cornet", "Plein
+  // jeu". Empty for none. Kept with the registrations.
+  const std::string& divisionalName(Id divisionId, int n) const;
+  void setDivisionalName(Id divisionId, int n, std::string name);
+  // A divisional back to unused, as clearGeneral.
+  void clearDivisional(Id divisionId, int n);
+  // Whether any divisional shown has a name, which widens all their pistons.
+  bool anyDivisionalNamed() const {
+    for (const auto& named : divisionalNames_)
+      if (named.first.second <= divisionalCount_) return true;
+    return false;
+  }
   // The piston whose registration was recalled or captured last, which is the
   // one a console lights. 0 when the registration has since moved on.
   int litGeneral() const { return litGeneral_; }
@@ -225,6 +238,7 @@ private:
   // Index 0 unused, so a piston's number is its index.
   std::vector<Registration> generals_;
   std::vector<std::string> generalNames_;  // by number, as generals_
+  std::map<std::pair<Id, int>, std::string> divisionalNames_;  // by division and number
   std::vector<Registration> frames_;
   // divisionIndex * (kMaxDivisionals + 1) + piston
   std::vector<Registration> divisionals_;
