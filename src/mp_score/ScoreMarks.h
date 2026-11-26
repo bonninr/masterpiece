@@ -15,7 +15,9 @@
 //
 // A registration's first line is "masterpiece-registration", its second the
 // name shown on it, and the rest the organs' states, which the program reads
-// (ScoreRegistration in mp_ui); this file keeps them as text.
+// (ScoreRegistration in mp_ui); this file keeps them as text. A jump mark
+// ("masterpiece-jump") and a combination ("masterpiece-combination") are
+// written the same way, the combination's piston on its third line.
 //
 // JUCE-free, like the engraver. Reading gives every note an id of its own in
 // the copy handed to Verovio, so the engraved page and the marks name the
@@ -29,13 +31,19 @@
 namespace mp {
 
 struct ScoreMark {
-  enum class Kind { Note, Registration };
+  // A jump mark (#1012) is a place to go to, named, stepped to with the up
+  // and down keys or a console's buttons. A combination is a registration
+  // by piston: "general 3" or "step 12", the same on every organ.
+  enum class Kind { Note, Registration, Jump, Combination, Manuals };
   Kind kind = Kind::Note;
   // The note it belongs to, by the id the engraved page gives it.
   std::string note;
-  // A note's text; a registration's name.
+  // A note's text; a registration's, a jump's or a combination's name.
   std::string text;
-  // A registration's states, one organ per line; empty for a note.
+  // A registration's states, one organ per line; a combination's piston
+  // ("general 3", "step 12"); a manual change's staves, "1:2 2:3" (each
+  // staff and the assignment code of the manual it plays from here on, 0 for
+  // none, #1273); empty for the others.
   std::string states;
 };
 
@@ -60,8 +68,15 @@ public:
 
   std::vector<ScoreMark> marks;
 
-  // The score as read, with `marks` written in, each before its note: the
-  // text to save. Marks on a note the score does not have are left out.
+  // The player's settings for this score (#1012): the tempo, the manual and
+  // the muting of each staff, the view. Kept as text in the file's
+  // identification, a <miscellaneous-field name="masterpiece-settings">,
+  // which other programs keep and do not print. Empty when there are none.
+  std::string settings;
+
+  // The score as read, with `marks` and `settings` written in, each mark
+  // before its note: the text to save. Marks on a note the score does not
+  // have are left out.
   std::string save() const;
 
 private:

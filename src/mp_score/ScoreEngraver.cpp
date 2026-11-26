@@ -8,6 +8,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <iterator>
+#include <map>
+#include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -125,11 +128,44 @@ size_t numberAfter(const std::string& text, const char* key, size_t from, size_t
   return stop == start ? std::string::npos : k;
 }
 
+// Measures in the time map too, for stepping a measure back or on.
+constexpr const char* kTimemapOptions = "{\"includeMeasures\":true}";
+
+// The ids of the notes played again, "<id>-mpr2", back to the page's.
+void stripPlayedAgain(std::string& text) {
+  std::string out;
+  out.reserve(text.size());
+  for (size_t at = 0; at < text.size();) {
+    const size_t k = text.find("-mpr", at);
+    if (k == std::string::npos) {
+      out.append(text, at, std::string::npos);
+      break;
+    }
+    size_t end = k + 4;
+    while (end < text.size() && text[end] >= '0' && text[end] <= '9') ++end;
+    out.append(text, at, k - at);
+    if (end == k + 4 || end >= text.size() || text[end] != '"') out.append(text, k, end - k);
+    at = end;
+  }
+  text = std::move(out);
+}
+
 }  // namespace
 
 struct ScoreEngraver::Impl {
   vrv::Toolkit tk{false};
+  // The score as it is played, its repeats unrolled (ScorePlayback): the
+  // MIDI and the times come from it, the pages from tk. Null when the score
+  // is played as written.
+  std::unique_ptr<vrv::Toolkit> play;
+  std::string resources;
+  // The page of each note looked up, for the cursor of an unrolled score;
+  // emptied when the lines break again.
+  std::map<std::string, int> pageOf;
   int widthPx = 0, heightPx = 0, scale = 0;
+  bool line = false;
+
+  vrv::Toolkit& player() { return play != nullptr ? *play : tk; }
   // The time map in the MIDI's time: (played ms, Verovio's ms), in order.
   // Empty when the two agree, as they do unless the score has two tempos at
   // one point, where the MIDI keeps the last and the time map the first (#964).
@@ -137,9 +173,9 @@ struct ScoreEngraver::Impl {
 
   void buildClock() {
     clock.clear();
-    const TempoMap tempos = readTempos(fromBase64(tk.RenderToMIDI()));
+    const TempoMap tempos = readTempos(fromBase64(player().RenderToMIDI()));
     if (tempos.ppq <= 0) return;
-    const std::string map = tk.RenderToTimemap();
+    const std::string map = player().RenderToTimemap(kTimemapOptions);
     bool differs = false;
     for (size_t open = map.find('{'); open != std::string::npos; open = map.find('{', open + 1)) {
       const size_t close = map.find('}', open);
@@ -173,39 +209,48 @@ struct ScoreEngraver::Impl {
 };
 
 ScoreEngraver::ScoreEngraver(const std::string& resourceDir) : impl_(new Impl) {
+  impl_->resources = resourceDir;
   ready_ = impl_->tk.SetResourcePath(resourceDir);
   if (!ready_) error_ = "The score fonts could not be loaded from " + resourceDir;
 }
 
 ScoreEngraver::~ScoreEngraver() = default;
 
-void ScoreEngraver::setPage(int widthPx, int heightPx, int scalePercent) {
+void ScoreEngraver::setPage(int widthPx, int heightPx, int scalePercent, bool line) {
   widthPx = std::max(widthPx, 100);
   heightPx = std::max(heightPx, 100);
   scalePercent = std::clamp(scalePercent, 10, 400);
   Impl& i = *impl_;
-  if (i.widthPx == widthPx && i.heightPx == heightPx && i.scale == scalePercent) return;
+  if (i.widthPx == widthPx && i.heightPx == heightPx && i.scale == scalePercent && i.line == line) return;
   i.widthPx = widthPx;
   i.heightPx = heightPx;
   i.scale = scalePercent;
+  i.line = line;
+  i.pageOf.clear();
   // The page is given in Verovio units, which the scale shrinks or grows to
   // pixels: pixels = units * scale / 100. The first page opens with the
   // score's title, composer and other credits. Music symbols inside text are
   // drawn from the Bravura the program registers, so no page carries its own
   // copy of the font: a page is half the size without it.
-  char opts[384];
+  //
+  // One line (#1012): the whole score on one system, the page as wide and as
+  // high as it is, no title.
+  char opts[448];
   std::snprintf(opts, sizeof opts,
-                "{\"pageWidth\":%d,\"pageHeight\":%d,\"scale\":%d,\"breaks\":\"auto\","
-                "\"adjustPageHeight\":false,\"header\":\"auto\",\"footer\":\"none\","
+                "{\"pageWidth\":%d,\"pageHeight\":%d,\"scale\":%d,\"breaks\":\"%s\","
+                "\"adjustPageHeight\":%s,\"adjustPageWidth\":%s,\"header\":\"%s\",\"footer\":\"none\","
                 "\"font\":\"Bravura\",\"smuflTextFont\":\"none\",\"svgViewBox\":false,\"svgRemoveXlink\":false}",
-                widthPx * 100 / scalePercent, heightPx * 100 / scalePercent, scalePercent);
+                widthPx * 100 / scalePercent, heightPx * 100 / scalePercent, scalePercent, line ? "none" : "auto",
+                line ? "true" : "false", line ? "true" : "false", line ? "none" : "auto");
   i.tk.SetOptions(opts);
   if (loaded_) i.tk.RedoLayout();
 }
 
-bool ScoreEngraver::load(const std::string& musicXml) {
+bool ScoreEngraver::load(const std::string& musicXml, const std::string& playedXml) {
   loaded_ = false;
   error_.clear();
+  impl_->play.reset();
+  impl_->pageOf.clear();
   if (!ready_) {
     error_ = "The score fonts are not available";
     return false;
@@ -226,10 +271,21 @@ bool ScoreEngraver::load(const std::string& musicXml) {
     error_ = "This MusicXML score could not be read";
     return false;
   }
+  // The score as played: laid out on one line, the cheapest, since only its
+  // MIDI and its times are read. As written when it cannot be read.
+  if (!playedXml.empty()) {
+    auto play = std::make_unique<vrv::Toolkit>(false);
+    if (play->SetResourcePath(impl_->resources)) {
+      play->SetOptions("{\"inputFrom\":\"musicxml\",\"breaks\":\"none\",\"header\":\"none\",\"footer\":\"none\"}");
+      if (play->LoadData(playedXml) && play->GetPageCount() >= 1) impl_->play = std::move(play);
+    }
+  }
   loaded_ = true;
   impl_->buildClock();
   return true;
 }
+
+bool ScoreEngraver::unrolled() const { return impl_->play != nullptr; }
 
 int ScoreEngraver::pageCount() const { return loaded_ ? impl_->tk.GetPageCount() : 0; }
 
@@ -238,43 +294,77 @@ std::string ScoreEngraver::renderPage(int page) {
   return impl_->tk.RenderToSVG(page, true);
 }
 
-std::string ScoreEngraver::midiBase64() { return loaded_ ? impl_->tk.RenderToMIDI() : std::string(); }
+std::string ScoreEngraver::midiBase64() { return loaded_ ? impl_->player().RenderToMIDI() : std::string(); }
 
 std::string ScoreEngraver::timemapJson() {
   if (!loaded_) return {};
-  std::string map = impl_->tk.RenderToTimemap();
-  if (impl_->clock.empty()) return map;
-  // Each entry's time, as the MIDI plays it. The entries come in the same
-  // order the clock was built in.
-  std::string out;
-  out.reserve(map.size() + map.size() / 8);
-  size_t at = 0, entry = 0;
-  static constexpr char kKey[] = "\"tstamp\":";
-  for (size_t k = map.find(kKey); k != std::string::npos; k = map.find(kKey, at)) {
-    const size_t value = k + sizeof kKey - 1;
-    char* stop = nullptr;
-    std::strtod(map.c_str() + value, &stop);
-    out.append(map, at, value - at);
-    if (entry < impl_->clock.size()) {
-      char number[32];
-      std::snprintf(number, sizeof number, "%.3f", impl_->clock[entry++].first);
-      out += number;
-    } else {
-      out.append(map.c_str() + value, static_cast<size_t>(stop - (map.c_str() + value)));
+  std::string map = impl_->player().RenderToTimemap(kTimemapOptions);
+  if (!impl_->clock.empty()) {
+    // Each entry's time, as the MIDI plays it. The entries come in the same
+    // order the clock was built in.
+    std::string out;
+    out.reserve(map.size() + map.size() / 8);
+    size_t at = 0, entry = 0;
+    static constexpr char kKey[] = "\"tstamp\":";
+    for (size_t k = map.find(kKey); k != std::string::npos; k = map.find(kKey, at)) {
+      const size_t value = k + sizeof kKey - 1;
+      char* stop = nullptr;
+      std::strtod(map.c_str() + value, &stop);
+      out.append(map, at, value - at);
+      if (entry < impl_->clock.size()) {
+        char number[32];
+        std::snprintf(number, sizeof number, "%.3f", impl_->clock[entry++].first);
+        out += number;
+      } else {
+        out.append(map.c_str() + value, static_cast<size_t>(stop - (map.c_str() + value)));
+      }
+      at = static_cast<size_t>(stop - map.c_str());
     }
-    at = static_cast<size_t>(stop - map.c_str());
+    out.append(map, at, std::string::npos);
+    map = std::move(out);
   }
-  out.append(map, at, std::string::npos);
-  return out;
+  if (impl_->play != nullptr) stripPlayedAgain(map);
+  return map;
 }
 
 int ScoreEngraver::pageWithElement(const std::string& id) {
-  return loaded_ ? impl_->tk.GetPageWithElement(id) : 0;
+  if (!loaded_) return 0;
+  // A note played again is on the page of the one written.
+  std::string page = id;
+  stripPlayedAgain(page += '"');
+  page.pop_back();
+  return impl_->tk.GetPageWithElement(page);
 }
 
 std::string ScoreEngraver::elementsAtTime(int milliseconds) {
   if (!loaded_) return {};
-  return impl_->tk.GetElementsAtTime(static_cast<int>(std::lround(impl_->verovioMs(milliseconds))));
+  Impl& i = *impl_;
+  std::string at = i.player().GetElementsAtTime(static_cast<int>(std::lround(i.verovioMs(milliseconds))));
+  if (i.play == nullptr) return at;
+  // Unrolled: the notes by the page's ids, and the page from the pages as
+  // engraved, not the unrolled copy's.
+  stripPlayedAgain(at);
+  std::string out = "{\"notes\":[";
+  int page = -1;
+  const size_t open = at.find("\"notes\"");
+  const size_t start = open == std::string::npos ? std::string::npos : at.find('[', open);
+  const size_t end = start == std::string::npos ? std::string::npos : at.find(']', start);
+  bool first = true;
+  for (size_t q = start == std::string::npos ? end : at.find('"', start); q != std::string::npos && q < end;) {
+    const size_t close = at.find('"', q + 1);
+    if (close == std::string::npos || close > end) break;
+    const std::string id = at.substr(q + 1, close - q - 1);
+    out += (first ? "\"" : ",\"") + id + "\"";
+    first = false;
+    if (page < 0) {
+      auto found = i.pageOf.find(id);
+      if (found == i.pageOf.end()) found = i.pageOf.emplace(id, i.tk.GetPageWithElement(id)).first;
+      page = found->second > 0 ? found->second : -1;
+    }
+    q = at.find('"', close + 1);
+  }
+  out += "],\"page\":" + std::to_string(page) + "}";
+  return out;
 }
 
 } // namespace mp

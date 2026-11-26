@@ -9,6 +9,7 @@ void CombinationSystem::reset(const OrganModel& model) {
   model_ = &model;
   stored_.clear();
   bySwitch_.clear();
+  byMemory_.clear();
   captureMode_ = false;
 
   // Switches indexed by their assignment code, which is how a piston finds its
@@ -20,9 +21,12 @@ void CombinationSystem::reset(const OrganModel& model) {
   for (const auto& [id, combo] : model.combinations) {
     auto& states = stored_[id];
     for (const CombinationElement& el : combo.elements)
-      if (el.controlledSwitchId != 0)
+      if (el.controlledSwitchId != 0) {
         states[el.controlledSwitchId] =
             el.storedEngaged != el.invertWhenActivating;
+        if (el.memorySwitchId != 0)
+          byMemory_[el.memorySwitchId].push_back({id, el.controlledSwitchId, el.invertWhenActivating});
+      }
 
     Id activating = combo.activatingSwitchId;
     if (activating == 0) {
@@ -42,6 +46,48 @@ void CombinationSystem::reset(const OrganModel& model) {
 Id CombinationSystem::combinationForSwitch(Id switchId) const {
   const auto it = bySwitch_.find(switchId);
   return it == bySwitch_.end() ? 0 : it->second;
+}
+
+bool CombinationSystem::memoryMoved(Id switchId, bool engaged) {
+  const auto it = byMemory_.find(switchId);
+  if (it == byMemory_.end()) return false;
+  bool changed = false;
+  for (const Held& h : it->second) {
+    const auto states = stored_.find(h.combinationId);
+    if (states == stored_.end()) continue;
+    // Only an element already stored: the table is sized at reset, so this
+    // never allocates on the audio thread.
+    const auto s = states->second.find(h.controlledSwitchId);
+    if (s == states->second.end()) continue;
+    const bool want = engaged != h.invert;
+    if (s->second == want) continue;
+    s->second = want;
+    changed = true;
+  }
+  return changed;
+}
+
+void CombinationSystem::memoryStates(std::vector<Change>& out) const {
+  for (const auto& [memory, held] : byMemory_) {
+    if (held.empty()) continue;
+    const Held& h = held.front();
+    const auto states = stored_.find(h.combinationId);
+    if (states == stored_.end()) continue;
+    const auto s = states->second.find(h.controlledSwitchId);
+    if (s != states->second.end()) out.push_back({memory, s->second != h.invert});
+  }
+}
+
+void CombinationSystem::memoryStatesOf(Id combinationId, std::vector<Change>& out) const {
+  if (model_ == nullptr) return;
+  const auto combo = model_->combinations.find(combinationId);
+  const auto states = stored_.find(combinationId);
+  if (combo == model_->combinations.end() || states == stored_.end()) return;
+  for (const CombinationElement& el : combo->second.elements) {
+    if (el.memorySwitchId == 0 || el.controlledSwitchId == 0) continue;
+    const auto s = states->second.find(el.controlledSwitchId);
+    if (s != states->second.end()) out.push_back({el.memorySwitchId, s->second != el.invertWhenActivating});
+  }
 }
 
 void CombinationSystem::recall(Id combinationId,

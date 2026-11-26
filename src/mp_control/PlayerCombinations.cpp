@@ -366,6 +366,7 @@ void PlayerCombinations::clearAll() {
       std::fill(r.drawn.begin(), r.drawn.end(), 0);
     }
   for (auto& name : generalNames_) name.clear();
+  divisionalNames_.clear();
   frame_ = 0;
   unlight();
 }
@@ -385,6 +386,22 @@ void PlayerCombinations::setGeneralName(int n, std::string name) {
   const auto first = name.find_first_not_of(' ');
   const auto last = name.find_last_not_of(' ');
   generalNames_[static_cast<size_t>(n)] = first == std::string::npos ? std::string() : name.substr(first, last - first + 1);
+}
+
+const std::string& PlayerCombinations::divisionalName(Id divisionId, int n) const {
+  static const std::string none;
+  const auto it = divisionalNames_.find({divisionId, n});
+  return it != divisionalNames_.end() ? it->second : none;
+}
+
+void PlayerCombinations::setDivisionalName(Id divisionId, int n, std::string name) {
+  if (n < 1 || n > kMaxDivisionals || divisionIndex(divisionId) < 0) return;
+  for (auto& c : name)
+    if (c == '\n' || c == '\r' || c == '\t') c = ' ';
+  const auto first = name.find_first_not_of(' ');
+  const auto last = name.find_last_not_of(' ');
+  if (first == std::string::npos) divisionalNames_.erase({divisionId, n});
+  else divisionalNames_[{divisionId, n}] = name.substr(first, last - first + 1);
 }
 
 void PlayerCombinations::setGeneralCount(int n) {
@@ -536,6 +553,26 @@ void PlayerCombinations::unlightDivisions(Id divisionId) {
 
 // A general describes the whole console, so it replaces every lit piston; a
 // divisional describes one division, so it only unlights the general.
+void PlayerCombinations::clearGeneral(int n) {
+  if (n < 1 || n > kMaxGenerals) return;
+  Registration& r = generals_[static_cast<size_t>(n)];
+  r.set = false;
+  std::fill(r.drawn.begin(), r.drawn.end(), 0);
+  if (static_cast<size_t>(n) < generalNames_.size()) generalNames_[static_cast<size_t>(n)].clear();
+  if (litGeneral_ == n) litGeneral_ = 0;
+}
+
+void PlayerCombinations::clearDivisional(Id divisionId, int n) {
+  const int d = divisionIndex(divisionId);
+  if (d < 0 || n < 1 || n > kMaxDivisionals) return;
+  Registration& r = divisionals_[static_cast<size_t>(d) * (kMaxDivisionals + 1) + static_cast<size_t>(n)];
+  r.set = false;
+  std::fill(r.drawn.begin(), r.drawn.end(), 0);
+  divisionalNames_.erase({divisionId, n});
+  if (static_cast<size_t>(d) < litDivisional_.size() && litDivisional_[static_cast<size_t>(d)] == n)
+    litDivisional_[static_cast<size_t>(d)] = 0;
+}
+
 void PlayerCombinations::lightGeneral(int n) {
   unlight();
   litGeneral_ = n;
@@ -620,6 +657,7 @@ bool PlayerCombinations::deleteFrame() {
 //   divisional <division> <n> [key...]
 //   frame <n> [key...]
 //   generalname <n> <name to the end of the line>
+//   divisionalname <division> <n> <name to the end of the line>
 //
 // Keys are s<stop> and w<switch>, so a file survives an organ update that
 // adds or reorders stops. A piston captured empty is written with no keys,
@@ -652,6 +690,8 @@ std::string PlayerCombinations::toText() const {
     }
   for (int n = 1; n <= kMaxGenerals; ++n)
     if (!generalName(n).empty()) out << "generalname " << n << ' ' << generalName(n) << '\n';
+  for (const auto& [key, name] : divisionalNames_)
+    out << "divisionalname " << key.first << ' ' << key.second << ' ' << name << '\n';
   return out.str();
 }
 
@@ -702,6 +742,13 @@ bool PlayerCombinations::fromText(const std::string& text) {
       int n = 0;
       if (!(ls >> n) || n < 1 || n > kMaxFrames) { ok = false; continue; }
       readKeys(ls, frames_[static_cast<size_t>(n)]);
+    } else if (what == "divisionalname") {
+      long long div = 0;
+      int n = 0;
+      if (!(ls >> div >> n)) { ok = false; continue; }
+      std::string name;
+      std::getline(ls, name);
+      setDivisionalName(static_cast<Id>(div), n, name);
     } else if (what == "generalname") {
       int n = 0;
       if (!(ls >> n) || n < 1 || n > kMaxGenerals) { ok = false; continue; }
@@ -725,11 +772,13 @@ std::vector<PlayerCombinations::Suggestion> PlayerCombinations::suggestRegistrat
   const size_t n = elements.size();
   std::vector<StopTraits> traits(n);
   std::map<Id, int> stopsIn;  // manual division: its stops
+  std::vector<char> kept(n, 0);
   Id pedal = 0;
   for (size_t i = 0; i < n; ++i) {
     const Element& e = elements[i];
     if (e.kind != ElementKind::Stop) continue;
     traits[i] = stopTraits(e.name);
+    if (traits[i].family == ToneFamily::Unknown) kept[i] = 1;
     const int kb = keyboardOf ? keyboardOf(e.divisionId) : -1;
     if (kb == 0) pedal = e.divisionId;
     else ++stopsIn[e.divisionId];
@@ -778,11 +827,11 @@ std::vector<PlayerCombinations::Suggestion> PlayerCombinations::suggestRegistrat
   if (std::none_of(drawn.begin(), drawn.end(), [](char c) { return c != 0; }))
     draw(firstOf(soft, [&](const StopTraits& t) { return isFlute(t.family) && near(t.footage, 8); }), drawn);
   if (pedal != 0) draw(firstOf(pedal, [&](const StopTraits& t) { return isFlute(t.family) && near(t.footage, 16); }), drawn);
-  out.push_back({"PP", drawn});
+  out.push_back({"PP", drawn, kept});
   // P
   draw(firstOf(main, [&](const StopTraits& t) { return isFlute(t.family) && near(t.footage, 8); }), drawn);
   if (pedal != 0) draw(firstOf(pedal, [&](const StopTraits& t) { return isFlute(t.family) && near(t.footage, 8); }), drawn);
-  out.push_back({"P", drawn});
+  out.push_back({"P", drawn, kept});
   // MF
   draw(firstOf(main, [&](const StopTraits& t) { return t.family == ToneFamily::Principal && near(t.footage, 8); }), drawn);
   draw(firstOf(main, [&](const StopTraits& t) { return isFlute(t.family) && near(t.footage, 4); }), drawn);
@@ -794,7 +843,7 @@ std::vector<PlayerCombinations::Suggestion> PlayerCombinations::suggestRegistrat
   if (pedal != 0)
     draw(firstOf(pedal, [&](const StopTraits& t) { return t.family == ToneFamily::Principal && near(t.footage, 8); }),
          drawn);
-  out.push_back({"MF", drawn});
+  out.push_back({"MF", drawn, kept});
   // F: the principal chorus, 8' to 2', on every manual; the pedal's 16'.
   for (const auto& [div, count] : stopsIn)
     allOf(div, [&](const StopTraits& t) {
@@ -804,13 +853,13 @@ std::vector<PlayerCombinations::Suggestion> PlayerCombinations::suggestRegistrat
     allOf(pedal, [&](const StopTraits& t) {
       return (t.family == ToneFamily::Principal || isFlute(t.family)) && near(t.footage, 16);
     }, drawn);
-  out.push_back({"F", drawn});
+  out.push_back({"F", drawn, kept});
   // Plein jeu: the mixtures and the principals' mutations, 16' principals.
   allOf(0, [&](const StopTraits& t) {
     return t.family == ToneFamily::Mixture || t.family == ToneFamily::Mutation ||
            (t.family == ToneFamily::Principal && near(t.footage, 16));
   }, drawn);
-  out.push_back({"Plein jeu", drawn});
+  out.push_back({"Plein jeu", drawn, kept});
   // Tutti: every stop but celestes and percussion, every coupler.
   std::vector<char> tutti(n, 0);
   for (size_t i = 0; i < n; ++i) {
@@ -820,7 +869,7 @@ std::vector<PlayerCombinations::Suggestion> PlayerCombinations::suggestRegistrat
     else
       tutti[i] = !e.bassOrMelody && !(isTremulant && isTremulant(e.id));
   }
-  out.push_back({"Tutti", tutti});
+  out.push_back({"Tutti", tutti, kept});
   return out;
 }
 

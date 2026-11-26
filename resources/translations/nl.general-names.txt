@@ -3,3 +3,4 @@
 "Name..." = "Naam..."
 "Name of general %1" = "Naam van generaal %1"
 "A name shown on the piston, such as Tutti or Plenum. Empty shows its number." = "Een naam op de piston, zoals Tutti of Plenum. Leeg toont het nummer."
+"Empty" = "Leegmaken"

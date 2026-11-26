@@ -7275,6 +7275,61 @@ public:
     for (const auto& c : out) pairState[c.switchId] = c.engage;
     MP_CHECK(pairState.count(901) && !pairState[901] && pairState.count(902) && !pairState[902] && pairState[903],
              "the next step leaves both behind");
+
+    // --- Düren's crescendo (#1274) -----------------------------------------
+    // Each step engages its switch on the way up and only releases it on the
+    // way down; the switch fires the step's combination (type 4), which sets
+    // every stop. Leaving a step on the way down must play the step below.
+    mp::OrganModel duren;
+    auto durenRow = [](int value, mp::Id sw) {
+      mp::ContinuousControlStageSwitch r;
+      r.controlId = 5;
+      r.value = value;
+      r.controlledSwitchId = sw;
+      r.engageWhenIncreasing = true;
+      r.disengageWhenDecreasing = true;
+      return r;
+    };
+    duren.controlStageSwitches = {durenRow(0, 700), durenRow(4, 701), durenRow(8, 702), durenRow(13, 703)};
+    for (mp::Id k = 0; k < 4; ++k) {
+      mp::Combination c;
+      c.combinationId = 1000 + k;
+      c.type = 4;
+      c.activatingSwitchId = 700 + k;
+      duren.combinations[c.combinationId] = c;
+    }
+    // A blower on the same kind of rows, firing nothing: left as it is.
+    mp::ContinuousControlStageSwitch blowerOn = durenRow(120, 99);
+    blowerOn.controlId = 9001;
+    duren.controlStageSwitches.push_back(blowerOn);
+    mp::StageSwitchBank cres;
+    cres.reset(duren);
+    out.clear();
+    cres.moveControl(5, 0, 13, out);
+    // Steps are counted from the row at 0, so 703 is the fourth.
+    MP_CHECK(lastEngaged(out) == 703 && cres.currentStep(5) == 4, "up to the last step, landing exactly on 13");
+    out.clear();
+    cres.moveControl(5, 13, 9, out);
+    std::unordered_map<mp::Id, bool> cresState;
+    for (const auto& c : out) cresState[c.switchId] = c.engage;
+    MP_CHECK(cresState.count(703) && !cresState[703], "leaving 13 downwards releases that step");
+    MP_CHECK(cresState[702], "and plays the one below again: " + std::to_string(out.size()) + " changes");
+    MP_CHECK(cres.currentStep(5) == 3, "which is the step now");
+    out.clear();
+    cres.moveControl(5, 9, 8, out);
+    MP_CHECK(out.empty(), "arriving on 8 from above is still that step");
+    out.clear();
+    cres.moveControl(5, 9, 0, out);
+    MP_CHECK(lastEngaged(out) == 700, "back to the start plays the first step's combination last");
+    out.clear();
+    cres.moveControl(5, 0, 6, out);
+    MP_CHECK(lastEngaged(out) == 701, "and forward again plays the next");
+    out.clear();
+    cres.moveControl(9001, 0, 127, out);
+    out.clear();
+    cres.moveControl(9001, 127, 0, out);
+    MP_CHECK(out.size() == 1 && out.front().switchId == 99 && !out.front().engage,
+             "a blower's release row stops it and fires nothing else");
   }
 };
 
@@ -7410,6 +7465,50 @@ public:
     MP_CHECK(!combos.captureMode(), "the setter starts out");
     combos.setCaptureMode(true);
     MP_CHECK(combos.captureMode(), "and can be held");
+
+    // --- memory switches: a crescendo page's cells (#1171, #1274) ----------
+    // A step whose element for stop 201 is held by cell 901: the cell shows
+    // the shipped state, and moving it changes what the step recalls.
+    mp::OrganModel cells = organ();
+    for (mp::Id id : {mp::Id{901}, mp::Id{902}}) {
+      mp::Switch s;
+      s.switchId = id;
+      cells.switches[id] = s;
+    }
+    mp::Combination step;
+    step.combinationId = 1001;
+    step.type = 4;
+    step.activatingSwitchId = 801;
+    step.allowsCapture = false;
+    mp::CombinationElement onCell;
+    onCell.combinationId = 1001;
+    onCell.controlledSwitchId = 201;
+    onCell.storedEngaged = true;
+    onCell.memorySwitchId = 901;
+    mp::CombinationElement offCell = onCell;
+    offCell.controlledSwitchId = 202;
+    offCell.storedEngaged = false;
+    offCell.memorySwitchId = 902;
+    step.elements = {onCell, offCell};
+    cells.combinations[step.combinationId] = step;
+    mp::CombinationSystem cres;
+    cres.reset(cells);
+    MP_CHECK(cres.isMemorySwitch(901) && !cres.isMemorySwitch(201), "the cells are known");
+    std::vector<mp::CombinationSystem::Change> shown;
+    cres.memoryStates(shown);
+    MP_CHECK(moves(shown, 901, true) && moves(shown, 902, false), "each cell shows its element as shipped");
+    MP_CHECK(cres.memoryMoved(902, true), "a cell clicked changes the step");
+    MP_CHECK(!cres.memoryMoved(902, true), "and the same state again changes nothing");
+    MP_CHECK(!cres.memoryMoved(201, true), "a switch that is no cell changes nothing");
+    changes.clear();
+    cres.recall(1001, changes);
+    MP_CHECK(moves(changes, 201, true) && moves(changes, 202, true), "the step now draws both");
+    mp::CombinationSystem cresBack;
+    cresBack.reset(cells);
+    MP_CHECK(cresBack.fromText(cres.toText()), "saved and read back");
+    shown.clear();
+    cresBack.memoryStatesOf(1001, shown);
+    MP_CHECK(moves(shown, 902, true), "with the cell as the player left it");
   }
 };
 
@@ -13253,6 +13352,27 @@ static ExtremeCouplersTest g_extremeCouplers;
 // The player's bass and melody couplers (#722): program couplers that pass
 // only the lowest or the highest key held on the manual played, for an
 // organ whose definition has none.
+// The bass coupler's range (#1242): the lowest key held passes it only at
+// or below the chosen key; above it, a melody has no pedal.
+class BassRangeTest final : public mp::test::Test {
+public:
+  BassRangeTest() : Test("functional.control.bass-coupler-range", Category::Functional) {}
+  void run() override {
+    using M = mp::CouplerMatrix;
+    MP_CHECK(M::extremeOf(48, 48, 67, 0) == M::kLowestHeld, "whole keyboard: the lowest key is the bass");
+    MP_CHECK(M::extremeOf(48, 48, 67, 54) == M::kLowestHeld, "C3 held, range to F#3: the bass");
+    MP_CHECK(M::extremeOf(60, 60, 72, 54) == 0, "C4 the lowest held, range to F#3: no bass");
+    MP_CHECK(M::extremeOf(72, 60, 72, 54) == M::kHighestHeld, "the melody coupler is not limited");
+    MP_CHECK(M::extremeOf(54, 54, 54, 54) == (M::kLowestHeld | M::kHighestHeld), "the top key itself passes it");
+    mp::MasterpieceProcessor proc;
+    proc.setBassCouplerTop(55);
+    MP_CHECK(proc.bassCouplerTop() == 55, "the range is kept: " + std::to_string(proc.bassCouplerTop()));
+    proc.setBassCouplerTop(200);
+    MP_CHECK(proc.bassCouplerTop() == 127, "and held to a MIDI note");
+  }
+};
+static BassRangeTest g_bassRange;
+
 class ProgramExtremeCouplersTest final : public mp::test::Test {
 public:
   ProgramExtremeCouplersTest()
@@ -15444,6 +15564,20 @@ public:
     MP_CHECK(mp::perspectiveOf("Front (Diffuse): HW Fagott 16 (tremmed)") == "front (diffuse)",
              "the prefix wins over the stop's own bracket");
     MP_CHECK(mp::perspectiveOf("HW: Principal 8").empty(), "a division before a colon is not one");
+    // More words, and a position word misspelt by one letter (Chemnitz).
+    MP_CHECK(mp::perspectiveOf("Principal 8 Room") == "room", "room");
+    MP_CHECK(mp::perspectiveOf("Hall: Gedackt 8") == "hall", "hall");
+    MP_CHECK(mp::perspectiveOf("Octave 4 (semidry)") == "semidry", "semidry");
+    MP_CHECK(mp::perspectiveOf("Octave 4 (semi-dry)") == "semi-dry", "semi-dry, as written");
+    MP_CHECK(mp::perspectiveOf("Hinten: Subbass 16") == "hinten", "German");
+    MP_CHECK(mp::perspectiveOf("Bourdon 8 lointain") == "lointain", "French");
+    MP_CHECK(mp::perspectiveOf("Difuse: 1. Principal 8") == "diffuse", "one letter missing");
+    MP_CHECK(mp::perspectiveOf("Direkt: 1. Principal 8") == "direct", "one letter changed");
+    MP_CHECK(mp::perspectiveOf("Principal 8 (Surrond)") == "surround", "in a bracket");
+    MP_CHECK(mp::perspectiveOf("Principal 8 Diffsue") == "diffuse", "two letters swapped");
+    MP_CHECK(mp::perspectiveOf("Front (Difuse): HW Fagott 16") == "front (diffuse)", "within a prefix");
+    MP_CHECK(mp::perspectiveOf("Cornet Mixte").empty(), "a short word a letter off is the stop's own");
+    MP_CHECK(mp::perspectiveOf("Dfiusee: Principal 8").empty(), "two letters off is no position");
 
     mp::OrganModel m;
     mp::Id id = 1;

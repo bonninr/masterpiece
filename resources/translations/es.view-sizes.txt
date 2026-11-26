@@ -1,0 +1,6 @@
+"Normal" = "Normal"
+"Large" = "Grande"
+"Larger" = "Más grande"
+"Stop list size" = "Tamaño de la lista de registros"
+"Piston size" = "Tamaño de los pistones"
+"Large frame number" = "Número de paso grande"

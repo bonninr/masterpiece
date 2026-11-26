@@ -10,6 +10,21 @@ namespace mp {
 namespace {
 constexpr const char* kNoteTag = "masterpiece-note";
 constexpr const char* kRegistrationTag = "masterpiece-registration";
+constexpr const char* kJumpTag = "masterpiece-jump";
+constexpr const char* kCombinationTag = "masterpiece-combination";
+constexpr const char* kManualsTag = "masterpiece-manuals";
+constexpr const char* kSettingsField = "masterpiece-settings";
+
+const char* tagOf(ScoreMark::Kind kind) {
+  switch (kind) {
+    case ScoreMark::Kind::Note: return kNoteTag;
+    case ScoreMark::Kind::Registration: return kRegistrationTag;
+    case ScoreMark::Kind::Jump: return kJumpTag;
+    case ScoreMark::Kind::Combination: return kCombinationTag;
+    case ScoreMark::Kind::Manuals: return kManualsTag;
+  }
+  return kNoteTag;
+}
 
 // Whitespace between elements, kept so a file saved again looks as it did.
 bool blank(const pugi::xml_node& n) {
@@ -86,6 +101,7 @@ bool ScoreMarks::load(const std::string& musicXml) {
   i.byId.clear();
   noteIds_.clear();
   marks.clear();
+  settings.clear();
   engraving_ = musicXml;
   // The line ends kept as they are, so a file is written back as it was read.
   const auto parsed = i.doc.load_buffer(musicXml.data(), musicXml.size(),
@@ -115,7 +131,9 @@ bool ScoreMarks::load(const std::string& musicXml) {
     if (!other) continue;
     const std::string body = other.child_value();
     const std::string head = firstLine(body);
-    if (head != kNoteTag && head != kRegistrationTag) continue;
+    if (head != kNoteTag && head != kRegistrationTag && head != kJumpTag && head != kCombinationTag &&
+        head != kManualsTag)
+      continue;
     pugi::xml_node note;
     for (auto n = direction.next_sibling(); n && !note; n = n.next_sibling())
       if (std::string(n.name()) == "note") note = n;
@@ -132,12 +150,33 @@ bool ScoreMarks::load(const std::string& musicXml) {
       m.kind = ScoreMark::Kind::Note;
       m.text = afterFirstLine(body);
     } else {
-      m.kind = ScoreMark::Kind::Registration;
+      m.kind = head == kJumpTag          ? ScoreMark::Kind::Jump
+               : head == kCombinationTag ? ScoreMark::Kind::Combination
+               : head == kManualsTag     ? ScoreMark::Kind::Manuals
+                                         : ScoreMark::Kind::Registration;
       const std::string rest = afterFirstLine(body);
       m.text = firstLine(rest);
       m.states = afterFirstLine(rest);
     }
     marks.push_back(std::move(m));
+  }
+  // The settings, out of the score until it is saved again.
+  for (const auto& x : i.doc.select_nodes("//identification/miscellaneous/miscellaneous-field")) {
+    auto field = x.node();
+    if (std::string(field.attribute("name").value()) != kSettingsField) continue;
+    settings = field.child_value();
+    auto misc = field.parent();
+    if (const auto before = field.previous_sibling(); blank(before)) misc.remove_child(before);
+    misc.remove_child(field);
+    // A <miscellaneous> left empty but for blanks was the program's own.
+    bool empty = true;
+    for (auto c = misc.first_child(); c && empty; c = c.next_sibling()) empty = blank(c);
+    if (empty) {
+      auto ident = misc.parent();
+      if (const auto before = misc.previous_sibling(); blank(before)) ident.remove_child(before);
+      ident.remove_child(misc);
+    }
+    break;
   }
   // Out of the score, with the line each stood on.
   for (auto& direction : taken) {
@@ -193,7 +232,7 @@ std::string ScoreMarks::save() const {
       std::string name = m.text;
       for (auto& c : name)
         if (c == '\n' || c == '\r') c = ' ';
-      body = std::string(kRegistrationTag) + "\n" + name + "\n" + m.states;
+      body = std::string(tagOf(m.kind)) + "\n" + name + "\n" + m.states;
     }
     other.append_child(pugi::node_pcdata).set_value(body.c_str());
     if (const auto staff = note.child("staff")) direction.append_copy(staff);
@@ -201,6 +240,29 @@ std::string ScoreMarks::save() const {
     // On a line of its own, indented as the note is.
     if (const auto before = direction.previous_sibling(); blank(before))
       added.emplace_back(parent, parent.insert_copy_after(before, direction));
+  }
+  // The settings, in the identification, made where the score has none:
+  // after the work and movement titles, before the defaults, the credits and
+  // the part list, as MusicXML orders them.
+  auto root = i.doc.document_element();
+  if (!settings.empty() && root) {
+    auto ident = root.child("identification");
+    if (!ident) {
+      pugi::xml_node before;
+      for (const char* name : {"defaults", "credit", "part-list"})
+        if (!before) before = root.child(name);
+      ident = before ? root.insert_child_before("identification", before) : root.prepend_child("identification");
+      added.emplace_back(root, ident);
+    }
+    auto misc = ident.child("miscellaneous");
+    if (!misc) {
+      misc = ident.append_child("miscellaneous");
+      added.emplace_back(ident, misc);
+    }
+    auto field = misc.append_child("miscellaneous-field");
+    field.append_attribute("name").set_value(kSettingsField);
+    field.append_child(pugi::node_pcdata).set_value(settings.c_str());
+    added.emplace_back(misc, field);
   }
   std::string out = i.text();
   for (auto it = added.rbegin(); it != added.rend(); ++it) it->first.remove_child(it->second);

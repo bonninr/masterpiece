@@ -1,0 +1,6 @@
+"Normal" = "Normale"
+"Large" = "Grande"
+"Larger" = "Plus grande"
+"Stop list size" = "Taille de la liste des jeux"
+"Piston size" = "Taille des pistons"
+"Large frame number" = "Grand numéro de pas"

@@ -143,7 +143,21 @@ enum class MidiTargetKind {
   // A mix's live level (LiveLevels.h), driven like a shoe: id = the mix's
   // number from 1.
   MixLevel,
+  // The score panel's buttons on a console (#1012): id = a ScoreCommand.
+  ScoreCommand,
 };
+
+// What a ScoreCommand target does, by its id.
+enum class ScoreCommandId : int {
+  PlayStop = 1,
+  Back = 2,          // a measure back
+  Forward = 3,       // a measure on
+  JumpPrevious = 4,  // the jump mark before
+  JumpNext = 5,      // the next jump mark
+  PageBack = 6,
+  PageForward = 7,
+};
+inline constexpr int kScoreCommandCount = 7;
 
 // What a ConsoleDisplay shows.
 enum ConsoleText : int {
@@ -562,6 +576,7 @@ public:
       case MidiTargetKind::Temperament:
       case MidiTargetKind::ScorePageForward:
       case MidiTargetKind::ScorePageBack:
+      case MidiTargetKind::ScoreCommand:
       case MidiTargetKind::RecorderRecord:
       case MidiTargetKind::RecorderPlay:
       case MidiTargetKind::PairLevel:

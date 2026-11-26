@@ -4,6 +4,7 @@
 add_library(mp_score STATIC
   ScoreEngraver.h ScoreEngraver.cpp
   ScoreMarks.h ScoreMarks.cpp
+  ScorePlayback.h ScorePlayback.cpp
 )
 target_include_directories(mp_score PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_compile_features(mp_score PUBLIC cxx_std_20)

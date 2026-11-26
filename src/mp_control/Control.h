@@ -135,6 +135,13 @@ public:
   // the middle of a chord. A bass coupler carries only the lowest key and a
   // melody coupler only the highest; left at 0, neither carries anything.
   static constexpr int kLowestHeld = 1, kHighestHeld = 2;
+  // Which extremes a held key is (#1242): the lowest held carries a bass
+  // coupler only at or below `bassTop` (0: the whole keyboard), so a
+  // melody played above it has no pedal; the highest held, a melody one.
+  static int extremeOf(int midiNote, int lowest, int highest, int bassTop) {
+    return (midiNote <= lowest && (bassTop <= 0 || midiNote <= bassTop) ? kLowestHeld : 0) |
+           (midiNote >= highest ? kHighestHeld : 0);
+  }
   void expandInto(int sourceKeyboardId, int midiNote, float velocity,
                   const std::unordered_set<Id>& engagedSwitches,
                   KeyFlowScratch& scratch, std::vector<ExpandedNote>& out,

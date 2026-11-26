@@ -3,3 +3,4 @@
 "Name..." = "Nom..."
 "Name of general %1" = "Nom de la combinaison générale %1"
 "A name shown on the piston, such as Tutti or Plenum. Empty shows its number." = "Un nom affiché sur le piston, par exemple Tutti ou Plein jeu. Vide affiche son numéro."
+"Empty" = "Vider"

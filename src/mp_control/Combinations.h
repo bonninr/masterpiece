@@ -70,6 +70,17 @@ public:
   void setCaptureMode(bool on) { captureMode_ = on; }
   bool captureMode() const { return captureMode_; }
 
+  // Memory switches (CombinationElement::memorySwitchId): switches the organ
+  // shows the stored states on, a crescendo page's cells. A cell moved by the
+  // player changes the element it holds; true when anything changed, so the
+  // caller saves. Audio thread: nothing here allocates.
+  bool memoryMoved(Id switchId, bool engaged);
+  bool isMemorySwitch(Id switchId) const { return byMemory_.count(switchId) != 0; }
+  // Each memory switch and the state it should show: every one, or those of
+  // one combination after it has captured.
+  void memoryStates(std::vector<Change>& out) const;
+  void memoryStatesOf(Id combinationId, std::vector<Change>& out) const;
+
   size_t combinationCount() const { return stored_.size(); }
   // How many combinations hold at least one engaged switch — the honest
   // measure of whether a player has anything saved.
@@ -86,6 +97,14 @@ private:
   // organ's own InitialStoredStateIsEngaged and replaced by capture.
   std::unordered_map<Id, std::unordered_map<Id, bool>> stored_;
   std::unordered_map<Id, Id> bySwitch_; // activating switch -> combination
+  // Memory switch -> the elements it holds: combination, controlled switch,
+  // and whether the element inverts on the way out.
+  struct Held {
+    Id combinationId = 0;
+    Id controlledSwitchId = 0;
+    bool invert = false;
+  };
+  std::unordered_map<Id, std::vector<Held>> byMemory_;
   bool captureMode_ = false;
 };
 
