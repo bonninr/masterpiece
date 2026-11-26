@@ -248,7 +248,7 @@ private:
   void chooseManuals();
   void refreshButtons();
   void readTimeline();
-  std::vector<ScorePlayer::Event> eventsForPlaying() const;
+  std::vector<ScorePlayer::Event> eventsForPlaying(double fromSeconds = 0.0) const;
   double firstNoteMsOnPage(int slot) const;
   juce::Rectangle<int> pageArea() const;
   juce::Rectangle<int> slotArea(int slot) const;

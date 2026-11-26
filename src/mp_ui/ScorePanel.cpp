@@ -536,7 +536,7 @@ ScorePanel::ScorePanel(MasterpieceProcessor& proc, const juce::File& fonts) : pr
   for (auto* b : {&open_, &prev_, &next_, &zoomOut_, &zoomIn_, &zoomReset_, &play_, &manuals_,
                   &mark_, &regPrev_, &regNext_, &view_, &console_})
     addAndMakeVisible(b);
-  view_.setTooltip(TRANS("Pages or one line, the paper and the staff lines"));
+  view_.setTooltip(TRANS("Pages, one line or two pages, inverted"));
   console_.setTooltip(TRANS("Learn a console's buttons for Play, a measure back or on, the jump marks and the pages. "
                             "On the computer: Space plays and stops, the arrows go a measure back or on, "
                             "up and down go to the jump marks, Page Up and Page Down turn the pages."));
@@ -1096,10 +1096,9 @@ void ScorePanel::chooseView() {
   menu.addItem(1, TRANS("Pages"), true, !line_);
   menu.addItem(2, TRANS("One line, scrolling with the playing"), true, line_);
   menu.addItem(7, TRANS("Two pages"), !line_, twoPages_);
+  // The paper and the staff lines' colour (setPaper, setBlueLines) wait for
+  // a style screen of their own.
   menu.addSeparator();
-  menu.addItem(3, TRANS("White paper"), true, paper_ == Paper::White);
-  menu.addItem(4, TRANS("Cream paper"), true, paper_ == Paper::Cream);
-  menu.addItem(5, TRANS("Blue staff lines"), true, blueLines_);
   menu.addItem(8, TRANS("Invert"), true, inverted_);
   if (detached_) {
     menu.addSeparator();
@@ -1111,9 +1110,6 @@ void ScorePanel::chooseView() {
              switch (chosen) {
                case 1: safe->setLineView(false); break;
                case 2: safe->setLineView(true); break;
-               case 3: safe->setPaper(Paper::White); break;
-               case 4: safe->setPaper(Paper::Cream); break;
-               case 5: safe->setBlueLines(!safe->blueLines()); break;
                case 6: safe->setKeptOnTop(!safe->keptOnTop()); break;
                case 7: safe->setTwoPages(!safe->twoPages_); break;
                case 8: safe->setInverted(!safe->inverted()); break;
@@ -1427,7 +1423,12 @@ Id ScorePanel::keyboardForStaff(int staff) const {
   int last = 0;
   for (const auto& s : staves_) last = std::max(last, s.number);
   const auto isPedal = [this](Id kb) { return proc_.assignmentCodeOf(kb) == 1; };
-  if (staves_.size() >= 3 && staff == last)
+  // A part the score names Pedal (Pedal, Ped., Pedale, Pédale) plays the
+  // pedal, however many staves there are.
+  const auto named = std::find_if(staves_.begin(), staves_.end(), [staff](const Staff& s) { return s.number == staff; });
+  const bool pedalPart =
+      named != staves_.end() && (named->name.containsIgnoreCase("ped") || named->name.containsIgnoreCase("péd"));
+  if (pedalPart || (staves_.size() >= 3 && staff == last))
     for (const Id kb : playable)
       if (isPedal(kb)) return kb;
   // A hand's staff on a manual: the organ's preferred keyboard, unless that
@@ -1457,7 +1458,7 @@ void ScorePanel::chooseManuals() {
 
 // --- playing -------------------------------------------------------------
 
-std::vector<ScorePlayer::Event> ScorePanel::eventsForPlaying() const {
+std::vector<ScorePlayer::Event> ScorePanel::eventsForPlaying(double fromSeconds) const {
   std::map<int, int> channels;
   for (const auto& s : staves_) {
     const Id kb = keyboardForStaff(s.number);
@@ -1475,7 +1476,12 @@ std::vector<ScorePlayer::Event> ScorePanel::eventsForPlaying() const {
     if (ch < 1 || ch > 16) continue;
     const auto c = static_cast<uint8_t>(ch);
     const double off = std::max(n.off, n.on);
+    // A note already sounding where the playing starts is struck there: a
+    // start in the middle of a held chord, or Play after Stop, sounds at
+    // once instead of waiting for the next note.
     const auto note = [&](double from, double to, int pitch) {
+      if (to <= fromSeconds) return;
+      from = std::max(from, fromSeconds);
       const auto p = static_cast<uint8_t>(std::clamp(pitch, 0, 127));
       events.push_back({from, c, p, true});
       events.push_back({std::max(from, to), c, p, false});
@@ -1524,7 +1530,8 @@ void ScorePanel::play() {
   lastPlayMs_ = startMs_;
   // A note the time map places at the start may sit a rounding below it in
   // the MIDI: start a moment earlier so it is played.
-  proc_.scorePlayer().play(eventsForPlaying(), std::max(0.0, (startMs_ - 2.0) / 1000.0));
+  const double from = std::max(0.0, (startMs_ - 2.0) / 1000.0);
+  proc_.scorePlayer().play(eventsForPlaying(from), from);
   wasPlaying_ = true;
   startTimer(33);
   refreshButtons();

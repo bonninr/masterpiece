@@ -9,6 +9,7 @@
 
 #include "MpTest.h"
 
+#include "../src/mp_audio/DataFolder.h"
 #include "../src/mp_audio/MasterpieceProcessor.h"
 #include "../src/mp_audio/ScorePlayer.h"
 #include "../src/mp_score/ScoreEngraver.h"
@@ -1299,6 +1300,19 @@ public:
     MP_CHECK(c5 == 2, "the repeat plays C5 twice: " + std::to_string(c5));
     MP_CHECK(e5 > 10 && d5 > 10, "the trill alternates D5 and E5: " + std::to_string(d5) + "/" + std::to_string(e5));
     MP_CHECK(lastPitch == 74, "and ends on D5");
+    // Two staves, the second a part named Pedal: on the pedal.
+    MP_CHECK(panel.keyboardForStaff(2) == 701 && panel.keyboardForStaff(1) == 702,
+             "the part named Pedal plays the pedal, the other the manual");
+
+    // Started in the middle of a held note, it sounds at once: C5's second
+    // time is 4 to 8 s.
+    panel.setStart(5.0);
+    panel.play();
+    for (int b = 0; b < 4; ++b) runBlock(proc);
+    MP_CHECK(proc.keyDownOnKeyboard(702, 72), "a start inside C5 strikes it");
+    MP_CHECK(proc.keyDownOnKeyboard(701, 48), "and the pedal's C3 under it");
+    panel.stop();
+    for (int b = 0; b < 8; ++b) runBlock(proc);
 
     // A staff muted: none of its notes go to the organ, and it is saved.
     panel.setMuted(2, true);
@@ -1392,6 +1406,45 @@ public:
   }
 };
 static ScorePracticeTest g_scorePractice;
+
+// A player who never set up MIDI: no settings at all, no channel chosen for
+// any keyboard. The score still sounds, each staff on its manual.
+class ScoreNoConsoleTest final : public mp::test::Test {
+public:
+  ScoreNoConsoleTest() : Test("functional.score.no-console", Category::Functional) {}
+  void run() override {
+    juce::ScopedJuceInitialiser_GUI gui;
+    const auto fonts = unpackedFonts();
+    const juce::File before = mp::dataFolder();
+    const auto empty = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-score-no-console");
+    empty.deleteRecursively();
+    empty.createDirectory();
+    mp::setDataFolder(empty);
+    {
+      ScoreOrgan organ;
+      mp::MasterpieceProcessor proc;
+      proc.prepareToPlay(48000.0, kBlock);
+      MP_CHECK(proc.loadOrgan(organ.odf, 0, false).ok, "the organ loads");
+      MP_CHECK(proc.midiMap().keyboardBindings().empty(), "no keyboard has a channel");
+      proc.setStopEngaged(901, true);
+      proc.setStopEngaged(902, true);
+      runBlock(proc);
+      mp::ui::ScorePanel panel(proc, fonts);
+      panel.setSize(1000, 700);
+      const std::string xml = readScoreFixture("organ-trio.musicxml");
+      MP_CHECK(panel.openData(juce::MemoryBlock(xml.data(), xml.size()), "organ-trio.musicxml"), "the trio opens");
+      MP_CHECK(!panel.playedEvents().empty(), "its notes go to the organ: " + std::to_string(panel.playedEvents().size()));
+      panel.play();
+      for (int b = 0; b < 4; ++b) runBlock(proc);
+      MP_CHECK(proc.keyDownOnKeyboard(702, 72), "the right hand plays the manual");
+      MP_CHECK(proc.keyDownOnKeyboard(701, 48), "the pedal staff plays the pedal");
+      panel.stop();
+    }
+    mp::setDataFolder(before);
+    empty.deleteRecursively();
+  }
+};
+static ScoreNoConsoleTest g_scoreNoConsole;
 
 // The engraver plays an unrolled copy and answers by the page's ids.
 class ScoreUnrolledEngraverTest final : public mp::test::Test {
