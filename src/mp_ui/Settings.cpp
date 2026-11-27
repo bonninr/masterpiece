@@ -2599,8 +2599,10 @@ static void appendGrandOrgueSettingsLines(const GrandOrgueSettingsReport& g, juc
                   .replace("%1", n(g.generalsLeftOut))
                   .replace("%2", n(g.framesLeftOut))
                   .replace("%3", n(g.divisionalsLeftOut)));
+  if (g.crescendoSteps > 0)
+    lines.add(TRANS("Crescendo: %1 steps of bank A").replace("%1", n(g.crescendoSteps)));
   if (g.crescendoStages > 0)
-    lines.add(TRANS("Crescendo stages, left out: %1").replace("%1", n(g.crescendoStages)));
+    lines.add(TRANS("Crescendo steps of banks B to D, left out: %1").replace("%1", n(g.crescendoStages)));
   if (g.unknownElements + g.divisionalCouplers > 0)
     lines.add(TRANS("Registration entries with nothing to work here, left out: %1")
                   .replace("%1", n(g.unknownElements + g.divisionalCouplers)));

@@ -194,6 +194,28 @@ public:
   bool insertFrame();
   bool deleteFrame();
 
+  // --- crescendo --------------------------------------------------------
+  // The player's crescendo, for an organ that has none of its own (JPIL04,
+  // #1221): steps 1 to kCrescendoSteps, as on GrandOrgue's setter, each a
+  // registration. It adds to what the hands drew, as GrandOrgue's crescendo
+  // does: a step draws what it holds and the hands have not, and going back
+  // retires only what the crescendo drew. A step never set takes the nearest
+  // set step below it, so steps 1, 8, 16, 24 and 32 are enough to start.
+  static constexpr int kCrescendoSteps = 32;
+  int crescendoStep() const { return crescendoStep_; }
+  bool crescendoSet(int step) const;
+  int crescendoSetCount() const;
+  // Move to a step, 0 being closed, and hand back the changes.
+  void moveCrescendo(int step, const Reader& isEngaged, std::vector<Change>& out);
+  // Store what is drawn into a step. What it holds then counts as the
+  // crescendo's own, so closing the pedal retires it.
+  bool captureCrescendo(int step, const Reader& isEngaged);
+  bool storeCrescendo(int step, const Reader& isEngaged);
+  void clearCrescendo(int step);
+  // The pedal's value (0 to 127) as a step: 0 closed, and 1 to 32 in equal
+  // parts of the travel above it.
+  static int crescendoStepOf(int value);
+
   // --- persistence ------------------------------------------------------
   std::string toText() const;
   bool fromText(const std::string& text);
@@ -229,6 +251,10 @@ public:
   static std::vector<Suggestion> suggestRegistrations(const std::vector<Element>& elements,
                                                       const std::function<int(Id)>& keyboardOf,
                                                       const std::function<bool(Id)>& isTremulant);
+  // Fills every crescendo step from the ready-made registrations, in order,
+  // each step adding a few stops, from PP up to Tutti. Only when no step is
+  // set yet; false otherwise.
+  bool fillCrescendo(const std::vector<Suggestion>& graded);
 
 private:
   std::vector<Element> elements_;
@@ -240,6 +266,9 @@ private:
   std::vector<std::string> generalNames_;  // by number, as generals_
   std::map<std::pair<Id, int>, std::string> divisionalNames_;  // by division and number
   std::vector<Registration> frames_;
+  std::vector<Registration> crescendo_;  // by step, index 0 unused
+  std::vector<char> crescendoDrew_;      // by element: drawn by the crescendo
+  int crescendoStep_ = 0;
   // divisionIndex * (kMaxDivisionals + 1) + piston
   std::vector<Registration> divisionals_;
   std::vector<int> litDivisional_;  // by division index

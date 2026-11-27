@@ -1,6 +1,5 @@
 "Registrations: %1 of the organ's pistons, %2 generals, %3 sequencer steps, %4 divisionals" = "Registrations : %1 pistons de l'orgue, %2 générales, %3 pas du séquenceur, %4 divisionnelles"
 "Beyond Masterpiece's pistons, left out: %1 generals, %2 sequencer steps, %3 divisionals" = "Au-delà des pistons de Masterpiece, laissés de côté : %1 générales, %2 pas du séquenceur, %3 divisionnelles"
-"Crescendo stages, left out: %1" = "Étapes du crescendo, laissées de côté : %1"
 "Registration entries with nothing to work here, left out: %1" = "Éléments de registration sans objet ici, laissés de côté : %1"
 "Voicing: %1 ranks, %2 pipes" = "Harmonisation : %1 rangs, %2 tuyaux"
 "Voicing values beyond Masterpiece's range, taken to its edge: %1" = "Valeurs d'harmonisation hors de la plage de Masterpiece, ramenées à sa limite : %1"

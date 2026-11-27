@@ -6928,6 +6928,7 @@ std::string MasterpieceProcessor::storeTargetName() const {
   switch (t.kind) {
     case StoreTarget::Kind::General: return "General " + std::to_string(t.n);
     case StoreTarget::Kind::Step: return "Step " + std::to_string(t.n);
+    case StoreTarget::Kind::Crescendo: return "Crescendo step " + std::to_string(t.n);
     case StoreTarget::Kind::Divisional: {
       const auto d = model_.divisions.find(t.divisionId);
       const std::string div = d != model_.divisions.end() && !d->second.name.empty()
@@ -6962,6 +6963,9 @@ bool MasterpieceProcessor::storeIntoTarget() {
       // Into the step the sequencer is on; the frames after it stay as they are.
       playerScratch_.clear();
       stored = player_.gotoFrame(storeTarget_.n, true, read, playerScratch_);
+      break;
+    case StoreTarget::Kind::Crescendo:
+      stored = player_.captureCrescendo(storeTarget_.n, read);
       break;
     case StoreTarget::Kind::None: break;
   }
@@ -7159,7 +7163,7 @@ bool MasterpieceProcessor::stepperPrev() {
   return true;
 }
 
-int MasterpieceProcessor::fillReadyMadeGenerals() {
+std::vector<PlayerCombinations::Suggestion> MasterpieceProcessor::readyMadeSuggestions() const {
   const auto tremulant = [this](Id sw) {
     const auto it = model_.switches.find(sw);
     if (it == model_.switches.end()) return false;
@@ -7170,8 +7174,12 @@ int MasterpieceProcessor::fillReadyMadeGenerals() {
     for (auto& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return name.find("trem") != std::string::npos;
   };
-  const auto suggestions = PlayerCombinations::suggestRegistrations(
+  return PlayerCombinations::suggestRegistrations(
       player_.elements(), [this](Id div) { return divisionKeyboard(model_, div); }, tremulant);
+}
+
+int MasterpieceProcessor::fillReadyMadeGenerals() {
+  const auto suggestions = readyMadeSuggestions();
   if (suggestions.empty()) return 0;
   const AudioLock audio(*this);
   const auto& elements = player_.elements();
@@ -7191,6 +7199,42 @@ int MasterpieceProcessor::fillReadyMadeGenerals() {
   }
   if (stored > 0) combinationsDirty_.store(true, std::memory_order_release);
   return stored;
+}
+
+void MasterpieceProcessor::gotoCrescendoStep(int step) {
+  if (playerCrescendo_ == 0) return;
+  step = std::clamp(step, 0, PlayerCombinations::kCrescendoSteps);
+  // The middle of the step's part of the travel.
+  const int value = step == 0 ? 0
+                              : std::min(127, ((2 * step - 1) * 127 + PlayerCombinations::kCrescendoSteps) /
+                                                  (2 * PlayerCombinations::kCrescendoSteps));
+  setControlValue(playerCrescendo_, std::max(value, step == 0 ? 0 : 1));
+}
+
+bool MasterpieceProcessor::storeCrescendoStep(int step) {
+  if (playerCrescendo_ == 0) return false;
+  const AudioLock audio(*this);
+  const bool stored = player_.captureCrescendo(step, [this](const PlayerCombinations::Element& e) {
+    return playerElementEngaged(e);
+  });
+  if (stored) combinationsDirty_.store(true, std::memory_order_release);
+  return stored;
+}
+
+void MasterpieceProcessor::clearCrescendoStep(int step) {
+  const AudioLock audio(*this);
+  if (!player_.crescendoSet(step)) return;
+  player_.clearCrescendo(step);
+  combinationsDirty_.store(true, std::memory_order_release);
+}
+
+bool MasterpieceProcessor::fillCrescendoSteps() {
+  if (playerCrescendo_ == 0) return false;
+  const auto suggestions = readyMadeSuggestions();
+  const AudioLock audio(*this);
+  if (!player_.fillCrescendo(suggestions)) return false;
+  combinationsDirty_.store(true, std::memory_order_release);
+  return true;
 }
 
 bool MasterpieceProcessor::stepperFirst() {
@@ -7361,6 +7405,16 @@ void MasterpieceProcessor::setControlValue(Id controlId, int value) {
   controls_.setValue(controlId, value);
   controls_.propagate(controlId, &engagedSwitches_);
   fireMovedStages();
+  if (controlId == playerCrescendo_ && playerCrescendo_ != 0) {
+    const int step = PlayerCombinations::crescendoStepOf(controls_.value(controlId));
+    if (step == player_.crescendoStep()) return;
+    playerScratch_.clear();
+    player_.moveCrescendo(step, [this](const PlayerCombinations::Element& e) { return playerElementEngaged(e); },
+                          playerScratch_);
+    applyPlayerChanges();
+    // Set stores into the step the pedal stands on, as GrandOrgue's does.
+    if (step > 0) storeTarget_ = {StoreTarget::Kind::Crescendo, 0, step};
+  }
 }
 
 // Every staged control whose value moved since it was last looked at fires
@@ -7404,7 +7458,9 @@ LcdState MasterpieceProcessor::lcdState() const {
   s.pitchHz = masterPitchHz();
   s.transpose = transpose();
   s.stopsDrawn = static_cast<int>(engagedStops_.size());
-  if (const Id cres = stages_.crescendoControl())
+  if (playerCrescendo_ != 0)
+    s.crescendoStep = player_.crescendoStep();
+  else if (const Id cres = stages_.crescendoControl())
     s.crescendoStep = static_cast<int>(stages_.currentStep(cres));
   s.transpose = transpose();
   s.combinationSet = combinationSet_.empty() ? std::string("(default)") : combinationSet_;
@@ -10050,6 +10106,24 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   // A switch-built regulator's start-up runs in time once the organ is live
   // (#1121).
   const std::unordered_set<Id> windStart = WindSolver::relayStartControls(model_);
+  // The player's crescendo pedal, on an organ with no crescendo of its own
+  // (#1221): a GrandOrgue set leaves it to GrandOrgue's, and declares none.
+  // An organ's own has three steps or more behind one control, as the
+  // panel's Expression section reads it.
+  {
+    StageSwitchBank own;
+    own.reset(model_);
+    size_t steps = 0;
+    for (Id id : own.stagedControls()) steps = std::max(steps, own.stepCount(id));
+    playerCrescendo_ = 0;
+    if (steps < 3 && model_.continuousControls.count(kPlayerCrescendoId) == 0) {
+      ContinuousControl c;
+      c.controlId = kPlayerCrescendoId;
+      c.name = "Crescendo";
+      model_.continuousControls[c.controlId] = std::move(c);
+      playerCrescendo_ = kPlayerCrescendoId;
+    }
+  }
   controls_.reset(model_, windStart.empty() ? nullptr : &windStart);
 
   // Now, and not before: reset() has just put every control at the organ's
@@ -12400,6 +12474,7 @@ void MasterpieceProcessor::applyGrandOrgueSettings(const GrandOrgueSettings& s, 
     }
     for (const auto& [n, reg] : s.generals) registrations |= player_.storeGeneral(n, readerFor(reg));
     for (const auto& [n, reg] : s.frames) registrations |= player_.storeFrame(n, readerFor(reg));
+    for (const auto& [n, reg] : s.crescendo) registrations |= player_.storeCrescendo(n, readerFor(reg));
     for (const auto& [key, reg] : s.divisionals)
       registrations |= player_.storeDivisional(key.first, key.second, readerFor(reg));
   }

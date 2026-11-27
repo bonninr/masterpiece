@@ -159,6 +159,14 @@ private:
   };
   std::vector<DivisionRow> divisions_;
 
+  // The player's crescendo (#1221), on an organ with none of its own.
+  juce::Label crescendoLabel_;
+  juce::TextButton crescendoDown_{"<"}, crescendoUp_{">"};
+  juce::Label crescendoStep_;
+  juce::TextButton crescendoClear_{TRANS("Clear step")};
+  juce::TextButton crescendoFill_{TRANS("Ready-made...")};
+  bool crescendoShown() const;
+
   juce::Label setLabel_;
   juce::ComboBox setBox_;
   juce::TextButton setNew_{TRANS("Save as...")};

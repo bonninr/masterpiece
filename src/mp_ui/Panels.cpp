@@ -536,6 +536,9 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
       crescendo = id;
     }
   if (steps >= 3) addControl(crescendo, TRANS("Crescendo").toStdString());
+  // The player's own, on an organ with none (#1221).
+  else if (p.playerCrescendoControl() != 0)
+    addControl(p.playerCrescendoControl(), TRANS("Crescendo").toStdString());
 
   for (auto& sec : divisions) dropSharedPrefix(sec);
 

@@ -8,8 +8,8 @@
 //     generals ([SetterGeneral001]...), its sequencer frames
 //     ([FrameGeneral001]...) and its divisionals per manual
 //     ([Setter002Divisional000]...);
-//   - the crescendo's stages ([SetterCrescendo1_001]...), which Masterpiece has
-//     no programmable crescendo to take, and which the report counts;
+//   - the crescendo's stages ([SetterCrescendo1_001]...): bank A for the
+//     player's crescendo, the other banks counted as left out;
 //   - the voicing at four levels, organ, windchest group, rank and pipe:
 //     Amplitude and UserGain, ManualTuning and AutoTuningCorrection,
 //     ToneBalance, AudioGroup, and Delay and ReleaseTail, which have nothing
@@ -56,6 +56,8 @@ struct GrandOrgueSettings {
   std::map<int, GrandOrgueRegistration> generals;
   std::map<int, GrandOrgueRegistration> frames;
   std::map<std::pair<Id, int>, GrandOrgueRegistration> divisionals;
+  // The crescendo's bank A, steps 1 to 32, for the player's crescendo.
+  std::map<int, GrandOrgueRegistration> crescendo;
   // The voicing, by rank and by pipe. Every rank whose section the file holds
   // is here, neutral or not: its voicing becomes the file's. A pipe is here
   // when it differs from its rank.
@@ -83,7 +85,8 @@ struct GrandOrgueSettingsReport {
   int divisionals = 0, divisionalsLeftOut = 0;
   int unknownElements = 0;      // entries naming nothing in this organ
   int divisionalCouplers = 0;   // GrandOrgue's divisional couplers, no counterpart
-  int crescendoStages = 0;      // left out: no programmable crescendo here
+  int crescendoSteps = 0;       // bank A, taken by the player's crescendo
+  int crescendoStages = 0;      // left out: banks B to D
   // Voicing.
   int voicedRanks = 0, voicedPipes = 0;
   int voicingClamped = 0;       // beyond Masterpiece's range, taken to its edge
