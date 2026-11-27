@@ -122,7 +122,23 @@ if(MP_NATIVE_ARCH)
   endif()
 endif()
 
-set(MP_JUCE_TAG "9.0.1" CACHE STRING "JUCE git tag for FetchContent")
+# A FetchContent pin as a cache variable. A build folder keeps the tag of its
+# first configure, so a cached release older than the default is raised to it:
+# an existing build gets the fixes too. A branch or commit is kept.
+function(mp_pin var default doc)
+  set(doc "${doc} (an older release is raised to the default)")
+  set(${var} "${default}" CACHE STRING "${doc}")
+  string(REGEX REPLACE "^v" "" have "${${var}}")
+  string(REGEX REPLACE "^v" "" want "${default}")
+  if(have MATCHES "^[0-9]+(\\.[0-9]+)*$" AND have VERSION_LESS want)
+    message(STATUS "${var} ${${var}} is older than ${default}: using ${default}")
+    set(${var} "${default}" CACHE STRING "${doc}" FORCE)
+  endif()
+endfunction()
+
+# 9.0.5 hardened the JSON, XML, OSC, ZIP, WAV, AIFF and PNG readers: the
+# control API parses network JSON and takes OSC.
+mp_pin(MP_JUCE_TAG "9.0.6" "JUCE git tag for FetchContent")
 set(MP_JUCE_REPO_URL "https://github.com/juce-framework/JUCE.git" CACHE STRING "JUCE repo URL")
 set(MP_JUCE_SOURCE_DIR "" CACHE PATH "Use local JUCE checkout instead of fetching (empty = fetch)")
 
@@ -146,7 +162,7 @@ endif()
 
 # ---- pugixml (ODF XML parsing in mp_core, ADR-014) ----
 option(MP_FETCH_PUGIXML "Fetch pugixml via FetchContent" ON)
-set(MP_PUGIXML_TAG "v1.16" CACHE STRING "pugixml git tag for FetchContent")
+mp_pin(MP_PUGIXML_TAG "v1.16" "pugixml git tag for FetchContent")
 if(MP_FETCH_PUGIXML)
   include(FetchContent)
   FetchContent_Declare(
@@ -173,18 +189,7 @@ endif()
 option(MP_ENABLE_API "The control API and web console (HTTP)" ${MP_ENABLE_API_DEFAULT})
 # v0.44.0 stopped percent-decoding header values, which refused a cookie holding
 # %0A (#1278); later releases closed more advisories on the server side.
-set(MP_HTTPLIB_DEFAULT_TAG "v0.67.0")
-set(MP_HTTPLIB_TAG "${MP_HTTPLIB_DEFAULT_TAG}" CACHE STRING
-    "cpp-httplib git tag for FetchContent (an older release is raised to the default)")
-# A build folder keeps the tag of its first configure: raise one older than the
-# default, so an existing build gets the fixes too. A branch or commit is kept.
-string(REGEX REPLACE "^v" "" _mp_httplib_have "${MP_HTTPLIB_TAG}")
-string(REGEX REPLACE "^v" "" _mp_httplib_want "${MP_HTTPLIB_DEFAULT_TAG}")
-if(_mp_httplib_have MATCHES "^[0-9]+(\\.[0-9]+)*$" AND _mp_httplib_have VERSION_LESS _mp_httplib_want)
-  message(STATUS "cpp-httplib ${MP_HTTPLIB_TAG} is older than ${MP_HTTPLIB_DEFAULT_TAG}: using ${MP_HTTPLIB_DEFAULT_TAG}")
-  set(MP_HTTPLIB_TAG "${MP_HTTPLIB_DEFAULT_TAG}" CACHE STRING
-      "cpp-httplib git tag for FetchContent (an older release is raised to the default)" FORCE)
-endif()
+mp_pin(MP_HTTPLIB_TAG "v0.67.0" "cpp-httplib git tag for FetchContent")
 if(MP_ENABLE_API)
   include(FetchContent)
   # Only the header: its own CMake project would look for OpenSSL, zlib and
@@ -205,7 +210,7 @@ endif()
 # BSD-licensed, which is what lets it ship inside a GPL program -- unlike the
 # RAR project's own unrar source.
 option(MP_FETCH_LIBARCHIVE "Fetch libarchive via FetchContent" ON)
-set(MP_LIBARCHIVE_TAG "v3.8.10" CACHE STRING "libarchive git tag for FetchContent")
+mp_pin(MP_LIBARCHIVE_TAG "v3.8.11" "libarchive git tag for FetchContent")
 if(MP_FETCH_LIBARCHIVE)
   include(FetchContent)
   foreach(opt ENABLE_MBEDTLS ENABLE_NETTLE ENABLE_OPENSSL ENABLE_LIBB2 ENABLE_LZ4
@@ -219,10 +224,10 @@ if(MP_FETCH_LIBARCHIVE)
   # The regex library only serves the command-line tools; searching for one
   # stops the configure on Windows.
   set(POSIX_REGEX_LIB "NONE" CACHE STRING "" FORCE)
-  # 3.8.10 reports every file after an empty last RAR5 block as damaged; the
-  # upstream fix, applied as the source is fetched (#1204).
+  # 3.8.10 and 3.8.11 report every file after an empty last RAR5 block as
+  # damaged; the upstream fix, applied as the source is fetched (#1204).
   set(_mp_libarchive_patch)
-  if(MP_LIBARCHIVE_TAG STREQUAL "v3.8.10")
+  if(MP_LIBARCHIVE_TAG MATCHES "^v3\\.8\\.1[01]$")
     list(APPEND _mp_libarchive_patch PATCH_COMMAND
       "${CMAKE_COMMAND}" "-DSOURCE_DIR=<SOURCE_DIR>"
       -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/LibarchiveRar5.cmake")
@@ -333,7 +338,7 @@ endif()
 # The decoder library only: no programs, plugins or hand-written assembly.
 # BSD-licensed.
 option(MP_FETCH_WAVPACK "Fetch WavPack via FetchContent" ON)
-set(MP_WAVPACK_TAG "5.8.1" CACHE STRING "WavPack git tag for FetchContent")
+mp_pin(MP_WAVPACK_TAG "5.9.0" "WavPack git tag for FetchContent")
 if(MP_FETCH_WAVPACK)
   include(FetchContent)
   foreach(opt WAVPACK_BUILD_PROGRAMS WAVPACK_BUILD_COOLEDIT_PLUGIN
@@ -373,6 +378,12 @@ if(TARGET juce::juce_core)
     # replace one: that switch changes parameter-automation IDs, and JUCE
     # raises a hard #error when it is left on without a VST2 target.
     JUCE_VST3_CAN_REPLACE_VST2=0
+    # On by default since JUCE 9.0.2 and 9.0.3. No organ set ships MP3 or
+    # Opus, and samples from a package are matched by their content against
+    # every registered format: a damaged WAV must stay a failed sample, not
+    # one an MP3 decoder makes something of.
+    JUCE_USE_MP3AUDIOFORMAT=0
+    JUCE_USE_OPUS=0
   )
   # ASIO, on Windows only. It is the driver model a player with a real audio
   # interface will look for, and without it the lowest latency on offer is
