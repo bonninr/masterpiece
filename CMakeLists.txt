@@ -376,6 +376,12 @@ if(TARGET juce::juce_core)
     # replace one: that switch changes parameter-automation IDs, and JUCE
     # raises a hard #error when it is left on without a VST2 target.
     JUCE_VST3_CAN_REPLACE_VST2=0
+    # On by default since JUCE 9.0.2 and 9.0.3. No organ set ships MP3 or
+    # Opus, and samples from a package are matched by their content against
+    # every registered format: a damaged WAV must stay a failed sample, not
+    # one an MP3 decoder makes something of.
+    JUCE_USE_MP3AUDIOFORMAT=0
+    JUCE_USE_OPUS=0
   )
   # ASIO, on Windows only. It is the driver model a player with a real audio
   # interface will look for, and without it the lowest latency on offer is
