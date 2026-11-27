@@ -33,6 +33,8 @@ public:
       MP_CHECK(!p.charge(40 * MB), "a charge that would leave less than the reserve stops the load");
       MP_CHECK(p.memoryLow.load() && p.overBudget.load() && p.isCancelled(),
                "and says it stopped for want of memory");
+      MP_CHECK(p.freeAtStop.load() == 120 * MB && p.askedAtStop.load() == 40 * MB,
+               "with the figures behind it: 120 MB free, 40 MB asked (#1277)");
     }
     {
       mp::LoadProgress p;
@@ -47,8 +49,11 @@ public:
       p.resetBudget(10 * MB);
       MP_CHECK(!p.charge(11 * MB) && p.overBudget.load() && !p.memoryLow.load(),
                "the ceiling still stops a load on its own, and says so");
+      MP_CHECK(p.freeAtStop.load() == -1 && p.askedAtStop.load() == 11 * MB,
+               "at the ceiling, no system figure: 11 MB asked");
       p.resetBudget(10 * MB);
-      MP_CHECK(!p.overBudget.load() && !p.memoryLow.load(), "and a new load starts clear");
+      MP_CHECK(!p.overBudget.load() && !p.memoryLow.load() && p.freeAtStop.load() == -1 && p.askedAtStop.load() == 0,
+               "and a new load starts clear");
     }
   }
 };
@@ -210,6 +215,9 @@ public:
       MP_CHECK(r.ok && r.incomplete && r.memoryLow && r.outOfMemory && !r.stoppedByPlayer,
                "a load stopped for want of memory keeps what it read (" +
                    std::to_string(r.samples.loaded) + " of " + std::to_string(r.samples.wanted) + ")");
+      MP_CHECK(r.freeBytes == 0 && r.samplesBytes > 0 && r.limitBytes > 0 && r.voicesBytes > 0,
+               "and its figures: nothing free, " + std::to_string(r.samplesBytes) + " bytes of samples read, the voices " +
+                   std::to_string(r.voicesBytes) + " bytes of the limit (#1277)");
       proc.setStopEngaged(901, true);
       MP_CHECK(keysThatSound(proc) == r.samples.loaded, "and those keys sound");
       proc.releaseResources();

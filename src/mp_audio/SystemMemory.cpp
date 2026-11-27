@@ -102,6 +102,27 @@ int64_t processMemoryCeilingBytes() {
 #endif
 }
 
+std::string memoryFigures() {
+  const auto mb = [](uint64_t bytes) { return std::to_string(bytes / (1024 * 1024)) + " MB"; };
+#if defined(_WIN32)
+  MEMORYSTATUSEX s{};
+  s.dwLength = sizeof(s);
+  if (!GlobalMemoryStatusEx(&s)) return "no figures from the system";
+  std::string out = "physical " + mb(s.ullAvailPhys) + " free of " + mb(s.ullTotalPhys) + ", commit " +
+                    mb(s.ullAvailPageFile) + " left of " + mb(s.ullTotalPageFile);
+  PROCESS_MEMORY_COUNTERS_EX pmc{};
+  if (GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pmc),
+                           sizeof(pmc)))
+    out += ", this program " + mb(pmc.PrivateUsage) + " committed, " + mb(pmc.WorkingSetSize) + " in memory";
+  return out;
+#else
+  const int64_t free = availableMemoryBytes();
+  const auto total = static_cast<uint64_t>(juce::SystemStats::getMemorySizeInMegabytes()) * 1024 * 1024;
+  return (free >= 0 ? mb(static_cast<uint64_t>(free)) + " available" : std::string("no figure from the system")) +
+         " of " + mb(total);
+#endif
+}
+
 int64_t memoryReserveBytes() {
   const int64_t ceiling = processMemoryCeilingBytes();
   const int64_t total =

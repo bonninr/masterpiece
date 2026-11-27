@@ -67,6 +67,23 @@ bool isStopListKey(const juce::KeyPress& key) {
 
 int columnsFor(int width) { return juce::jmax(1, (width - 8 + kGap) / (kTileWidth + kGap)); }
 
+// The figures behind a load stopped for memory, as a closing sentence of its
+// message (#1277): what the system had free, or how the limit was shared
+// between the voices and the samples.
+juce::String memoryStopFigures(const MasterpieceProcessor::LoadResult& r) {
+  const auto gb = [](int64_t bytes) { return juce::String(static_cast<double>(bytes) / (1024.0 * 1024.0 * 1024.0), 1); };
+  if (r.memoryLow && r.freeBytes >= 0 && r.samplesBytes >= 0)
+    return "\n\n" + TRANS("When it stopped, %1 GB was free for programs, and the samples read so far took %2 GB.")
+                        .replace("%1", gb(r.freeBytes))
+                        .replace("%2", gb(r.samplesBytes));
+  if (!r.memoryLow && r.limitBytes > 0 && r.voicesBytes >= 0)
+    return "\n\n" + TRANS("Of the %1 GB limit, the voices take %2 GB, which leaves %3 GB for the samples.")
+                        .replace("%1", gb(r.limitBytes))
+                        .replace("%2", gb(r.voicesBytes))
+                        .replace("%3", gb(std::max<int64_t>(0, r.limitBytes - r.voicesBytes)));
+  return {};
+}
+
 // A warning that the log explains further, with a button that opens the
 // log's folder. A path alone was taken for one that does not exist: the
 // folder is hidden on Windows (AppData) and on a Mac (Library), and after a
@@ -2323,7 +2340,8 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
                 "open Organ settings from the Settings menu and leave out perspectives or "
                 "stops, or on the Loading tab load 16-bit samples, hold samples compressed or "
                 "stream the release tails.")
-              .replace("%1", odf.getFileNameWithoutExtension()));
+                  .replace("%1", odf.getFileNameWithoutExtension()) +
+              memoryStopFigures(result));
     else if (result.outOfMemory)
       juce::AlertWindow::showMessageBoxAsync(
           juce::MessageBoxIconType::WarningIcon, TRANS("Not enough memory for this organ"),
@@ -2334,7 +2352,8 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
                 "each sample -- or raise the memory limit on the same tab, if this computer has "
                 "the memory to spare.")
               .replace("%1", odf.getFileNameWithoutExtension())
-              .replace("%2", juce::String(proc_.memoryLimitBytes() / (1024.0 * 1024.0 * 1024.0), 1)));
+              .replace("%2", juce::String(proc_.memoryLimitBytes() / (1024.0 * 1024.0 * 1024.0), 1)) +
+              memoryStopFigures(result));
     // The organ's console, without its audio, so the way out is on screen
     // (#53: the only way back was deleting the organ's settings file). The
     // same after Cancel, which is often a load taking too much (#90). Once:
@@ -2504,7 +2523,8 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
             .replace("%1", juce::String(result.samples.loaded))
             .replace("%2", juce::String(result.samples.wanted))
             .replace("%3", juce::String(percent))
-            .replace("%4", juce::String(mp::memoryReserveBytes() / (1024.0 * 1024.0 * 1024.0), 1)));
+            .replace("%4", juce::String(mp::memoryReserveBytes() / (1024.0 * 1024.0 * 1024.0), 1)) +
+            memoryStopFigures(result));
   } else if (!graphicsOnly && result.incomplete) {
     juce::AlertWindow::showMessageBoxAsync(
         juce::MessageBoxIconType::WarningIcon, TRANS("Only part of this organ fits"),
@@ -2516,7 +2536,8 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
             .replace("%1", juce::String(result.samples.loaded))
             .replace("%2", juce::String(result.samples.wanted))
             .replace("%3", juce::String(percent))
-            .replace("%4", juce::String(proc_.memoryLimitBytes() / (1024.0 * 1024.0 * 1024.0), 1)));
+            .replace("%4", juce::String(proc_.memoryLimitBytes() / (1024.0 * 1024.0 * 1024.0), 1)) +
+            memoryStopFigures(result));
   } else if (!graphicsOnly && result.samples.licensed > 0 && !proc_.licenceConfirmed()) {
     // Asked already, before any sample was read, and answered no: said, not
     // asked again. Only a load that could not ask is asked now.

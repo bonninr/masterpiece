@@ -138,6 +138,11 @@ struct LoadProgress {
   int64_t reserveBytes = 0;
   // Stopped because the system ran low, the ceiling not yet reached.
   std::atomic<bool> memoryLow{false};
+  // At a stop for memory: what the system had free (-1 unknown, as at the
+  // ceiling), and what the charge that stopped it asked for. With usedBytes
+  // and budgetBytes, the figures a player is told (#1277).
+  std::atomic<int64_t> freeAtStop{-1};
+  std::atomic<int64_t> askedAtStop{0};
   // Asked at most once in this many bytes charged, and for every charge as
   // large: reading the figure costs a system call.
   static constexpr int64_t kCheckEveryBytes = int64_t{32} * 1024 * 1024;
@@ -149,6 +154,8 @@ struct LoadProgress {
     usedBytes.store(0, std::memory_order_relaxed);
     sinceCheck.store(0, std::memory_order_relaxed);
     memoryLow.store(false, std::memory_order_relaxed);
+    freeAtStop.store(-1, std::memory_order_relaxed);
+    askedAtStop.store(0, std::memory_order_relaxed);
     overBudget.store(false, std::memory_order_release);
   }
   // Count `bytes` against the ceiling and against what the system has free.
@@ -159,20 +166,30 @@ struct LoadProgress {
   bool charge(int64_t bytes) {
     const int64_t used = usedBytes.fetch_add(bytes, std::memory_order_relaxed) + bytes;
     const int64_t budget = budgetBytes.load(std::memory_order_relaxed);
-    if (budget > 0 && used > budget) return stop(false);
+    if (budget > 0 && used > budget) {
+      askedAtStop.store(bytes, std::memory_order_relaxed);
+      return stop(false);
+    }
     if (freeMemory) {
       const int64_t since = sinceCheck.fetch_add(bytes, std::memory_order_relaxed) + bytes;
       if (bytes >= checkEveryBytes || since >= checkEveryBytes) {
         sinceCheck.store(0, std::memory_order_relaxed);
         const int64_t free = freeMemory();
-        if (free >= 0 && free < reserveBytes + bytes) return stop(true);
+        if (free >= 0 && free < reserveBytes + bytes) {
+          freeAtStop.store(free, std::memory_order_relaxed);
+          askedAtStop.store(bytes, std::memory_order_relaxed);
+          return stop(true);
+        }
       }
     }
     return true;
   }
   // The system refused memory outright: the load stops as it does when free
   // memory runs low, keeping what it read.
-  void memoryRefused() { stop(true); }
+  void memoryRefused() {
+    if (freeMemory) freeAtStop.store(freeMemory(), std::memory_order_relaxed);
+    stop(true);
+  }
 
  private:
   bool stop(bool low) {

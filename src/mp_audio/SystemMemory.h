@@ -2,6 +2,7 @@
 // What memory the program may still take before the system refuses it or
 // ends the program, read from the system each time it is asked.
 #include <cstdint>
+#include <string>
 
 namespace mp {
 
@@ -19,5 +20,10 @@ int64_t processMemoryCeilingBytes();
 // What a load leaves free for everything else the program and the system
 // need while it plays: the larger of 256 MB and 1/20 of the memory.
 int64_t memoryReserveBytes();
+
+// The system's own figures behind availableMemoryBytes(), for the log: on
+// Windows the physical memory and the commit apart, since either can be the
+// one that runs short (#1277).
+std::string memoryFigures();
 
 }  // namespace mp

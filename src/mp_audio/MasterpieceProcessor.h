@@ -219,6 +219,10 @@ public:
     bool incomplete = false;
     // Stopped because the system had little memory left, before the limit.
     bool memoryLow = false;
+    // At a stop for memory, the figures behind it (#1277): the limit and the
+    // voices' share of it, what the samples had taken, and, when the system
+    // ran low, what it had free and what is kept free for it. -1 unknown.
+    int64_t limitBytes = -1, voicesBytes = -1, samplesBytes = -1, freeBytes = -1, reserveBytes = -1;
     // Stopped by the player's Cancel while the samples were being read.
     bool stoppedByPlayer = false;
     // The licence was asked about during this load (licenceAsker), so the
