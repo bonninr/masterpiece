@@ -352,6 +352,8 @@ void PlayerCombinations::reset(std::vector<Element> elements,
   generals_.assign(kMaxGenerals + 1, blank);
   generalNames_.assign(kMaxGenerals + 1, std::string());
   frames_.assign(kMaxFrames + 1, blank);
+  crescendo_.assign(kCrescendoSteps + 1, blank);
+  crescendoDrew_.assign(elements_.size(), 0);
   divisionals_.assign(divisions_.size() * (kMaxDivisionals + 1), blank);
   litDivisional_.assign(divisions_.size(), 0);
   clearAll();
@@ -360,7 +362,9 @@ void PlayerCombinations::reset(std::vector<Element> elements,
 void PlayerCombinations::clearAll() {
   generalCount_ = kDefaultGenerals;
   divisionalCount_ = kDefaultDivisionals;
-  for (auto* bank : {&generals_, &frames_, &divisionals_})
+  std::fill(crescendoDrew_.begin(), crescendoDrew_.end(), 0);
+  crescendoStep_ = 0;
+  for (auto* bank : {&generals_, &frames_, &divisionals_, &crescendo_})
     for (auto& r : *bank) {
       r.set = false;
       std::fill(r.drawn.begin(), r.drawn.end(), 0);
@@ -584,6 +588,96 @@ void PlayerCombinations::lightDivisional(Id divisionId, int n) {
   if (d >= 0) litDivisional_[static_cast<size_t>(d)] = n;
 }
 
+// ------------------------------------------------------------- crescendo
+
+bool PlayerCombinations::crescendoSet(int step) const {
+  return step >= 1 && step <= kCrescendoSteps && crescendo_[static_cast<size_t>(step)].set;
+}
+
+int PlayerCombinations::crescendoSetCount() const {
+  int n = 0;
+  for (int s = 1; s <= kCrescendoSteps; ++s) n += crescendoSet(s) ? 1 : 0;
+  return n;
+}
+
+int PlayerCombinations::crescendoStepOf(int value) {
+  if (value <= 0) return 0;
+  if (value >= 127) return kCrescendoSteps;
+  return std::clamp((value * kCrescendoSteps + 126) / 127, 1, kCrescendoSteps);
+}
+
+void PlayerCombinations::moveCrescendo(int step, const Reader& isEngaged,
+                                       std::vector<Change>& out) {
+  step = std::clamp(step, 0, kCrescendoSteps);
+  crescendoStep_ = step;
+  // A step never set takes the nearest set one below it.
+  const Registration* target = nullptr;
+  for (int s = step; s >= 1 && target == nullptr; --s)
+    if (crescendo_[static_cast<size_t>(s)].set) target = &crescendo_[static_cast<size_t>(s)];
+  for (size_t i = 0; i < elements_.size(); ++i) {
+    const Element& e = elements_[i];
+    if (left(e)) continue;
+    const bool want = target != nullptr && target->drawn[i] != 0;
+    const bool on = isEngaged && isEngaged(e);
+    if (want) {
+      if (!on) {
+        out.push_back({e.kind, e.id, true});
+        crescendoDrew_[i] = 1;
+      }
+    } else if (crescendoDrew_[i] != 0) {
+      if (on) out.push_back({e.kind, e.id, false});
+      crescendoDrew_[i] = 0;
+    }
+  }
+}
+
+bool PlayerCombinations::storeCrescendo(int step, const Reader& isEngaged) {
+  if (step < 1 || step > kCrescendoSteps) return false;
+  captureInto(crescendo_[static_cast<size_t>(step)], 0, true, isEngaged);
+  return true;
+}
+
+bool PlayerCombinations::captureCrescendo(int step, const Reader& isEngaged) {
+  if (!storeCrescendo(step, isEngaged)) return false;
+  const Registration& r = crescendo_[static_cast<size_t>(step)];
+  for (size_t i = 0; i < elements_.size(); ++i)
+    if (r.drawn[i] != 0) crescendoDrew_[i] = 1;
+  crescendoStep_ = step;
+  return true;
+}
+
+void PlayerCombinations::clearCrescendo(int step) {
+  if (step < 1 || step > kCrescendoSteps) return;
+  Registration& r = crescendo_[static_cast<size_t>(step)];
+  r.set = false;
+  std::fill(r.drawn.begin(), r.drawn.end(), 0);
+}
+
+bool PlayerCombinations::fillCrescendo(const std::vector<Suggestion>& graded) {
+  if (graded.empty() || crescendoSetCount() > 0) return false;
+  // The stops in the order the levels bring them in: PP's, then what P adds,
+  // and so on to Tutti. Step s holds the first s/32 of them.
+  std::vector<size_t> order;
+  std::vector<char> taken(elements_.size(), 0);
+  for (const auto& level : graded)
+    for (size_t i = 0; i < elements_.size() && i < level.drawn.size(); ++i) {
+      const bool kept = i < level.kept.size() && level.kept[i] != 0;
+      if (level.drawn[i] != 0 && !kept && taken[i] == 0) {
+        taken[i] = 1;
+        order.push_back(i);
+      }
+    }
+  if (order.empty()) return false;
+  for (int s = 1; s <= kCrescendoSteps; ++s) {
+    Registration& r = crescendo_[static_cast<size_t>(s)];
+    r.set = true;
+    std::fill(r.drawn.begin(), r.drawn.end(), 0);
+    const size_t n = std::max<size_t>(1, (order.size() * static_cast<size_t>(s) + kCrescendoSteps - 1) / kCrescendoSteps);
+    for (size_t k = 0; k < n && k < order.size(); ++k) r.drawn[order[k]] = 1;
+  }
+  return true;
+}
+
 // --------------------------------------------------------------- stepper
 
 int PlayerCombinations::lastUsedFrame() const {
@@ -688,6 +782,11 @@ std::string PlayerCombinations::toText() const {
       out << "frame " << n;
       keys(frames_[static_cast<size_t>(n)]);
     }
+  for (int n = 1; n <= kCrescendoSteps; ++n)
+    if (crescendo_[static_cast<size_t>(n)].set) {
+      out << "crescendo " << n;
+      keys(crescendo_[static_cast<size_t>(n)]);
+    }
   for (int n = 1; n <= kMaxGenerals; ++n)
     if (!generalName(n).empty()) out << "generalname " << n << ' ' << generalName(n) << '\n';
   for (const auto& [key, name] : divisionalNames_)
@@ -742,6 +841,10 @@ bool PlayerCombinations::fromText(const std::string& text) {
       int n = 0;
       if (!(ls >> n) || n < 1 || n > kMaxFrames) { ok = false; continue; }
       readKeys(ls, frames_[static_cast<size_t>(n)]);
+    } else if (what == "crescendo") {
+      int n = 0;
+      if (!(ls >> n) || n < 1 || n > kCrescendoSteps) { ok = false; continue; }
+      readKeys(ls, crescendo_[static_cast<size_t>(n)]);
     } else if (what == "divisionalname") {
       long long div = 0;
       int n = 0;

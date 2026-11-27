@@ -662,7 +662,7 @@ public:
   // drawn since: where a momentary Set stores (#276). Choose General 3, draw
   // the registration, press Set.
   struct StoreTarget {
-    enum class Kind { None, General, Divisional, Step };
+    enum class Kind { None, General, Divisional, Step, Crescendo };
     Kind kind = Kind::None;
     Id divisionId = 0;
     int n = 0;
@@ -1997,6 +1997,25 @@ public:
   // first of them, each named. A general already set is never touched.
   // Returns how many were stored. Message thread.
   int fillReadyMadeGenerals();
+
+  // The player's crescendo (#1221), on an organ with no crescendo of its own:
+  // a pedal under Expression, steps kept with the combinations
+  // (PlayerCombinations::moveCrescendo). GrandOrgue sets count on
+  // GrandOrgue's crescendo and declare none, so they get this one.
+  // The pedal's control, or 0 when the organ has its own crescendo.
+  static constexpr Id kPlayerCrescendoId = 2140000001;
+  Id playerCrescendoControl() const { return playerCrescendo_; }
+  int playerCrescendoStep() const { return player_.crescendoStep(); }
+  bool playerCrescendoStepSet(int step) const { return player_.crescendoSet(step); }
+  // Moves the pedal to a step, as a player would, firing the registration.
+  void gotoCrescendoStep(int step);
+  // What is drawn, into a step; and a step back to unused.
+  bool storeCrescendoStep(int step);
+  void clearCrescendoStep(int step);
+  // The ready-made registrations spread over the 32 steps, from PP to Tutti,
+  // when none is set yet. False when some step is set or the organ offers
+  // nothing to grade. Message thread.
+  bool fillCrescendoSteps();
   // The values the echo sends (#1185). A pad grid takes a Note On's velocity
   // as a colour: lit in one colour, dark in a dimmer one. `lit` 1..127, 127
   // by default; `dark` 0..127, or -1 for a Note Off, the default. A
@@ -2809,6 +2828,8 @@ private:
   // Shoe positions that move switches: the crescendo, the blower, enclosure
   // noises. Needs the previous position, because each row is a crossing.
   PlayerCombinations player_;
+  Id playerCrescendo_ = 0;  // kPlayerCrescendoId when the organ has no crescendo
+  std::vector<PlayerCombinations::Suggestion> readyMadeSuggestions() const;
   // Sized at load, like recallScratch_: a piston pressed on the audio thread
   // must not allocate.
   std::vector<PlayerCombinations::Change> playerScratch_;

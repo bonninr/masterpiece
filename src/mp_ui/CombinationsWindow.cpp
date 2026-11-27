@@ -209,6 +209,35 @@ CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
           safe->applyView();
         }));
   };
+  addChildComponent(crescendoLabel_);
+  styleHeading(crescendoLabel_, TRANS("Crescendo"));
+  for (juce::Component* c : std::initializer_list<juce::Component*>{&crescendoDown_, &crescendoUp_, &crescendoStep_,
+                                                                     &crescendoClear_, &crescendoFill_})
+    addChildComponent(c);
+  crescendoStep_.setJustificationType(juce::Justification::centred);
+  crescendoStep_.setColour(juce::Label::textColourId, kText);
+  crescendoDown_.setTooltip(TRANS("The crescendo pedal a step back"));
+  crescendoUp_.setTooltip(TRANS("The crescendo pedal a step on"));
+  crescendoStep_.setTooltip(TRANS("Move the crescendo pedal to a step, draw the stops it should add, and press Set. "
+                                  "A step not set adds what the step below it adds."));
+  crescendoDown_.onClick = [this] { proc_.gotoCrescendoStep(proc_.playerCrescendoStep() - 1); };
+  crescendoUp_.onClick = [this] { proc_.gotoCrescendoStep(proc_.playerCrescendoStep() + 1); };
+  crescendoClear_.setTooltip(TRANS("Empty the step the pedal is on"));
+  crescendoClear_.onClick = [this] { proc_.clearCrescendoStep(proc_.playerCrescendoStep()); };
+  crescendoFill_.setTooltip(TRANS("All 32 steps from this organ's stop names, from PP to Tutti, a few stops a step"));
+  crescendoFill_.onClick = [this] {
+    juce::Component::SafePointer<CombinationsPanel> safe(this);
+    juce::AlertWindow::showOkCancelBox(
+        juce::MessageBoxIconType::QuestionIcon, TRANS("Ready-made crescendo"),
+        TRANS("Fill the 32 crescendo steps from this organ's stop names, from PP to Tutti? Each step can be changed "
+              "with Set afterwards."),
+        TRANS("Fill"), TRANS("Cancel"), this, juce::ModalCallbackFunction::create([safe](int result) {
+          if (result != 1 || safe == nullptr) return;
+          safe->proc_.fillCrescendoSteps();
+          safe->refreshState();
+        }));
+  };
+
   fewerDivisionals_.onClick = [changeCounts] { changeCounts(0, -1); };
   moreDivisionals_.onClick = [changeCounts] { changeCounts(0, 1); };
 
@@ -340,6 +369,9 @@ void CombinationsPanel::applyView() {
     for (auto& b : d.pistons) b->setVisible(combinationsShown());
     if (d.cancel != nullptr) d.cancel->setVisible(combinationsShown());
   }
+  for (juce::Component* c : std::initializer_list<juce::Component*>{
+           &crescendoLabel_, &crescendoDown_, &crescendoUp_, &crescendoStep_, &crescendoClear_, &crescendoFill_})
+    c->setVisible(crescendoShown());
   pedalCoupler_.setVisible(divisionals && proc_.coupledDivisions().valid());
   pedalManual_.setVisible(pedalCoupler_.isVisible());
   stepPrev_.setButtonText(levels_ ? "-" : "<");
@@ -453,6 +485,7 @@ int CombinationsPanel::preferredHeight(int /*width*/) const {
     h += kHeading + kGap + generalRows(pc.generalCount()) * (generalH() + kGap) + kSection;
   if (combinationsShown() && !divisions_.empty())
     h += kHeading + kGap + static_cast<int>(divisions_.size()) * divisionalRows() * (divisionalH() + kGap) + kSection;
+  if (crescendoShown()) h += kRow + kSection;
   h += kRow + kGap + kNoteH + kMargin;
   return h;
 }
@@ -562,6 +595,18 @@ void CombinationsPanel::resized() {
     r.removeFromTop(kSection);
   }
 
+  if (crescendoShown()) {
+    row = r.removeFromTop(kRow);
+    crescendoLabel_.setBounds(row.removeFromLeft(kDivisionLabelW));
+    crescendoDown_.setBounds(row.removeFromLeft(34).reduced(1));
+    crescendoStep_.setBounds(row.removeFromLeft(150));
+    crescendoUp_.setBounds(row.removeFromLeft(34).reduced(1));
+    row.removeFromLeft(kGap * 2);
+    crescendoClear_.setBounds(row.removeFromLeft(juce::jmin(row.getWidth(), 90)).reduced(1));
+    crescendoFill_.setBounds(row.removeFromLeft(juce::jmin(row.getWidth(), 110)).reduced(1));
+    r.removeFromTop(kSection);
+  }
+
   row = r.removeFromTop(kRow);
   setLabel_.setBounds(row.removeFromLeft(kDivisionLabelW));
   setBox_.setBounds(row.removeFromLeft(200).reduced(1));
@@ -591,6 +636,8 @@ void CombinationsPanel::refreshState() {
   const auto& pc = proc_.playerCombinations();
   // A count changed elsewhere -- a set switched to, or a file loaded -- means
   // the rows are out of date, not just their colours.
+  // Another organ, with or without a crescendo of its own.
+  if (crescendoLabel_.isVisible() != crescendoShown()) applyView();
   if (static_cast<int>(generals_.size()) != pc.generalCount() ||
       divisions_.size() != pc.divisions().size() ||
       (!divisions_.empty() &&
@@ -659,6 +706,19 @@ void CombinationsPanel::refreshState() {
   stepFirst_.setEnabled(pc.frame() != 1);
   stepBack10_.setEnabled(pc.frame() > 1);
   stepForward10_.setEnabled(pc.frame() < PlayerCombinations::kMaxFrames);
+
+  if (crescendoShown()) {
+    const int step = proc_.playerCrescendoStep();
+    juce::String text = step == 0 ? TRANS("Closed, %1 set").replace("%1", juce::String(pc.crescendoSetCount()))
+                                  : TRANS("Step %1 of %2").replace("%1", juce::String(step))
+                                        .replace("%2", juce::String(PlayerCombinations::kCrescendoSteps));
+    if (step > 0 && !pc.crescendoSet(step)) text += TRANS(", empty");
+    crescendoStep_.setText(text, juce::dontSendNotification);
+    crescendoDown_.setEnabled(step > 0);
+    crescendoUp_.setEnabled(step < PlayerCombinations::kCrescendoSteps);
+    crescendoClear_.setEnabled(step > 0 && pc.crescendoSet(step));
+    crescendoFill_.setEnabled(pc.crescendoSetCount() == 0);
+  }
 
   stepLast_.setEnabled(last > 0 && pc.frame() != last);
   deleteFrame_.setEnabled(pc.frame() >= 1 && last > 0);
@@ -803,6 +863,10 @@ void CombinationsPanel::showMidiMenu(PistonButton& b, MidiTargetKind kind,
             break;
         }
       });
+}
+
+bool CombinationsPanel::crescendoShown() const {
+  return !simple_ && combinationsShown() && proc_.playerCrescendoControl() != 0;
 }
 
 bool CombinationsPanel::namedGenerals() const {

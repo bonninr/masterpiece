@@ -1,6 +1,5 @@
 "Registrations: %1 of the organ's pistons, %2 generals, %3 sequencer steps, %4 divisionals" = "Registrace: %1 pistonů varhan, %2 generálních, %3 kroků sekvenceru, %4 dílčích"
 "Beyond Masterpiece's pistons, left out: %1 generals, %2 sequencer steps, %3 divisionals" = "Nad rámec pistonů Masterpiece, vynecháno: %1 generálních, %2 kroků sekvenceru, %3 dílčích"
-"Crescendo stages, left out: %1" = "Stupně crescenda, vynecháno: %1"
 "Registration entries with nothing to work here, left out: %1" = "Položky registrací bez protějšku zde, vynecháno: %1"
 "Voicing: %1 ranks, %2 pipes" = "Intonace: %1 rejstříků, %2 píšťal"
 "Voicing values beyond Masterpiece's range, taken to its edge: %1" = "Hodnoty intonace mimo rozsah Masterpiece, nastavené na jeho mez: %1"

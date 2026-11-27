@@ -240,7 +240,14 @@ GrandOrgueSettings readGrandOrgueSettings(const std::string& text, const OrganMo
       out.divisionals[{division, b + 1}] = r.divisional(s, a);
       ++report.divisionals;
     } else if (std::sscanf(name.c_str(), "settercrescendo%d_%d%c", &a, &b, &tail) == 2) {
-      ++report.crescendoStages;
+      // Bank a (A to D as 1 to 4), step b: bank A becomes the player's
+      // crescendo (#1221); the other banks have nowhere to go.
+      if (a != 1 || b < 1 || b > 32) {
+        ++report.crescendoStages;
+        continue;
+      }
+      out.crescendo[b] = r.general(s);
+      ++report.crescendoSteps;
     } else if (std::sscanf(name.c_str(), "settergeneral%d%c", &a, &tail) == 1) {
       if (a < 1 || a > 100) {
         ++report.generalsLeftOut;

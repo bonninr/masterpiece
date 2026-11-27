@@ -68,7 +68,7 @@ const char* const kCmb =
     "[FrameGeneral002]\r\nNumberOfStops=1\r\nStopManual001=2\r\nStopNumber001=1\r\n"
     "[Setter001Divisional000]\r\nNumberOfStops=1\r\nStop001=2\r\nNumberOfSwitches=1\r\nSwitch001=1\r\n"
     "[Setter001Divisional020]\r\nNumberOfStops=1\r\nStop001=1\r\n"
-    // A crescendo stage: no programmable crescendo here.
+    // The crescendo's bank A, step 1: the player's crescendo (#1221).
     "[SetterCrescendo1_001]\r\nNumberOfStops=1\r\nStopManual001=1\r\nStopNumber001=1\r\n"
     // The voicing: the windchest 3 dB down from its own -2, the rank at half
     // its own 80 per cent and 10 cents up, darker, and grouped; its second
@@ -137,7 +137,8 @@ public:
       MP_CHECK(s.generals.at(1).full, "IsFull is read");
       MP_CHECK(rep.frames == 1 && s.frames.count(2) == 1, "the sequencer frame 2");
       MP_CHECK(rep.divisionals == 1 && rep.divisionalsLeftOut == 1, "the Great's divisional 1 kept, 21 left out");
-      MP_CHECK(rep.crescendoStages == 1, "the crescendo stage is counted");
+      MP_CHECK(rep.crescendoSteps == 1 && rep.crescendoStages == 0 && s.crescendo.count(1) == 1,
+               "the crescendo's bank A step 1, for the player's crescendo (#1221)");
 
       // The organ's piston recalls what the file names, the definition's
       // own element and the others alike.
@@ -201,6 +202,9 @@ public:
       }
       MP_CHECK(principalOn && octaveOff, "the player's general 1: the Principal, and the rest retired");
       MP_CHECK(proc.playerCombinations().frameSet(2), "the sequencer's step 2 is set");
+      // No crescendo in the organ: the player's, with GrandOrgue's step 1.
+      MP_CHECK(proc.playerCrescendoControl() != 0 && proc.playerCrescendoStepSet(1),
+               "the player's crescendo, its step 1 from the file (#1221)");
       MP_CHECK(near(proc.voicing().live().rank(rank).gainDb, rv.gainDb) &&
                    near(proc.voicing().live().rank(rank).tuningCents, 10.0),
                "the rank's voicing is on the Voicing page");
