@@ -18,7 +18,7 @@ CMake fetches these libraries; nothing else needs installing for them:
 | JUCE | tag `9.0.6` | audio, GUI, plugin wrappers | `MP_FETCH_JUCE`, `MP_JUCE_TAG` |
 | pugixml | tag `v1.16` | the definition loader (`mp_core`) | `MP_FETCH_PUGIXML`, `MP_PUGIXML_TAG` |
 | libarchive | tag `v3.8.11` | RAR 5, non-solid RAR 4 and `.orgue` packages (`mp_archive`) | `MP_FETCH_LIBARCHIVE`, `MP_LIBARCHIVE_TAG` |
-| unarr | commit `9c8e898b...` | solid RAR 4 packages (`mp_archive`); only its RAR 4 reader is compiled | `MP_FETCH_UNARR`, `MP_UNARR_COMMIT` |
+| unarr | tag `v1.2.1` | solid RAR 4 packages (`mp_archive`); only its RAR 4 reader is compiled | `MP_FETCH_UNARR`, `MP_UNARR_TAG` |
 | WavPack | tag `5.9.0` | WavPack-compressed samples | `MP_FETCH_WAVPACK`, `MP_WAVPACK_TAG` |
 
 The tags are cache variables. A build folder configured with an older release is raised to the tag above on its next configure; a branch or commit set there is kept.
