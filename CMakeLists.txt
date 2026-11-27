@@ -260,15 +260,18 @@ endif()
 #
 # Only its RAR 4 reader is built, from the sources, rather than through its
 # own CMake: that one asks for CMake 3.25 and builds 7z, ZIP and tar besides.
-# Pinned to a commit: the library is small and the RAR code rarely changes.
+# v1.2.0 fixed an out-of-bounds write in its RAR filters and an out-of-bounds
+# read in its RAR file names (GHSA-r5fr-9636-6xpp, GHSA-3pwm-h93f-p4qh), both
+# in the reader built here. A tag now, so an older one in a build folder is
+# raised; the commit pinned before had neither fix.
 option(MP_FETCH_UNARR "Fetch unarr via FetchContent" ON)
-set(MP_UNARR_COMMIT "9c8e898bb3dc2ee9d368b0e945d5bb453e15c187" CACHE STRING "unarr commit")
+mp_pin(MP_UNARR_TAG "v1.2.1" "unarr git tag for FetchContent")
 if(MP_FETCH_UNARR)
   include(FetchContent)
   FetchContent_Declare(
     unarr
     GIT_REPOSITORY https://github.com/selmf/unarr.git
-    GIT_TAG ${MP_UNARR_COMMIT}
+    GIT_TAG ${MP_UNARR_TAG}
     # Fetched, not configured: nothing lives in this subdirectory, so
     # MakeAvailable adds no project of its own.
     SOURCE_SUBDIR not-built
@@ -276,8 +279,8 @@ if(MP_FETCH_UNARR)
   FetchContent_MakeAvailable(unarr)
   set(unarr_VERSION_MAJOR 1)
   set(unarr_VERSION_MINOR 2)
-  set(unarr_VERSION_PATCH 0)
-  set(unarr_VERSION 1.2.0)
+  set(unarr_VERSION_PATCH 1)
+  set(unarr_VERSION 1.2.1)
   configure_file(${unarr_SOURCE_DIR}/unarr.h.in ${CMAKE_BINARY_DIR}/unarr-include/unarr.h @ONLY)
   # One fix to unarr's RAR 3 decoder, compiled from a copy in the build tree.
   # A block's new LZ tables start the repeated low distance afresh, as the
