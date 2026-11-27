@@ -10835,9 +10835,31 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   // pressed Cancel. The stops whose samples arrived play; the rest are
   // silent, and the organ says it is incomplete, so the player can leave out
   // perspectives or stops until it fits, or load it again in full.
+  //
+  // A stop for memory says its figures, in the log and to the player
+  // (#1277): the limit with the voices' share taken off it, what the samples
+  // took, and what the system had free. A stop that varies from one load to
+  // the next is the system's figure; one at the same place, the limit's.
+  const auto memoryStopFigures = [&](LoadResult& r) {
+    const double ring = releaseBufferSeconds_ > 0.0 ? releaseBufferSeconds_ : kShortestRingSeconds;
+    r.limitBytes = memoryLimitBytes();
+    r.voicesBytes = voicePoolBytes(voicePool(), ring);
+    r.samplesBytes = std::max<int64_t>(0, loadProgress_.usedBytes.load(std::memory_order_relaxed) -
+                                              loadProgress_.askedAtStop.load(std::memory_order_relaxed));
+    r.freeBytes = loadProgress_.freeAtStop.load(std::memory_order_relaxed);
+    r.reserveBytes = loadProgress_.reserveBytes;
+    const auto mb = [](int64_t b) { return juce::String(b / (1024 * 1024)) + " MB"; };
+    juce::String line = "load: memory at the stop: limit " + mb(r.limitBytes) + ", of it voices " +
+                        mb(r.voicesBytes) + " (" + juce::String(voicePool()) + "), samples " +
+                        mb(r.samplesBytes) + " read, " +
+                        mb(loadProgress_.askedAtStop.load(std::memory_order_relaxed)) + " more asked";
+    if (r.freeBytes >= 0) line << "; free " << mb(r.freeBytes) << ", reserve " << mb(r.reserveBytes);
+    juce::Logger::writeToLog(line + "; system: " + juce::String(memoryFigures()));
+  };
   if (loadProgress_.isCancelled() && result.samples.loaded > 0) {
     const bool overBudget = loadProgress_.overBudget.load(std::memory_order_acquire);
     const bool low = loadProgress_.memoryLow.load(std::memory_order_relaxed);
+    if (overBudget) memoryStopFigures(result);
     juce::Logger::writeToLog(juce::String("load: ") +
                              (!overBudget ? "cancelled by the player"
                               : low       ? "stopped: the system has little memory left"
@@ -10856,6 +10878,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     juce::Logger::writeToLog(outOfMemory
                                  ? "load: stopped at the memory limit, discarding partial organ"
                                  : "load: cancelled, discarding partial organ");
+    if (outOfMemory) memoryStopFigures(result);
     samples_.clear();
     model_ = OrganModel{};
     pipeById_.clear();

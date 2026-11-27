@@ -1,0 +1,2 @@
+"When it stopped, %1 GB was free for programs, and the samples read so far took %2 GB." = "W chwili zatrzymania dla programów było wolne %1 GB, a dotąd wczytane sample zajmowały %2 GB."
+"Of the %1 GB limit, the voices take %2 GB, which leaves %3 GB for the samples." = "Z limitu %1 GB głosy zajmują %2 GB, co zostawia %3 GB na sample."
