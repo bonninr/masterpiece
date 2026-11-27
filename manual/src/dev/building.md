@@ -15,11 +15,13 @@ CMake fetches these libraries; nothing else needs installing for them:
 
 | Library | Version | Used by | Option |
 |---|---|---|---|
-| JUCE | tag `9.0.1` | audio, GUI, plugin wrappers | `MP_FETCH_JUCE`, `MP_JUCE_TAG` |
-| pugixml | tag `v1.14` | the definition loader (`mp_core`) | `MP_FETCH_PUGIXML`, `MP_PUGIXML_TAG` |
-| libarchive | tag `v3.8.10` | RAR 5, non-solid RAR 4 and `.orgue` packages (`mp_archive`) | `MP_FETCH_LIBARCHIVE`, `MP_LIBARCHIVE_TAG` |
+| JUCE | tag `9.0.6` | audio, GUI, plugin wrappers | `MP_FETCH_JUCE`, `MP_JUCE_TAG` |
+| pugixml | tag `v1.16` | the definition loader (`mp_core`) | `MP_FETCH_PUGIXML`, `MP_PUGIXML_TAG` |
+| libarchive | tag `v3.8.11` | RAR 5, non-solid RAR 4 and `.orgue` packages (`mp_archive`) | `MP_FETCH_LIBARCHIVE`, `MP_LIBARCHIVE_TAG` |
 | unarr | commit `9c8e898b...` | solid RAR 4 packages (`mp_archive`); only its RAR 4 reader is compiled | `MP_FETCH_UNARR`, `MP_UNARR_COMMIT` |
-| WavPack | tag `5.8.1` | WavPack-compressed samples | `MP_FETCH_WAVPACK`, `MP_WAVPACK_TAG` |
+| WavPack | tag `5.9.0` | WavPack-compressed samples | `MP_FETCH_WAVPACK`, `MP_WAVPACK_TAG` |
+
+The tags are cache variables. A build folder configured with an older release is raised to the tag above on its next configure; a branch or commit set there is kept.
 
 libarchive is configured with every optional codec, crypto backend and command-line tool switched off; its own RAR decoders are the only ones used. WavPack is built as the decoder library only, with support for WavPack 1 to 3 files enabled.
 
@@ -63,7 +65,7 @@ sudo apt-get install -y build-essential git cmake ninja-build pkg-config \
 
 ## Presets
 
-`CMakePresets.json` (version 6) holds the configure, build and test presets. All of them derive from the hidden preset `base`, which selects the Ninja generator, the build directory `build/<preset>`, the install directory `install/<preset>`, `MP_FETCH_JUCE=ON` and `MP_JUCE_TAG=9.0.1`.
+`CMakePresets.json` (version 6) holds the configure, build and test presets. All of them derive from the hidden preset `base`, which selects the Ninja generator, the build directory `build/<preset>`, the install directory `install/<preset>`, `MP_FETCH_JUCE=ON` and `MP_JUCE_TAG=9.0.6`.
 
 | Preset | Configuration | What it builds | Used for |
 |---|---|---|---|
@@ -102,7 +104,7 @@ A file named `CMakeUserPresets.json` is ignored by Git and holds personal preset
 | `MP_ENABLE_LTO` | `ON` | Turns on interprocedural optimisation in Release builds when the compiler supports it. |
 | `MP_NATIVE_ARCH` | `OFF` | Compiles for the build machine's CPU: `-march=native`, or `/arch:AVX2` on MSVC. Leave it off for builds that run on other machines. |
 | `MP_FETCH_JUCE` | `ON` | Fetches JUCE with `FetchContent`. With `OFF`, CMake calls `find_package(JUCE CONFIG REQUIRED)`. |
-| `MP_JUCE_TAG` | `9.0.1` | The JUCE tag to fetch. |
+| `MP_JUCE_TAG` | `9.0.6` | The JUCE tag to fetch. |
 | `MP_JUCE_REPO_URL` | the JUCE GitHub repository | Where to fetch JUCE from. |
 | `MP_JUCE_SOURCE_DIR` | empty | A local JUCE checkout to use in place of a fetch. Read when `MP_FETCH_JUCE` is `ON`. |
 | `MP_FETCH_PUGIXML`, `MP_FETCH_LIBARCHIVE`, `MP_FETCH_UNARR`, `MP_FETCH_WAVPACK` | `ON` | Fetch the library. With `OFF`, CMake looks for an installed copy with `find_package`. |

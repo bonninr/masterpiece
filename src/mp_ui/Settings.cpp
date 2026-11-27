@@ -2633,7 +2633,7 @@ void MidiPanel::importFromGrandOrgue() {
             .withIconType(juce::MessageBoxIconType::InfoIcon)
             .withTitle(TRANS("From GrandOrgue"))
             .withMessage(TRANS("Load this organ from its GrandOrgue .organ file to bring its MIDI settings over."))
-            .withButton(TRANS("OK"))
+            .withButton(TRANS("OK"), 0)
             .withAssociatedComponent(this),
         nullptr);
     return;
@@ -2697,7 +2697,7 @@ void MidiPanel::importFromGrandOrgue() {
                                          .withIconType(juce::MessageBoxIconType::InfoIcon)
                                          .withTitle(TRANS("From GrandOrgue"))
                                          .withMessage(lines.joinIntoString("\n"))
-                                         .withButton(TRANS("OK"))
+                                         .withButton(TRANS("OK"), 0)
                                          .withAssociatedComponent(self.getComponent()),
                                      nullptr);
       });
