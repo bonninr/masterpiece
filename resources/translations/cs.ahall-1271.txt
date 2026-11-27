@@ -2,7 +2,6 @@
 "%1 is not among the favourites. A favourite opens from the Open window's list, or from a piston, without looking for the organ again." = "%1 není mezi oblíbenými. Oblíbené se otevírá ze seznamu okna Otevřít nebo tlačítkem, bez dalšího hledání varhan."
 "Add and quit" = "Přidat a ukončit"
 "MIDI keyboards in the status line" = "Klaviatury MIDI na stavovém řádku"
-"ch %1" = "kanál %1"
 "Help: this tab in the manual" = "Nápověda: tato karta v příručce"
 "Controls" = "Ovladače"
 "Controls that bring the %1 to one of your keyboards" = "Ovladače, které přivedou „%1“ na jednu z vašich klaviatur"

@@ -2,7 +2,6 @@
 "%1 is not among the favourites. A favourite opens from the Open window's list, or from a piston, without looking for the organ again." = "%1 ne fait pas partie des favoris. Un favori s'ouvre depuis la liste de la fenêtre Ouvrir, ou depuis un piston, sans rechercher l'orgue à nouveau."
 "Add and quit" = "Ajouter et quitter"
 "MIDI keyboards in the status line" = "Claviers MIDI dans la barre d'état"
-"ch %1" = "canal %1"
 "Help: this tab in the manual" = "Aide : cet onglet dans le manuel"
 "Controls" = "Commandes"
 "Controls that bring the %1 to one of your keyboards" = "Commandes qui amènent « %1 » sur l'un de vos claviers MIDI"

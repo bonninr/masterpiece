@@ -2,7 +2,6 @@
 "%1 is not among the favourites. A favourite opens from the Open window's list, or from a piston, without looking for the organ again." = "%1 staat niet bij de favorieten. Een favoriet opent vanuit de lijst van het venster Openen, of met een drukknop, zonder het orgel opnieuw te zoeken."
 "Add and quit" = "Toevoegen en afsluiten"
 "MIDI keyboards in the status line" = "MIDI-toetsenborden in de statusregel"
-"ch %1" = "kanaal %1"
 "Help: this tab in the manual" = "Help: dit tabblad in de handleiding"
 "Controls" = "Knoppen"
 "Controls that bring the %1 to one of your keyboards" = "Knoppen die “%1” op een van je toetsenborden leggen"
