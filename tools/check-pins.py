@@ -40,7 +40,9 @@ MARKER = re.compile(r"<!-- check-pins: ([^>]*) -->")
 SEVERITY = {"critical": 0, "high": 1, "medium": 2, "moderate": 2, "low": 3}
 
 DECLARE = re.compile(r"\bFetchContent_Declare\s*\(([^)]*)\)", re.S)
-SET = re.compile(r'^[ \t]*set\(\s*([A-Za-z0-9_]+)\s+(?:"([^"]*)"|([^\s)"]+))', re.M)
+# set(VAR value ...), and mp_pin(VAR default doc), the top-level CMakeLists.txt's
+# cache variable for a pin. Not the set(${var} ...) inside mp_pin itself.
+SET = re.compile(r'^[ \t]*(?i:set|mp_pin)\(\s*([A-Za-z0-9_]+)\s+(?:"([^"]*)"|([^\s)"]+))', re.M)
 VAR = re.compile(r"\$\{([A-Za-z0-9_]+)\}")
 TOKEN = re.compile(r'"[^"]*"|[^\s"]+')
 GITHUB = re.compile(r"github\.com[/:]([^/\s]+)/([^/\s]+?)(?:\.git)?/?$")
