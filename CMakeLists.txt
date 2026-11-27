@@ -187,7 +187,9 @@ else()
   set(MP_ENABLE_API_DEFAULT ON)
 endif()
 option(MP_ENABLE_API "The control API and web console (HTTP)" ${MP_ENABLE_API_DEFAULT})
-mp_pin(MP_HTTPLIB_TAG "v0.18.1" "cpp-httplib git tag for FetchContent")
+# v0.44.0 stopped percent-decoding header values, which refused a cookie holding
+# %0A (#1278); later releases closed more advisories on the server side.
+mp_pin(MP_HTTPLIB_TAG "v0.67.0" "cpp-httplib git tag for FetchContent")
 if(MP_ENABLE_API)
   include(FetchContent)
   # Only the header: its own CMake project would look for OpenSSL, zlib and
