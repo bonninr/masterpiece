@@ -1,0 +1,46 @@
+name: dependency-pins
+
+# Weekly check of the FetchContent pins in the CMake files against each
+# repository's latest release and published security advisories
+# (tools/check-pins.py). One issue, "Pinned dependencies behind upstream"
+# with the label "dependencies", holds the findings: opened when a pin falls
+# behind, edited in place each week, a comment when something new turns up,
+# closed when every pin is current.
+#
+# A scheduled workflow runs as it stands on the default branch, so the
+# schedule starts once this file is on main; it checks the pins on dev, where
+# they are bumped. Run by hand, it checks the branch it is run on.
+on:
+  schedule:
+    - cron: '23 6 * * 1'  # Mondays, 06:23 UTC
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: 'Open, update or close the tracking issue (off: report only)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: dependency-pins
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'dev' || '' }}
+      - name: Check pins
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event_name == 'schedule' || inputs.issue }}
+        run: |
+          python3 tools/check-pins.py $([ "$ISSUE" = true ] && echo --issue) | tee -a "$GITHUB_STEP_SUMMARY"
