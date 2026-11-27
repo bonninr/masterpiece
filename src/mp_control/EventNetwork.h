@@ -37,8 +37,11 @@
 //   subtract or multiply, at once.
 //
 //   ContinuousControlStageSwitch: a control crossing a threshold engages or
-//   disengages its switch, as the row says for the direction of travel;
-//   engage wins when a row says both.
+//   disengages its switch, as the row says for the direction of travel; a
+//   row that says both for one direction engages and releases it, a pulse.
+//   A row that engages one way and releases the other releases on leaving
+//   its threshold, and a crescendo step so released plays the step below
+//   again (#1274).
 //
 // Not yet, against the engine as it plays with LegacyNetwork (stage 1):
 //   * The processor still walks its own key paths (CouplerMatrix, coupled

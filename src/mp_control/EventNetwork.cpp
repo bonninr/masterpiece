@@ -764,9 +764,17 @@ void EventNetwork::fireStageRows(int32_t c, int from, int to) {
     if (rising && onFromAbove) crossed = from <= x.value && x.value < to;
     if (!rising && onFromBelow) crossed = to < x.value && x.value <= from;
     if (!crossed) return;
-    if (rising ? x.engInc : x.engDec) {
+    const bool engage = rising ? x.engInc : x.engDec;
+    const bool release = rising ? x.disInc : x.disDec;
+    if (engage) {
       push(now_, Ev::SetSwitch, x.sw, 1);
-    } else if (rising ? x.disInc : x.disDec) {
+      // Both for one direction: engaged and released again, a pulse. Each
+      // crossing then fires what the switch fires, whichever way the shoe
+      // goes: Alessandria's crescendo rows claim all four (#1274), and taken
+      // as engage alone a step passed on the way up stayed engaged and fired
+      // nothing on the way down.
+      if (release) push(now_, Ev::SetSwitch, x.sw, 0);
+    } else if (release) {
       push(now_, Ev::SetSwitch, x.sw, 0);
       // A blower's or a noise's own release row means just that.
       if (!rising && x.engInc && x.piston) stepBelow(x);
