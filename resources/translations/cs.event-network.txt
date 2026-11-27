@@ -1,0 +1,2 @@
+"Play organs through the event network (test)" = "Hrát varhany přes síť událostí (test)"
+"A new model of the organ's wiring, to compare with the one in use. Takes effect when an organ is next loaded." = "Nový model zapojení varhan k porovnání s tím, který se používá. Projeví se při příštím načtení varhan."

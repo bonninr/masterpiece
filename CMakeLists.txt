@@ -476,6 +476,12 @@ if(TARGET mp_audio AND NOT MP_MOBILE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/app
   add_subdirectory(apps/mp-render)
 endif()
 
+# The network trace simulator, beside the test suite: mp_core and mp_control
+# only, no JUCE.
+if(MP_BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tools/mp-trace")
+  add_subdirectory(tools/mp-trace)
+endif()
+
 if(MP_BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests")
   include(CTest)
   enable_testing()

@@ -1188,7 +1188,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       if (ref.licenceRequired) ++licensedLeftOut;
   const std::string fingerprint =
       cacheFingerprint(onlyRanks, maxFramesPerSample, loopSelection, licensedLeftOut);
-  if (cacheMode_ != CacheMode::Off && !cacheDir_.empty()) {
+  if (cacheMode_ != CacheMode::Off && !cacheDir_.empty() && !standIns_) {
     auto cached = std::make_shared<Store>();
     // A cache that throws as it is read -- damaged, or more than memory
     // allows -- is passed over, and the samples are read from their files.
@@ -1311,6 +1311,35 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
 
   auto next = std::make_shared<Store>();
   next->reserve(samplesWanted);
+
+  // Stand-ins (setStandIns): every sample a short silent recording, one
+  // buffer shared by all, looped for an attack and not for a release. The
+  // voices start, sustain and stop as they would, and nothing is read: a
+  // network trace of a large set needs the pipe events, not gigabytes of
+  // audio.
+  if (standIns_) {
+    auto silent = [](bool looped) {
+      auto b = std::make_shared<SampleBuffer>();
+      b->pcm16.assign(512, 0);
+      b->numFrames = 512;
+      if (looped) {
+        b->loopStart = 64;
+        b->loopEnd = 448;
+      }
+      return b;
+    };
+    const auto attack = silent(true), release = silent(false);
+    for (Id id : wanted) {
+      const auto& buffer = releaseIds.count(id) != 0 ? release : attack;
+      (*next)[id] = buffer;
+      if (const auto it = sharers.find(id); it != sharers.end())
+        for (Id other : it->second) (*next)[other] = buffer;
+    }
+    report.wanted = static_cast<int>(samplesWanted);
+    report.loaded = static_cast<int>(samplesWanted);
+    publish(std::move(next));
+    return report;
+  }
 
   // Decoding is I/O bound, and on a network or 9p-backed path overwhelmingly
   // so, which is why this uses more threads than cores by default.

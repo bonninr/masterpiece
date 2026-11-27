@@ -1440,6 +1440,10 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
         fieldBool(row, "ConditionSwitchLinkIfEngaged", "e", !isCompact(row));
     l.engageAction = fieldInt(row, "EngageLinkActionCode", "f", 1);
     l.disengageAction = fieldInt(row, "DisengageLinkActionCode", "g", 2);
+    // Read by the event network only: whether a move of the condition switch
+    // re-judges the wire, or only a move of its source does. Compact files
+    // carry no letter for it that we know of; absent reads as yes.
+    l.reevaluateOnCondition = fieldBool(row, "ReevaluateIfCondSwitchChangesState", nullptr, true);
 
     // Codes 1 and 4 engage the destination, 2 and 7 disengage it, 3 flips it
     // (a reversible piston). Anything
