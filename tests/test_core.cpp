@@ -7385,6 +7385,43 @@ public:
     net.setValue(9001, 0);
     MP_CHECK(moves.moved.size() == 1 && moves.moved.front() == std::make_pair(mp::Id{99}, false),
              "event: a blower's release row stops it and fires nothing else");
+
+    // Alessandria's crescendo: every row claims all four, each switch fires
+    // its step's combination. On the event network a row that engages and
+    // releases for one direction pulses its switch, so each crossing fires.
+    mp::OrganModel ales;
+    for (const auto& [value, id] : {std::pair<int, mp::Id>{2, 800}, {5, 801}, {9, 802}}) {
+      ales.controlStageSwitches.push_back(step(6, value, id));
+      mp::Switch s;
+      s.switchId = id;
+      ales.switches[id] = s;
+      mp::Combination c;
+      c.combinationId = 2000 + id;
+      c.type = 4;
+      c.activatingSwitchId = id;
+      ales.combinations[c.combinationId] = c;
+    }
+    mp::ContinuousControl shoe;
+    shoe.controlId = 6;
+    ales.continuousControls[6] = shoe;
+    mp::EventNetwork pulsed;
+    pulsed.setDrivesStages(true);
+    pulsed.setListener(&moves);
+    pulsed.resetSwitches(ales);
+    pulsed.resetControls(ales, nullptr);
+    pulsed.propagate(0, &pulsed.engagedSwitches());
+    moves.moved.clear();
+    pulsed.setValue(6, 9);
+    MP_CHECK(moves.moved.size() == 6 && lastOn() == 802 && !pulsed.engaged(802),
+             "event, all four: each step passed on the way up pulsed, 802 last: " +
+                 std::to_string(moves.moved.size()) + " moves");
+    moves.moved.clear();
+    pulsed.setValue(6, 3);
+    MP_CHECK(moves.moved.size() == 2 && lastOn() == 801,
+             "event, all four: on the way down, the step whose threshold the shoe passed");
+    moves.moved.clear();
+    pulsed.setValue(6, 0);
+    MP_CHECK(lastOn() == 800, "event, all four: back to the start, the first step");
   }
 };
 
