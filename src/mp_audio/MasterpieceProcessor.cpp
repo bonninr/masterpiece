@@ -4052,7 +4052,14 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       // them holds it.
       cacheDir_ = val.isEmpty() ? juce::File() : juce::File(val);
     } else if (key == "organsfolder") {
-      organsDir_ = val.isEmpty() || !juce::File::isAbsolutePath(val) ? juce::File() : juce::File(val);
+      // A whole path only. Since JUCE 9.0.5, "/foo" counts as absolute on
+      // Windows too, on the current drive: a folder from a Linux or Mac
+      // settings file stays refused there, as before.
+      bool whole = juce::File::isAbsolutePath(val);
+ #if JUCE_WINDOWS
+      whole = whole && !val.startsWithChar('/');
+ #endif
+      organsDir_ = val.isEmpty() || !whole ? juce::File() : juce::File(val);
     } else if (key == "organsfolderconfirmed") {
       organsFolderConfirmed_ = val.getIntValue() != 0;
     } else if (key == "defaulteq") {

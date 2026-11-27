@@ -15,7 +15,7 @@
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "MP_FETCH_JUCE": "ON",
-        "MP_JUCE_TAG": "9.0.1"
+        "MP_JUCE_TAG": "9.0.6"
       }
     },
     {

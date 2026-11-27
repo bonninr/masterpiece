@@ -1190,8 +1190,10 @@ OrganSettingsWindow::~OrganSettingsWindow() {
               .withTitle(TRANS("Rebuild the sample cache?"))
               .withMessage(TRANS("This changes the samples the cache holds. The organ is loaded again "
                                  "now, and its cache is built anew."))
-              .withButton(TRANS("Rebuild and load again"))
-              .withButton(TRANS("Back to settings")),
+              .withButton(juce::MessageBoxButtonOptions(TRANS("Rebuild and load again"), 1)
+                              .withPreferredAction())
+              .withButton(juce::MessageBoxButtonOptions(TRANS("Back to settings"), 0)
+                              .withRole(juce::MessageBoxButtonRole::cancel)),
           [reload, reopen](int result) {
             if (result == 1) {
               if (reload) reload();

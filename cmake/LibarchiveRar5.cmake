@@ -1,6 +1,6 @@
 # libarchive's fix for RAR5's last block (libarchive PR #3361), applied to the
-# bundled 3.8.10 (#1204). A last compressed block that yields no output makes
-# do_unpack() return ARCHIVE_EOF, which 3.8.10 treats as an error, so every
+# bundled 3.8.10 and 3.8.11 (#1204). A last compressed block that yields no
+# output makes do_unpack() return ARCHIVE_EOF, which both treat as an error, so every
 # file read after it was reported damaged. The fix lets EOF through to the
 # end-of-file handling, checksums included. Run again, it changes nothing.
 set(source "${SOURCE_DIR}/libarchive/archive_read_support_format_rar5.c")
