@@ -270,6 +270,9 @@ public:
     r = cli.Get("/");
     MP_CHECK(r && r->status == 200 && r->body.find("<title>Masterpiece</title>") != std::string::npos,
              "the web console is served");
+    // Firefox may send a cookie holding %0A, a header value as any other (#1278).
+    r = cli.Get("/", httplib::Headers{{"Cookie", "test=hello%0Aworld"}});
+    MP_CHECK(r && r->status == 200, "a cookie holding %0A is no bad request");
     r = cli.Get("/api/v1/openapi.json");
     MP_CHECK(r && r->status == 200 && r->body.find("\"openapi\"") != std::string::npos, "and the API description");
 
