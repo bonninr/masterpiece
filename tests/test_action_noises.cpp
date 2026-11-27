@@ -129,11 +129,16 @@ public:
     const juce::File root =
         juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-action-noises");
     const juce::File odf = writeOrgan(root);
-    {
+    // The same on both networks: the event network plays the key noises
+    // from its division notes.
+    for (const auto kind : {mp::OrganNetwork::Kind::Legacy, mp::OrganNetwork::Kind::Event}) {
       mp::MasterpieceProcessor proc;
+      proc.setNetworkOverride(kind);
+      const std::string net = kind == mp::OrganNetwork::Kind::Event ? " [event]" : " [legacy]";
       const juce::File settings = proc.settingsFileFor(odf);
       proc.prepareToPlay(48000.0, 256);
-      MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads");
+      MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads" + net);
+      MP_CHECK(proc.networkKind() == kind, "on the network asked for" + net);
 
       juce::AudioBuffer<float> buf(2, 256);
       float peak = 0.0f;
@@ -150,7 +155,7 @@ public:
       };
       const auto voices = [&] { return proc.voiceStats().activeVoices; };
       const auto at = [&] {
-        return " (" + std::to_string(voices()) + " voice(s), peak " + std::to_string(peak) + ")";
+        return " (" + std::to_string(voices()) + " voice(s), peak " + std::to_string(peak) + ")" + net;
       };
       juce::MidiBuffer on, off;
       on.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
