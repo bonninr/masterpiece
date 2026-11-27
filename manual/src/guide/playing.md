@@ -300,6 +300,25 @@ than one thing.
 
 The player's generals and the sequencer do not hold the crescendo.
 
+#### The player's crescendo
+
+An organ with no crescendo of its own, as every GrandOrgue set (GrandOrgue
+gives them its own), gets the player's: a **Crescendo** fader in a panel's
+**Expression** section, mapped to a pedal like a shoe, with 32 steps.
+
+- **What a step does:** it adds its stops to what the hands drew. Going back
+  retires only what the crescendo added; a stop drawn by hand stays.
+- **A step not set** adds what the nearest set step below it adds, so steps 1,
+  8, 16, 24 and 32 are enough to start.
+- **Setting a step:** move the pedal to the step, or use **<** and **>** on the
+  **Crescendo** row of the Combinations window, draw the stops, and press
+  **Set**. **Clear step** empties it.
+- **Ready-made...** on that row fills all 32 steps from the organ's stop names,
+  from PP to Tutti, a few stops a step, when no step is set yet.
+- **Kept** with the combination set in use. A GrandOrgue settings file brings
+  its crescendo's bank A; banks B to D are left out.
+- **The display** shows the step, as for an organ's own crescendo.
+
 ## Transposer, temperament and pitch
 
 The tuning button in the top bar shows what is in force, for example `Equal  A
