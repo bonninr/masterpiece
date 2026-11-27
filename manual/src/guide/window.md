@@ -55,6 +55,7 @@ or presses while playing; choices made once are in the menus.
 | **Swell faders** | Shows or hides the strip of swell faders. The item is present when the organ has at least one swell shoe. |
 | **Keyboard** | Shows or hides the on-screen keyboard. |
 | **Show played keys** | Lights the keys of the drawn manuals as they are played. Ticked by default. |
+| **MIDI keyboards in the status line** | Adds to the status line which channel, and which MIDI device, plays each keyboard. Off by default; kept in `settings.mpglobal` (`statusmidi`). |
 | **Split keyboard** | Shows or hides the Split keyboard window. See [Split keyboard](split-keyboard.md). |
 | **A page in its own window** | A submenu with one item per console page, ticked while the page has a window. Present in the standalone application, while the console is shown. |
 
@@ -121,6 +122,7 @@ The strip along the bottom edge shows, from left to right and separated by
    N` (starts whose samples were not in memory), `late blocks N` (audio blocks
    that took longer than the audio they produced) and, with streamed release
    tails, a warning that the disk fell behind.
+5. With **View > MIDI keyboards in the status line**, each keyboard the player can play, the pedal first, with its channel and the device bound to it or that last played that channel: `Pedal: Fatar ch 1, Great: ch 2`. A channel no device has played yet shows the channel alone.
 
 After a load with no audio, the line reads `65 stops, 312 ranks, graphics only
 - no audio loaded | voices 0, no audio 24`. The line is cut short in a narrow
@@ -130,7 +132,7 @@ window; the whole text appears as a tooltip. The window has no CPU readout.
 
 A console that ships more than one page shows one tab per page. A page is named
 as the organ names it, or **Page 1**, **Page 2** and so on. Panels shown as
-tabs follow the console pages. A click on a tab shows that page.
+tabs follow the console pages. A click on a tab shows that page. The tab last chosen is kept for each organ, and the next load of that organ opens on it.
 
 In the standalone application each console page tab carries a small button,
 a square with an arrow. A click on it opens the page in its own window; the button is

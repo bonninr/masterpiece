@@ -2462,6 +2462,12 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   // again if the player wants it. The tab strip shows the page drawn.
   underList_ = baseView();
   setView(baseView());
+  // The tab the player last used on this organ, as they left it (#1271).
+  if (const auto last = proc_.lastTab(); last.isNotEmpty())
+    if (const int tab = pageTabs_.getTabNames().indexOf(last); tab > 0 && pageTabs_.isVisible()) {
+      pageTabs_.setCurrentTabIndex(tab, false);
+      changeListenerCallback(&pageTabs_);
+    }
 
   // The organ's name is in the window title, so the bar says what the title
   // cannot: how much instrument arrived, and whether it has any audio.
@@ -3330,8 +3336,8 @@ void MasterpieceEditor::showOrganMenu() {
   // The organ that is loaded: its settings, its tuning, its combinations.
   const bool loaded = proc_.loadedOrganFile().existsAsFile();
   juce::PopupMenu menu;
-  menu.addItem(1, TRANS("Organ settings..."), loaded);
-  // Every tab of that window, each opening it there (#844).
+  // Every tab of Organ settings, each opening it there (#844); no entry for
+  // the window as such, as in the Settings menu (#1271).
   const juce::StringArray organTabs{TRANS("Loading"), TRANS("Stops, ranks and perspectives"), TRANS("Outputs"),
                                     TRANS("Voicing"), TRANS("Organ EQ"), TRANS("Reverb"),
                                     TRANS("MIDI")};
@@ -3415,6 +3421,7 @@ void MasterpieceEditor::showViewMenu() {
   if (expression_.shoeCount() > 0) menu.addItem(11, TRANS("Expression pedals"), true, showingSwell_);
   menu.addItem(12, TRANS("Keyboard"), true, showingKeyboard_);
   menu.addItem(13, TRANS("Highlight played keys"), true, proc_.showPlayedKeys());
+  menu.addItem(40, TRANS("MIDI keyboards in the status line"), true, proc_.showMidiKeyboards());
   // Sizes for a touch screen or for reading from the bench (#1271, #1221).
   {
     const juce::String sizes[] = {TRANS("Normal"), TRANS("Large"), TRANS("Larger")};
@@ -3461,6 +3468,7 @@ void MasterpieceEditor::showViewMenu() {
                          safe->proc_.setShowPlayedKeys(!safe->proc_.showPlayedKeys());
                          safe->console_.repaint();
                        }
+                       if (c == 40) safe->proc_.setShowMidiKeyboards(!safe->proc_.showMidiKeyboards());
                        if (c == 17) {
                          safe->proc_.setSmallPagesFill(!safe->proc_.smallPagesFill());
                          safe->resized();
@@ -3595,6 +3603,8 @@ void MasterpieceEditor::changeListenerCallback(juce::ChangeBroadcaster* src) {
     // A tab pressed. The program moves the strip itself without a change
     // message (setView), so this is the player's choice.
     const int tab = pageTabs_.getCurrentTabIndex();
+    // Kept for this organ: the next load opens here (#1271).
+    proc_.setLastTab(pageTabs_.getCurrentTabName());
     const MainView chosen = viewForTab(tab);
     if (chosen.kind == MainView::Kind::Console) {
       showPage(tab);
@@ -3797,6 +3807,9 @@ void MasterpieceEditor::timerCallback() {
   juce::String live = status_;
   if (live.isNotEmpty()) live += "  |  ";
   live += TRANS("voices %1").replace("%1", juce::String(stats.activeVoices));
+  // Which device plays which keyboard (#1285), when the View menu asks.
+  if (proc_.showMidiKeyboards() && proc_.loadedOrganFile().getFullPathName().isNotEmpty())
+    if (const auto keyboards = proc_.midiKeyboardsText(); keyboards.isNotEmpty()) live += "  |  " + keyboards;
   // The organ plays while its samples are saved for next time (#120).
   // How far along, and how long is left once a few seconds give a rate to
   // go by: on a large organ this is minutes, and a bare "saving..." for that

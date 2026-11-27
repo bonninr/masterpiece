@@ -235,6 +235,7 @@ private:
   // The room: saved with this organ, so it is here with the rest of it
   // (#637). Its combination sets are in the Combinations window (#853).
   ReverbPanel reverb_;
+  std::unique_ptr<TabHelpButton> help_;  // last: it points at tabs_
 };
 
 }  // namespace mp::ui

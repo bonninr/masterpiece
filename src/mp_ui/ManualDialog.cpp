@@ -440,7 +440,7 @@ public:
       : proc_(p), keyboardId_(keyboardId),
         manual_(juce::String(p.keyboardName(keyboardId))) {
     addAndMakeVisible(title_);
-    title_.setText(TRANS("Pistons that bring the %1 to one of your keyboards").replace("%1", manual_),
+    title_.setText(TRANS("Controls that bring the %1 to one of your keyboards").replace("%1", manual_),
                    juce::dontSendNotification);
     title_.setFont(juce::FontOptions(16.0f));
     title_.setColour(juce::Label::textColourId, juce::Colour(0xffdfe6f0));
@@ -449,7 +449,7 @@ public:
     addAndMakeVisible(empty_);
     empty_.setColour(juce::Label::textColourId, juce::Colour(0xffdfe6f0));
     empty_.setJustificationType(juce::Justification::topLeft);
-    empty_.setText(TRANS("No pistons yet."), juce::dontSendNotification);
+    empty_.setText(TRANS("No controls yet."), juce::dontSendNotification);
 
     addAndMakeVisible(add_);
     add_.onClick = [this] { start(); };
@@ -470,10 +470,13 @@ public:
     note_.setColour(juce::Label::textColourId, juce::Colour(0xff8b93a3));
     note_.setJustificationType(juce::Justification::topLeft);
     note_.setFont(juce::FontOptions(12.0f));
-    note_.setText(TRANS("A piston here makes a keyboard play the %1, so a console with fewer "
+    // "Control", not "piston": any button, drawstop or tab of the console
+    // will do (#1271).
+    note_.setText(TRANS("A control here (a piston, a button, a drawstop or a tab) makes a keyboard play the %1, "
+                        "so a console with fewer "
                         "keyboards than the organ has manuals can reach all of them. Pressing "
                         "it lets go of any notes held on that keyboard first. Add one for each "
-                        "keyboard that should be able to play this manual.\n\nThe same button "
+                        "keyboard that should be able to play this manual.\n\nThe same control "
                         "added on several manuals steps the keyboard through them, one press at "
                         "a time. Settings, MIDI can make General Cancel put every keyboard back "
                         "where it started. Saved with this organ.")
@@ -568,7 +571,7 @@ private:
       for (const MidiBinding* b : proc_.midiMap().bindingsFor(MidiTargetKind::RouteKeyboard, target)) {
         auto row = std::make_unique<PistonRow>();
         row->text.setText(pistonText(*b, manual_, ch), juce::dontSendNotification);
-        row->remove.setTooltip(TRANS("Remove this piston"));
+        row->remove.setTooltip(TRANS("Remove this control"));
         row->remove.onClick = [this, source = b->source, target] {
           proc_.editMidiMap([&](MidiMap& map) { map.unbindOne(source, MidiTargetKind::RouteKeyboard, target); });
           proc_.saveMidiMap();
@@ -590,7 +593,7 @@ private:
     prompt_.setText(step_ == Step::Keyboard
                         ? TRANS("Play any key on the keyboard that should play the %1...").replace("%1", manual_)
                     : step_ == Step::Piston
-                        ? TRANS("Now press the piston (keyboard on channel %1)...").replace("%1", juce::String(channel_))
+                        ? TRANS("Now press the control (keyboard on channel %1)...").replace("%1", juce::String(channel_))
                         : juce::String(),
                     juce::dontSendNotification);
   }
@@ -623,7 +626,7 @@ private:
   juce::Component list_;
   std::vector<std::unique_ptr<PistonRow>> rows_;
   juce::Label title_, empty_, prompt_, note_;
-  juce::TextButton add_{TRANS("Add a piston...")}, cancel_{TRANS("Cancel")}, remove_{TRANS("Remove all pistons")};
+  juce::TextButton add_{TRANS("Add a control...")}, cancel_{TRANS("Cancel")}, remove_{TRANS("Remove all controls")};
   juce::ToggleButton tab_{TRANS("It is a drawstop or tab: going on and going off both count")};
 };
 
@@ -635,7 +638,7 @@ public:
     addAndMakeVisible(tabs_);
     const auto bg = juce::Colour(0xff1b1e24);
     tabs_.addTab(TRANS("Keys"), bg, new ManualDialog(p, keyboardId), true);
-    tabs_.addTab(TRANS("Pistons"), bg, new ManualPistonsPanel(p, keyboardId), true);
+    tabs_.addTab(TRANS("Controls"), bg, new ManualPistonsPanel(p, keyboardId), true);
     tabs_.addTab(TRANS("Send"), bg,
                  MidiEventDialog::makeSendPanel(p, MidiTargetKind::Keyboard, keyboardId).release(),
                  true);

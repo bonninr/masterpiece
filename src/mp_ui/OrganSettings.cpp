@@ -1162,6 +1162,18 @@ OrganSettingsWindow::OrganSettingsWindow(MasterpieceProcessor& p, std::function<
     midiScroll_ = std::make_unique<ScrollHost>(*midi_, 0, [this] { return midi_->contentHeight(); });
     tabs_.addTab(TRANS("MIDI"), kBackground, midiScroll_.get(), false);
   }
+  help_ = std::make_unique<TabHelpButton>(
+      tabs_,
+      std::map<juce::String, juce::String>{
+          {TRANS("Loading"), "guide/organ-settings.html#loading"},
+          {TRANS("Stops, ranks and perspectives"), "guide/organ-settings.html#stops-ranks-and-perspectives"},
+          {TRANS("Outputs"), "guide/organ-settings.html#outputs"},
+          {TRANS("Voicing"), "guide/organ-settings.html#voicing"},
+          {TRANS("Organ EQ"), "guide/organ-settings.html#equalizer"},
+          {TRANS("Reverb"), "guide/audio.html#the-room"},
+          {TRANS("MIDI"), "guide/organ-settings.html#midi"}},
+      "guide/organ-settings.html");
+  addAndMakeVisible(*help_);
   // Wide enough for a keyboard's row on the MIDI tab: name, what plays it and
   // its MIDI window button (#493, #850). The tabs scroll, so
   // the height stays what a 720-pixel screen holds whole.
@@ -1211,6 +1223,9 @@ void OrganSettingsWindow::reloadOnClose() {
 }
 
 void OrganSettingsWindow::paint(juce::Graphics& g) { g.fillAll(juce::Colour(0xff15171c)); }
-void OrganSettingsWindow::resized() { tabs_.setBounds(getLocalBounds()); }
+void OrganSettingsWindow::resized() {
+  tabs_.setBounds(getLocalBounds());
+  if (help_ != nullptr) help_->place();
+}
 
 }  // namespace mp::ui

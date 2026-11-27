@@ -35,6 +35,10 @@ Samples may have any sample rate. They are held at the rate they were recorded i
 
 **File > Open...** opens the [favourites window](#the-favourites-window). When the favourites list is empty, it opens the file dialog directly.
 
+Started with no organ to open, the program shows this window at once, its search box ready for typing, when there is a favourite or an installed organ to choose from.
+
+Quitting with an organ that is not among the favourites asks once, for that organ, whether to add it: **Add and quit** or **Quit**. The question is not asked again for that organ, whatever the answer; nor when the quit comes from the web console, a signal or the end of a recital.
+
 ![The File menu](../images/menu-file.jpg)
 
 The **File** menu holds three items:

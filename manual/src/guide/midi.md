@@ -78,7 +78,7 @@ The processor holds the output port, so lamps, motorised faders, key echo and co
 | Name | What it does | Default | Options | Takes effect |
 |---|---|---|---|---|
 | **Send stop changes on the MIDI output** | For a stop, coupler or piston that has no row on its **Send** tab, sends the stop's state back on the message that operates it, so a console that echoes the message lights the lamp. A note binding sends note on at velocity 127 and note off; a controller binding sends 127 and 0. The channel is the binding's, or 1 when the binding listens on any channel. | Off | On, off | At once; saved in `settings.mpglobal` (`midifeedback 1`, written only while on) and restored at the next start. A console that echoes what it receives can latch itself into a loop, which is why the option is off until it is switched on. |
-| **General Cancel also puts the keyboards back on their own manuals** | After manual buttons have moved a keyboard to another manual (see [Pistons tab](#pistons-tab)), General Cancel restores the keyboards to the assignment the player set by hand. | Off | On, off | At once; saved in `settings.mpglobal` (`cancelresetskeyboards`). |
+| **General Cancel also puts the keyboards back on their own manuals** | After manual buttons have moved a keyboard to another manual (see [Controls tab](#controls-tab)), General Cancel restores the keyboards to the assignment the player set by hand. | Off | On, off | At once; saved in `settings.mpglobal` (`cancelresetskeyboards`). |
 | **Stop changes leave the notes already held alone** | A stop or coupler moved while keys are held leaves those notes as they are; only keys pressed afterwards play the new registration. Off, held notes gain and lose pipes at once. | Off | On, off | At once; saved in `settings.mpglobal` (`stopsleaveheldnotes`). |
 | **Debounce: when learning, a key counts once held a quarter second** | While learning, a note counts only after it has been held 250 ms; a shorter note is dropped. Controllers, program changes and system exclusive messages have no length and count at once. | Off | On, off | At once; saved in `settings.mpglobal` (`learnnoisefilter`). Switch it on for a console whose contacts send stray short notes. Leave it off for pistons that send only a brief note. |
 
@@ -111,7 +111,7 @@ A line beside the buttons reads `Default for organs with no channels saved: Peda
 
 ## The dialog for one manual
 
-Right-click a drawn manual on the console, or press **Range, transpose...** in the MIDI tab. The window is titled `<manual> - MIDI` and has three tabs: **Keys**, **Pistons** and **Send**.
+Right-click a drawn manual on the console, or press **Range, transpose...** in the MIDI tab. The window is titled `<manual> - MIDI` and has three tabs: **Keys**, **Controls** and **Send**.
 
 ### Keys tab
 
@@ -136,26 +136,26 @@ Every edit takes effect at once and is saved with the organ. A new entry listens
 | **Debounce** | Ignores a repeat of the same key within this time. Old contacts chatter and retrigger the pipe. | 0 ms (off) | 0 to 200 ms |
 
 
-### Pistons tab
+### Controls tab
 
-The tab is headed `Pistons that bring the <manual> to one of your keyboards`. A piston added here makes the keyboard on one MIDI channel play this manual. A console with fewer keyboards than the organ has manuals reaches every manual this way.
+The tab is headed `Controls that bring the <manual> to one of your keyboards`. A control added here (a piston, a button, a drawstop or a tab) makes the keyboard on one MIDI channel play this manual. A console with fewer keyboards than the organ has manuals reaches every manual this way.
 
-![The Pistons tab](../images/manual-pistons.png)
+![The Controls tab](../images/manual-pistons.png)
 
-To add one, press **Add a piston...**, play any key on the keyboard that should play this manual (the prompt reads `Play any key on the keyboard that should play the <manual>...`), then press the piston (`Now press the piston (keyboard on channel N)...`). The list shows each piston as `Note 36 on channel 1  brings the <manual> to the keyboard on channel 2`, or `No pistons yet.`
+To add one, press **Add a control...**, play any key on the keyboard that should play this manual (the prompt reads `Play any key on the keyboard that should play the <manual>...`), then press the control (`Now press the control (keyboard on channel N)...`). The list shows each control as `Note 36 on channel 1  brings the <manual> to the keyboard on channel 2`, or `No controls yet.`
 
-- Pressing the piston lets go of any notes held on that keyboard first, and keys still down sound on the new manual.
+- Pressing the control lets go of any notes held on that keyboard first, and keys still down sound on the new manual.
 - The same button added on several manuals steps the keyboard through them, one press at a time, in the organ's own manual order. One button can move several keyboards at once when it was learned for several channels.
-- The pistons are saved with the organ. The assignment they change is kept for the piece; the next load starts from the assignment the player set by hand.
+- The controls are saved with the organ. The assignment they change is kept for the piece; the next load starts from the assignment the player set by hand.
 
 | Name | What it does | Default | Options |
 |---|---|---|---|
-| **Add a piston...** | Starts the two-step learn. | | |
+| **Add a control...** | Starts the two-step learn. | | |
 | **Cancel** | Appears during the learn and ends it. | | |
-| **Remove all pistons** | Removes every piston of this manual. | | |
+| **Remove all controls** | Removes every control of this manual. | | |
 | **It is a drawstop or tab: going on and going off both count** | For a spare drawstop or tab that sends one message going on and another going off. Each of the two counts as a press. | Off: only the press counts and the release is ignored | On, off |
 
-The tick box is read when **Add a piston...** starts the learn, so set it first. **General Cancel also puts the keyboards back on their own manuals** (MIDI tab) restores the keyboards on General Cancel.
+The tick box is read when **Add a control...** starts the learn, so set it first. **General Cancel also puts the keyboards back on their own manuals** (MIDI tab) restores the keyboards on General Cancel.
 
 ### Send tab
 
@@ -199,7 +199,7 @@ The program's own buttons have no object on the console to right-click. Use the 
 | Button | What it works |
 |---|---|
 | **Learn sequencer -**, **Learn sequencer +** | Previous and next frame of the registration sequencer |
-| **Learn manual buttons...** | Opens a menu of the 16 channels, each with the manuals; choosing one starts a learn for a piston that brings that manual to the keyboard on that channel (see [Pistons tab](#pistons-tab)) |
+| **Learn manual buttons...** | Opens a menu of the 16 channels, each with the manuals; choosing one starts a learn for a piston that brings that manual to the keyboard on that channel (see [Controls tab](#controls-tab)) |
 | **Learn page -**, **Learn page +** | The previous and next console page |
 | **Learn console size** | The next console layout |
 | **Learn panel** | The stop-list panel on and off |
