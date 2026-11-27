@@ -171,7 +171,20 @@ else()
   set(MP_ENABLE_API_DEFAULT ON)
 endif()
 option(MP_ENABLE_API "The control API and web console (HTTP)" ${MP_ENABLE_API_DEFAULT})
-set(MP_HTTPLIB_TAG "v0.18.1" CACHE STRING "cpp-httplib git tag for FetchContent")
+# v0.44.0 stopped percent-decoding header values, which refused a cookie holding
+# %0A (#1278); later releases closed more advisories on the server side.
+set(MP_HTTPLIB_DEFAULT_TAG "v0.67.0")
+set(MP_HTTPLIB_TAG "${MP_HTTPLIB_DEFAULT_TAG}" CACHE STRING
+    "cpp-httplib git tag for FetchContent (an older release is raised to the default)")
+# A build folder keeps the tag of its first configure: raise one older than the
+# default, so an existing build gets the fixes too. A branch or commit is kept.
+string(REGEX REPLACE "^v" "" _mp_httplib_have "${MP_HTTPLIB_TAG}")
+string(REGEX REPLACE "^v" "" _mp_httplib_want "${MP_HTTPLIB_DEFAULT_TAG}")
+if(_mp_httplib_have MATCHES "^[0-9]+(\\.[0-9]+)*$" AND _mp_httplib_have VERSION_LESS _mp_httplib_want)
+  message(STATUS "cpp-httplib ${MP_HTTPLIB_TAG} is older than ${MP_HTTPLIB_DEFAULT_TAG}: using ${MP_HTTPLIB_DEFAULT_TAG}")
+  set(MP_HTTPLIB_TAG "${MP_HTTPLIB_DEFAULT_TAG}" CACHE STRING
+      "cpp-httplib git tag for FetchContent (an older release is raised to the default)" FORCE)
+endif()
 if(MP_ENABLE_API)
   include(FetchContent)
   # Only the header: its own CMake project would look for OpenSSL, zlib and
