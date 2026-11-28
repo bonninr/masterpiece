@@ -1,10 +1,10 @@
 # Audio, room and mixer
 
-This page covers everything between the organ and the loudspeakers: the audio device and its latency, the signal chain, the output pairs of the mixer, the impulse-response room, the player's voicing of ranks and pipes, the master level, the metronome, and what to do when the sound breaks up. Use it to set up a device for low latency, to place a dry organ in a room, and to find the cause of dropouts.
+This page covers everything between the organ and the loudspeakers: the audio device and its latency, the signal chain, the outputs and the mixer, the impulse-response room, the player's voicing of ranks and pipes, the master level, the metronome, and what to do when the sound breaks up. Use it to set up a device for low latency, to place a dry organ in a room, and to find the cause of dropouts.
 
 <div class="video"><iframe src="https://www.youtube-nocookie.com/embed/VC4Zh6qpZZM?list=PLEi774VY3MkM&rel=0" title="Video tutorial 09 Audio, room and mixer" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
 
-The controls described here are on the **Audio**, **Performance**, **Reverb** and **Metronome** tabs of **Settings**, and on the **Outputs**, **Voicing** and **Equalizer** tabs of **Organ > Organ settings...**. The memory and loading choices that decide how many voices a machine can render are in **Organ settings > Loading**; see [Memory, loading and streaming](memory.md) and [Small, medium and large organs](sizing.md).
+The controls described here are on the **Audio** and **Performance** tabs of **Settings**, on the **Outputs**, **Voicing**, **Organ EQ** and **Reverb** tabs of Organ settings (each opened from the **Organ** menu), and in **Window > Metronome**. The memory and loading choices that decide how many voices a machine can render are in **Organ settings > Loading**; see [Memory, loading and streaming](memory.md) and [Small, medium and large organs](sizing.md).
 
 ## The signal chain
 
@@ -12,9 +12,12 @@ Each audio block passes through these stages, in this order.
 
 | Stage | What it does | Bypassed by Bypass all effects |
 |---|---|---|
-| Voices | Every sounding pipe is rendered, assigned to an output pair (see [Output routing](#output-routing-and-the-mixer)) and, where its rank is enclosed, filtered by its swell shades | Shades and tremulants are bypassed; the voices play |
-| Equalizer | The ten-band equaliser of **Organ settings > Equalizer** | Yes |
-| Reverb | The impulse-response convolution of the **Reverb** tab | Yes |
+| Voices | Every sounding pipe is rendered on the output its rank is routed to (see [Output routing](#output-routing-and-the-mixer)) and, where its rank is enclosed, filtered by its swell shades | Shades and tremulants are bypassed; the voices play |
+| Sends into the output | What other outputs play into this one, through its fader | No |
+| Output room | The room of an output past the first, on the **Reverb** tab under **Other output pairs** | Yes |
+| Output EQ and crossover | The output's own EQ, then its high-pass, low-pass, delay and polarity; then its meter | No |
+| Organ EQ | The ten-band equaliser of **Organ settings > Organ EQ** | Yes |
+| Reverb | The organ's impulse-response room, on the first output | Yes |
 | Organ trim and master level | The organ's own output trim and the master fader, applied as one multiplication | No |
 | Output compressor | Brings the loud passages towards the quiet ones, where the compressor is switched on | No |
 | Output limiter | Holds the output under a ceiling, where the limiter is switched on | No |
@@ -22,7 +25,7 @@ Each audio block passes through these stages, in this order.
 | Metronome, load-progress clicks, speaker keep-alive tone | Added after the fader | No |
 | Level meter | Reads the finished block | No |
 
-The **Bypass all effects** box in **Organ settings > Loading** switches off wind model, tremulants, enclosures, equaliser, convolution and detuning. The per-rank and per-pipe level and tuning of the **Voicing** tab, the organ trim and the master level stay active, because each is a single multiplication or ratio taken when a note starts. The shelves, pan and width of the **Voicing** tab are filters, so they need the effects. The per-rank and per-pipe voicing follows the **Voicing** box of **Organ settings > Loading**; see [Relation to the Equalizer](#relation-to-the-equalizer).
+The **Bypass all effects** box in **Organ settings > Loading** switches off wind model, tremulants, enclosures, the Organ EQ, the rooms and detuning; the output EQ and crossover stay, because they correct the speakers. The per-rank and per-pipe level and tuning of the **Voicing** tab, the organ trim and the master level stay active, because each is a single multiplication or ratio taken when a note starts. The shelves, pan and width of the **Voicing** tab are filters, so they need the effects. The per-rank and per-pipe voicing follows the **Voicing** box of **Organ settings > Loading**; see [Relation to the Equalizer](#relation-to-the-organ-eq).
 
 The output compressor and limiter follow their own switches on **Settings > Audio...** and keep working with **Bypass all effects** on.
 
@@ -50,13 +53,13 @@ The **Audio device type** box lists the driver types the system offers. It appea
 |---|---|---|
 | **Audio device type** | Chooses the driver type | At once |
 | **Output** (**Device** on drivers that join inputs and outputs) | Chooses the output device | At once |
-| **Active output channels** | Lists the device's output channels as stereo pairs. The program opens two, and as many as the Mixer's pairs name when the device has them. | At once |
+| **Active output channels** | Lists the device's output channels as stereo pairs. The program opens two, and as many as the outputs name when the device has them. | At once |
 | **Sample rate** | The rates the device offers | At once |
 | **Audio buffer size** | The buffers the device offers, each shown as `N samples (X ms)` | At once |
 | **Test** | Plays a test tone on the output | At once |
 | **Control Panel**, **Reset Device** | Shown for drivers that have their own control panel (ASIO) | |
 
-The selector offers one to eight output channels and no input channels. The advanced options are visible. The MIDI inputs and the MIDI output are on the **MIDI** tab; see [MIDI and consoles](midi.md). A change to device, rate or buffer size stops the device and starts it again; sounding notes stop while the engine rebuilds its voice pool.
+The selector offers one to 64 output channels and no input channels. The advanced options are visible. The MIDI inputs and the MIDI output are on the **MIDI** tab; see [MIDI and consoles](midi.md). A change to device, rate or buffer size stops the device and starts it again; sounding notes stop while the engine rebuilds its voice pool.
 
 ### Latency
 
@@ -153,48 +156,54 @@ On Debian and Ubuntu the jackd2 package writes this file as `audio.conf.disabled
 
 ## Output routing and the mixer
 
-**Organ settings > Outputs** assigns each rank of the loaded organ to one of up to eight pairs. The pairs are rendered separately, each with the enclosure processing of its ranks. On a device with the channels a pair names, the pair plays on them; on a stereo device, and in the plugins, the pairs are mixed together into the first two channels. No sample set declares an audio routing, so the layout is the player's, in the way a MIDI mapping is.
+The outputs are where the organ leaves the program. **Organ settings > Outputs** sets them up, routes the ranks to them and holds the mixer; [Organ settings: Outputs](organ-settings.md#outputs) describes every control. No sample set declares an audio routing, so the layout is the player's, in the way a MIDI mapping is.
 
 ![The Outputs tab](../images/organ-outputs.png)
 
-| Control | What it does | Default | Takes effect |
-|---|---|---|---|
-| **Output pairs** | **1 (stereo)** and **2 pairs** to **8 pairs**. Lowering the count folds ranks that pointed at a removed pair back to **Pair 1**. | 1 | At once for notes started afterwards |
-| Status line | `N rank(s), M pair(s)`; when something is wrong it adds `X unrouted, Y stale` | | |
-| Outputs line | Each pair's device channels, such as `Pair 2: 3-4`, and `the device gives N outputs: the pairs past them play on 1-2` when the device has fewer channels than the pairs name | | |
-| **Spread ranks evenly** | Assigns the ranks in rank-number order to the pairs in turn, so that the routing is audible straight away | | At once |
-| **All to pair 1** | Puts every rank on **Pair 1** | | At once |
-| **Save for this organ** | Writes the organ's settings file, including the routes | | At once |
-| **Bass management...** | One row per pair: **Off**, or a crossover of **40**, **60**, **80**, **100**, **120**, **150** or **200 Hz**, and **Subwoofer on N**. The lows of both channels of the pair, under the crossover, go to that device channel, and the rest to the pair. Several pairs can share one subwoofer. The crossover is Linkwitz-Riley of the 4th order: the pair and the subwoofer add up flat. | Off | At once |
-| Rank list | One row per rank, labelled with its number and name, with a **Pair** box, a level fader and a **MIDI** button | **Pair 1** | At once |
-| Level faders | Under the headings **Output pairs**, **Divisions** and **Ranks**: a live level for each, heard at once on the pipes sounding, with a knob or pedal learned through **MIDI**. Not saved: every fader is full again when an organ loads. | Full | At once |
-
-A rank is routed when a note starts, so notes already sounding keep the pair they began on. A rank with no entry plays through the first pair, so an organ is audible before the Outputs tab is opened. The pair of a rank is independent of its enclosure: a Swell rank stays behind the Swell shades whichever pair carries it.
-
-### Stored
-
-| Part | Where | Scope |
+| Part | What it is | Kept |
 |---|---|---|
-| The pairs (`buses`) | The organ's `.mporgan` file; also the defaults file when **Save as default** is pressed in **Organ settings > Loading** | Read for every organ that has none of its own |
-| Which rank uses which pair (`route`) | The organ's `.mporgan` file | Per organ |
+| Output | One of up to 64, stereo or mono, on device channels of its own, with a name | For every organ, in `settings.mpglobal` |
+| Send | An output also playing into another output, at a level of its own | With the outputs |
+| Room | An impulse response for an output past the first (see [The room](#the-room)) | With the outputs |
+| Output EQ | Ten bands for the speaker on one output | With the outputs |
+| Crossover | High-pass, low-pass, delay and polarity of one output | With the outputs |
+| Speaker group | Outputs that share the pipes sent to them, note by note | With the outputs |
+| Route | Where a rank plays: an output, a speaker group, or the default destination (**Ranks play through**) | Per organ, in its `.mporgan` file |
+| Mix | A set of ranks with a fader of its own | Per organ |
 
-Changes on this tab are written when **Save for this organ** is pressed, or by any later save of the organ's settings, which writes the live state of everything.
+Each output is rendered on its own, with the enclosure processing of its ranks, then in this order: what the other outputs send into it, its room, the copy it sends on to other outputs, its EQ, its crossover, its meter. On a device with the channels an output names, the output plays on them; on a device with fewer channels, and in the plugins, the outputs past them are mixed into the first two channels. An output with no channels of its own that plays into others is heard through them only.
 
-The sum of the pairs is the whole organ, so splitting the ranks over more pairs leaves the total unchanged.
+A rank is routed when a note starts, so notes already sounding keep the output they began on. A rank with no route of its own plays through the default destination, so an organ is audible before the Outputs tab is opened. The output of a rank is independent of its enclosure: a Swell rank stays behind the Swell shades whichever output carries it. The sum of the outputs is the whole organ, so splitting the ranks over more outputs leaves the total unchanged.
+
+An organ file from an earlier version that still holds outputs gives them to the global file once, when the global file has none; after that the organ file's outputs are left alone.
+
+### A subwoofer, or a speaker of several ways
+
+The crossover splits the organ into bands in the program, so no crossover is needed between the interface and the amplifiers. Nothing is decided for you: each band is an output of its own, fed by the output that carries the ranks. An output plays into others through its sends; one that already plays into this output, itself or through others, cannot be sent back to, so no loop is made: its box in **Outputs...** is greyed.
+
+A subwoofer under a stereo pair, crossing at 80 Hz:
+
+1. **Outputs...**: two outputs. Output 1 stereo on channels 1-2; output 2 mono on the subwoofer's channel, for example 3.
+2. **Outputs...**: output 1 plays into output 2, at **+6 dB**: a mono output takes half of each side, and the send puts the level back.
+3. **Crossover...**: output 1, **High-pass** 80 Hz, **Linkwitz-Riley 24 dB**. Output 2, **Low-pass** 80 Hz, **Linkwitz-Riley 24 dB**, and if the subwoofer stands nearer than the speakers, a **Delay** to bring it in time: 1 ms for every 34 cm it is nearer.
+
+The two speakers and the subwoofer then add up to what the pair carried alone. A three-way speaker is built the same way, with an output per driver and a band on each: low-pass on the lowest, high-pass and low-pass on the middle, high-pass on the highest, the edges that meet at the same frequency. A Linkwitz-Riley filter of 12 dB an octave needs one of the two outputs at a crossing inverted. Never connect a tweeter to an output without its high-pass: the organ's lowest notes would reach it.
 
 ## The room
 
-**Settings > Reverb** places the organ in a room by convolution with an impulse response (IR). Most sample sets are recorded in the room they live in, and several sets ship close, far and rear perspectives that are the room. Use the Reverb tab for a dry set or for headphones. A wet fraction far below what a reverb plug-in would use is usually enough.
+The **Reverb** tab of Organ settings (**Organ > Reverb...**) places the organ in a room by convolution with an impulse response (IR). Most sample sets are recorded in the room they live in, and several sets ship close, far and rear perspectives that are the room. Use the Reverb tab for a dry set or for headphones. A wet fraction far below what a reverb plug-in would use is usually enough.
 
-![The Reverb tab](../images/general-reverb.png)
+![The Reverb tab](../images/organ-reverb.png)
 
 | Name | What it does | Default | Range or options | Takes effect |
 |---|---|---|---|---|
 | **Impulse-response reverb** | Switches the room on | Off | On, off | At once |
 | **Load impulse response...** | Opens a file chooser for WAV, AIFF or FLAC files, and switches the room on when the file loads | No IR | | At once |
 | **Clear** | Removes the IR; the label reads **No IR loaded** | | | At once |
-| IR label | **IR:** and the file name minus its extension | | | |
+| IR label | **IR:** and the file name | | | |
 | **Wet** | The share of the convolved signal in the output | 0.25 | 0 to 1 in steps of 0.01 | At once |
+| **MIDI** | Learns a knob or a pedal for the wet level | | | At once |
+| **Other output pairs** | Shown with two outputs or more: a row per output past the first, **Pair N**, with **Load impulse response...**, the file and a **Wet** slider. Ticked with no file of its own, a row takes the room above; with none there either, it asks for a file. | Off | | At once |
 
 How the IR is used:
 
@@ -202,32 +211,15 @@ How the IR is used:
 - **Channels.** A mono file feeds both sides. A two-channel file is an ordinary stereo room. A file with four or more channels is read as true stereo: channels 1 and 2 carry the left input to the left and right outputs, channels 3 and 4 the right input to the left and right outputs.
 - **Level.** The file is scaled by its power where the organ sounds, octave by octave, with one gain for all channels so that a true-stereo room keeps its balance. At full wet a pipe's tone comes out of the room at about the level it went in. Leading silence is trimmed.
 - **Sample rate.** When the chosen file is named `<room>-48000Hz.wav` (a rate in hertz before the extension) and a sibling for the device's rate exists, that sibling is loaded. The file's own sample rate is passed to the convolution engine with its samples.
-- **Position.** The room follows the equaliser and precedes the master fader. **Bypass all effects** bypasses it. Convolution is the most expensive stage of the audio callback; the engine uses partitioned convolution with a 256-sample head.
+- **Position.** The organ's room plays on the first output, after the Organ EQ and before the master fader; the room of another output plays on that output, after what the other outputs send into it. **Bypass all effects** bypasses it. Convolution is the most expensive stage of the audio callback; the engine uses partitioned convolution with a 256-sample head.
 
-The chosen file, the wet fraction and the on/off state belong to the loaded organ: they are written to its `.mporgan` file as the `reverb` line, saved automatically, and restored when that organ opens. **Save as default** in **Organ settings > Loading** copies them to the defaults that organs without settings start from. The file is stored as a path, so the IR must stay where it was chosen.
+The chosen file, the wet fraction and the on/off state belong to the loaded organ: they are written to its `.mporgan` file as the `reverb` line, saved automatically, and restored when that organ opens. **Save as default** in **Organ settings > Loading** copies them to the defaults that organs without settings start from. The file is stored as a path, so the IR must stay where it was chosen. The rooms of the other outputs belong to the machine: they are kept with the outputs in the global file as `busir` lines, for every organ.
 
 If a file cannot be read, a warning titled **The impulse response was not loaded** gives the reason, either *The file could not be read where it is.* or *&lt;name&gt; is not an impulse response Masterpiece can read (WAV, AIFF or FLAC).* The same reason goes to the log (`impulse response not loaded: <path>: <reason>`). The previous IR and the state of the box stay as they were. When an organ's saved IR is missing at load time, the log records `reverb: the impulse response saved with this organ was not found: <path>` and an IR loaded earlier stays in use, with the wet fraction and the on/off state saved with the organ.
 
 ## Voicing
 
-**Organ settings > Voicing** is the voicer's tab: a level and a tuning for a whole rank or for one pipe, in two sets for comparison.
-
-![The Voicing tab](../images/organ-voicing.png)
-
-| Name | What it does | Default | Range or options |
-|---|---|---|---|
-| **Rank** | The rank to adjust, listed as its number and name | First rank | Every rank of the loaded organ |
-| **Applies to** | **The whole rank** or **One pipe** | **The whole rank** | |
-| **MIDI note** | The pipe, by its MIDI note; enabled with **One pipe** | 60 | 0 to 127 |
-| **Level** | The gain of the rank or pipe | 0 dB | -12 to +12 dB in steps of 0.1 |
-| **Tuning** | The pitch offset | 0 cents | -50 to +50 cents in steps of 0.1 |
-| **A / B** | Makes the other of two complete voicing sets the live one | Set A live | |
-| **Copy to other** | Copies the live set to the other slot | | |
-| **Reset this** | Sets level and tuning of the chosen rank or pipe to 0 | | |
-| **Reset everything** | Clears the live set | | |
-| **Save for this organ** | Writes the organ's settings file | | |
-
-The line under the buttons reads `Slot A  -  N rank(s), M pipe(s) adjusted  -  takes effect on the next note`. A pipe that does not exist on the chosen rank shows **This rank has no pipe at that note**.
+**Organ settings > Voicing** is the voicer's tab: a level, a tuning, two shelves, a pan and a width for a whole rank, a stop, a division, a windchest or one pipe, in two sets for comparison. [Organ settings: Voicing](organ-settings.md#voicing) describes every control. How it fits into the sound:
 
 - A rank adjustment and a pipe adjustment add.
 - Level is a gain and tuning a pitch ratio, both taken once when a note starts. Notes already sounding keep what they began with. Both work with **Bypass all effects** on and cost nothing while a note sounds.
@@ -235,9 +227,9 @@ The line under the buttons reads `Slot A  -  N rank(s), M pipe(s) adjusted  -  t
 - The tab sets where each rank and each division stands: **Pan**, a constant-power law with the middle at unity, and **Width**, by mid and side. They are heard at once with the EQ, need the DSP, and are stored with the voicing. In the middle and at 100% nothing is processed.
 - The tab holds an equaliser for each rank and each division: a shelf for the treble and one for the bass. It is heard at once, it needs the effects, and it is stored with the voicing. See [EQ, pan and width](organ-settings.md#eq-pan-and-width).
 
-### Relation to the Equalizer
+### Relation to the Organ EQ
 
-The **Equalizer** tab of **Organ settings** is a different tool. It is a ten-band equaliser for the whole organ (31.5 Hz to 16 kHz, plus an output gain, up to 12 dB per band), with ten presets and the player's own, off by default, applied before the room. It can be kept for every organ (**Save as default**) or for one organ (**Save for this organ**). The same tab holds the attack's emphasis, which makes each pipe begin louder or softer. The **Voicing** tab changes single ranks and pipes in level and pitch, and holds an equaliser for each rank and each division. What it changes is stored per organ. See [Organ settings](organ-settings.md#equalizer) for the equaliser.
+The **Organ EQ** tab of Organ settings is a different tool. It is a ten-band equaliser for the whole organ (31.5 Hz to 16 kHz, plus an output gain, up to 12 dB per band), with ten presets and the player's own, off by default, applied before the room. It can be kept for every organ (**Save as default**) or for one organ (**Save for this organ**). The same tab holds the attack's emphasis, which makes each pipe begin louder or softer. The **Voicing** tab changes single ranks and pipes in level and pitch, and holds an equaliser for each rank and each division. What it changes is stored per organ. See [Organ settings](organ-settings.md#equalizer) for the equaliser.
 
 The **Voicing** box among the switches of **Organ settings > Loading** is saved with the organ. With the box off, the organ plays as recorded: the per-rank and per-pipe level and tuning of the **Voicing** tab are not applied. The adjustments stay in the voicing sets and apply again when the box is ticked. A change reaches the notes that start afterwards.
 
@@ -289,23 +281,11 @@ With the compressor and the limiter off the output is bit for bit what the engin
 
 ## The metronome
 
-**Settings > Metronome** adds a click to the output.
+**Window > Metronome** adds a click to the output; [Metronome](playing.md#metronome) describes the window and its controls.
 
-![The Metronome tab](../images/general-metronome.png)
+![The Metronome window](../images/window-metronome.png)
 
-| Name | What it does | Default | Range |
-|---|---|---|---|
-| **Metronome** | Switches the click on | Off | On, off |
-| **Tempo** | Beats per minute | 90 bpm | 20 to 300 in steps of 1 |
-| **Beats per bar** | The bar length; the first beat of each bar is accented | 4 | 0 to 12 in steps of 1; 0 gives no accent |
-| **Level** | The click volume | 0.5 | 0 to 1 in steps of 0.01 |
-
-A label below the sliders reads **Beat** and the number of the beat in the bar while the click runs. All four controls act at once. The tempo, the beats per bar and the level are kept in the global settings file as `metronome <bpm> <beats> <level>`, written when the Metronome tab closes, and return at the next start. The click starts silent at each start.
-
-The click is a short decaying sine (a time constant of about 9 ms): 1000 Hz on ordinary beats and 1500 Hz at 100% strength on the accented first beat, with ordinary beats at 70% strength. It is added after the master fader, so the master level does not change it, and after the audio recorder, so recordings do not contain it. It sounds on both channels.
-
-> [!NOTE]
-> The **Metronome** box shows whether the click is running each time the tab opens. Clear it to stop the click.
+The click is added after the master fader, so the master level does not change it, and after the audio recorder, so recordings do not contain it. It plays on the first output, on both channels. The click starts silent at each start.
 
 ## Audio dropouts
 
