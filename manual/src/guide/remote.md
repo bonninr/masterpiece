@@ -35,11 +35,11 @@ The page builds itself from the organ loaded. **View**, in the top bar, chooses 
 - **One panel per division**, with its stops, couplers and tremulants as lit buttons. Stops a demo does not ship are greyed out and cannot be drawn. A stop drawn on two panels of the organ, or worked through a gate, is listed once.
 - **The organ's pistons**, the switches of the organ file that fire and release: those of no division first, then each division's divisional pistons under the division's name.
 - **Shoes and controls**: the swell shoes, the crescendo and the organ's other continuous controls as sliders.
-- **Levels**: a live fader for each division and each output pair, heard at once.
+- **Levels**: a live fader for each division and each output, heard at once.
 - **Tremulants, enclosures, wind and room**: the tremulants as buttons, each swell box's opening, the wind pressures in a folded list headed with the number of reservoirs and chests and updated twice a second, and **Room** with its wet share.
 - **Combinations**: the player's generals with **0** (general cancel) and **Set**, the divisionals of each division under its name, and the sequencer's frame, from `000`, with its first, previous, next and last buttons.
 - **Every switch and control**, folded: every switch, control and rank level of the organ, its internal ones too, with a filter by name or number, and the MIDI channel of each keyboard.
-- **The top bar**: **View**, the volume, transpose, the temperament, the voicing **EQ** preset and **Panic**.
+- **The top bar**: **Organ**, **View**, the volume, transpose, the temperament, the **EQ** preset, **Record** and **Panic**. **Organ** lists the favourite organs of the Open window by name, and choosing one loads it; with no organ loaded the page shows a button per favourite instead, or **Favourite organs added in the Open window appear here.** **Record** has **Audio**, the organ's sound to a dated WAV file in the recordings folder, and **MIDI**, the performance; each lights while its recorder runs and turns it on or off. Loading an organ and recording are changes, so they need **Allow changes from the network** and the token, when one is set. Only the organs' names leave the computer, never their files or paths.
 - **The bottom line**: the connection, the voices sounding, the late blocks, and **Access** with the token and the API description.
 
 ### Console pages
