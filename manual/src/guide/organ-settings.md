@@ -4,7 +4,7 @@
 
 ## Opening the window
 
-The entry **Organ settings...** in the **Settings** menu is available while an organ is loaded.
+The **Organ** menu lists the window's tabs, from **Loading...** to **MIDI...**; each opens the window on that tab, while an organ is loaded. The **?** at the right of the tabs opens this manual at the tab in front.
 
 ![The Settings menu](../images/menu-settings.jpg)
 

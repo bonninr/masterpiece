@@ -193,12 +193,12 @@ public:
           if (auto* w = juce::TopLevelWindow::getTopLevelWindow(i); w != nullptr && w->getName().endsWith(" - MIDI"))
             pistonsWindow = w;
         MP_CHECK(pistonsWindow != nullptr, "the Manual window opens on its Pistons tab");
-        juce::Button* one = findByTooltip(*pistonsWindow, TRANS("Remove this piston"));
+        juce::Button* one = findByTooltip(*pistonsWindow, TRANS("Remove this control"));
         MP_CHECK(one != nullptr, "each piston has its own remove button");
         check(waitsForTheBlock(proc, [&] { one->onClick(); }),
               "a piston's remove changed the map inside an audio block");
         check(pistonsOf(great) == 1, "one piston is left, got " + std::to_string(pistonsOf(great)));
-        juce::Button* all = findButton(*pistonsWindow, TRANS("Remove all pistons"));
+        juce::Button* all = findButton(*pistonsWindow, TRANS("Remove all controls"));
         MP_CHECK(all != nullptr, "the Pistons tab has Remove all pistons");
         check(waitsForTheBlock(proc, [&] { all->onClick(); }),
               "Remove all pistons changed the map inside an audio block");

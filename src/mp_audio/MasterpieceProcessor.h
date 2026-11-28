@@ -1178,6 +1178,17 @@ public:
     narrowStrips_.store(on, std::memory_order_relaxed);
     writeGlobalFile();
   }
+  // The device that last sent a note on a channel (1..16), 0 when none has
+  // since the program started. The on-screen keys carry no device and leave
+  // it as it was.
+  int lastDeviceOnChannel(int channel) const {
+    return channel >= 1 && channel <= 16 ? channelDevice_[static_cast<size_t>(channel)].load(std::memory_order_relaxed)
+                                         : 0;
+  }
+  // What plays a keyboard, said over its drawn manual (#1285): "Great:
+  // Fatar, channel 2", the device bound to it or that last played its
+  // channel; "Great: channel 2" while no device has.
+  juce::String keyboardSourceText(Id keyboardId) const;
   bool showPlayedKeys() const { return showPlayedKeys_.load(std::memory_order_relaxed); }
   void setShowPlayedKeys(bool on) {
     showPlayedKeys_.store(on, std::memory_order_relaxed);
@@ -2069,6 +2080,25 @@ public:
   // Put the organ now loaded on a slot, or on the first free one when slot is
   // 0. Returns the slot used, or 0 when the bank is full or nothing is loaded.
   int addCurrentOrganToFavourites(int slot = 0);
+  // Quitting with an organ on no slot (#1286): offered once per organ, the
+  // answer kept, so a player who said no is not asked again. False when it is
+  // a favourite already, the bank is full, nothing is loaded, or it was
+  // offered before.
+  bool shouldOfferFavourite() const;
+  void markFavouriteOffered();
+  // The tab the player last chose for the organ loaded, by its name: a page,
+  // a panel or the score. Opened again on the next load (#1271).
+  juce::String lastTab() const {
+    const auto it = lastTabs_.find(loadedOdf_.getFullPathName().toStdString());
+    return it == lastTabs_.end() ? juce::String() : juce::String::fromUTF8(it->second.c_str());
+  }
+  void setLastTab(const juce::String& name) {
+    if (loadedOdf_.getFullPathName().isEmpty()) return;
+    auto& kept = lastTabs_[loadedOdf_.getFullPathName().toStdString()];
+    if (kept == name.toStdString()) return;
+    kept = name.toStdString();
+    writeGlobalFile();
+  }
 
   // The organ's voicing EQ (Organ settings, Voicing EQ): off unless the
   // player turns it on for this organ. Applied at once; saved with the organ.
@@ -3439,6 +3469,8 @@ private:
   int textSize_ = 100;
   juce::String textFont_;
   FavouriteSort favouriteSort_ = FavouriteSort::Slot;
+  std::set<std::string> favouriteOffered_;  // organs offered on Quit (#1286)
+  std::map<std::string, std::string> lastTabs_;  // organ path -> tab name (#1271)
   juce::File cacheDir_; // empty: the default place
   juce::File organsDir_; // empty: the default place
   bool organsFolderConfirmed_ = false;
@@ -3687,6 +3719,7 @@ private:
   bool leaveBassAndMelody_ = false;
   bool pistonsStayLit_ = false;
   std::atomic<bool> showPlayedKeys_{true};
+  std::array<std::atomic<int>, 17> channelDevice_{};  // by channel 1..16, see lastDeviceOnChannel
   std::atomic<bool> narrowStrips_{false};
   std::atomic<bool> smallPagesFill_{false};
   std::atomic<bool> rememberWindowPlaces_{true};

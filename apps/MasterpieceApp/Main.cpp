@@ -468,7 +468,7 @@ public:
             juce::StringArray{"/bin/sh", "-c", "(sleep 5; systemctl poweroff) >/dev/null 2>&1 &"});
 #endif
       }
-      systemRequestedQuit();
+      quit();  // asked from afar: no favourites question on the screen
     };
     // A favourite organ chosen in the web console (#1097), opened once the
     // request has been answered: the load holds the message thread a while.
@@ -588,7 +588,7 @@ public:
             // and the usual reason to script this is to record more than one
             // thing on the same organ.
             juce::Logger::writeToLog("recital finished");
-            if (!stayOpen) juce::JUCEApplication::getInstance()->systemRequestedQuit();
+            if (!stayOpen) juce::JUCEApplicationBase::quit();
             return;
           }
           const Take& t = (*list)[index];
@@ -904,6 +904,16 @@ public:
     // and a modal dialog over the console would defeat both.
     if (!guiOnly && mp::ui::WizardPanel::isFirstRun(*proc_))
       win_->showWizard(*proc_);
+    // No organ to open: straight to Open, its search box taking the keys
+    // (#1271). Only with something to choose from: with no favourite and no
+    // installed organ the Open window is a file dialog, which is not a thing
+    // to put up unasked.
+    else if (!guiOnly && !mp::ui::kMobile && odf == juce::File() &&
+             (!proc_->favourites().organs.used().empty() || !proc_->installedOrgans().isEmpty()))
+      juce::MessageManager::callAsync([this] {
+        if (win_ != nullptr && proc_ != nullptr && proc_->loadedOrganFile() == juce::File())
+          win_->editor().showOpenMenu();
+      });
   }
 
   // Beside the player's own data, with the organ settings and the MIDI maps.
@@ -1053,7 +1063,30 @@ public:
     mp::ui::removeTouchLook();
   }
 
-  void systemRequestedQuit() override { quit(); }
+  // The window's close button, File > Quit and the system's own quit. An organ
+  // on no favourite slot is offered once before quitting (#1286): a player who
+  // only ever opens and quits never sees the Favourites list otherwise. Asked
+  // once per organ; any answer quits.
+  void systemRequestedQuit() override {
+    if (mp::ui::kMobile || !proc_ || quitAsked_ || !proc_->shouldOfferFavourite()) {
+      quit();
+      return;
+    }
+    quitAsked_ = true;
+    proc_->markFavouriteOffered();
+    const auto& organ = proc_->organModel().organName;
+    const auto name = organ.empty() ? proc_->loadedOrganFile().getFileNameWithoutExtension()
+                                    : juce::String::fromUTF8(organ.c_str());
+    juce::AlertWindow::showOkCancelBox(
+        juce::MessageBoxIconType::QuestionIcon, TRANS("Add to the favourites?"),
+        TRANS("%1 is not among the favourites. A favourite opens from the Open window's list, or from a piston, "
+              "without looking for the organ again.")
+            .replace("%1", name),
+        TRANS("Add and quit"), TRANS("Quit"), win_.get(), juce::ModalCallbackFunction::create([this](int result) {
+          if (result == 1 && proc_) proc_->addCurrentOrganToFavourites();
+          quit();
+        }));
+  }
 
   // A phone or tablet ends a backgrounded app whenever it wants its memory,
   // without calling shutdown(): to the crash guard that looked like a crash,
@@ -1088,11 +1121,12 @@ private:
       if (quitSignalled == 0) return;
       stopTimer();
       juce::Logger::writeToLog("quit: asked by the system (signal)");
-      if (auto* app = juce::JUCEApplication::getInstance()) app->systemRequestedQuit();
+      juce::JUCEApplicationBase::quit();  // no favourites question: nobody is at the screen
     }
   };
   std::unique_ptr<QuitWatch> quitWatch_;
   bool loadStillRunning_ = false;
+  bool quitAsked_ = false;  // the favourites question is up: a second quit goes at once
   // An input the player wants and another program holds (Windows gives a MIDI
   // port to one program at a time) is opened as soon as it is free: before,
   // it stayed shut until Masterpiece was started again (#305).

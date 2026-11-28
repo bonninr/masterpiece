@@ -6918,6 +6918,28 @@ int TabNamesLook::getTabButtonBestWidth(juce::TabBarButton& button, int tabDepth
   return floor + (own - floor) * (room - least) / (wanted - least);
 }
 
+TabHelpButton::TabHelpButton(juce::TabbedComponent& tabs, std::map<juce::String, juce::String> pages,
+                             juce::String fallback)
+    : juce::TextButton("?"), tabs_(tabs), pages_(std::move(pages)), fallback_(std::move(fallback)) {
+  setTooltip(TRANS("Help: this tab in the manual"));
+  setTitle(TRANS("Help"));
+  onClick = [this] {
+    const auto it = pages_.find(tabs_.getCurrentTabName());
+    juce::URL(juce::String(kDocumentationUrl) + (it != pages_.end() ? it->second : fallback_))
+        .launchInDefaultBrowser();
+  };
+}
+
+void TabHelpButton::place() {
+  auto& bar = tabs_.getTabbedButtonBar();
+  const auto area = bar.getBounds();
+  const int side = area.getHeight();
+  bar.setBounds(area.withTrimmedRight(side));
+  setBounds(tabs_.getBounds().getX() + area.getRight() - side + 3, tabs_.getBounds().getY() + area.getY() + 3,
+            side - 6, side - 6);
+  toFront(false);
+}
+
 SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
                                juce::AudioDeviceManager* devices)
     : performance_(p, EnginePanel::Part::Performance), general_(p, EnginePanel::Part::General),
@@ -6959,6 +6981,19 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
     tabs_.addTab(TRANS("Remote control"), bg, remote_.get(), false);
   }
   tabs_.addTab(TRANS("Diagnostics"), bg, &log_, false);
+  help_ = std::make_unique<TabHelpButton>(
+      tabs_,
+      std::map<juce::String, juce::String>{
+          {TRANS("General"), "guide/general-settings.html#general"},
+          {TRANS("Audio"), "guide/general-settings.html#audio"},
+          {TRANS("Performance"), "guide/general-settings.html#performance"},
+          {TRANS("MIDI"), "guide/general-settings.html#midi"},
+          {TRANS("Console MIDI"), "guide/general-settings.html#messages-to-the-console"},
+          {TRANS("Console display"), "guide/general-settings.html#console-display"},
+          {TRANS("Remote control"), "guide/general-settings.html#remote-control"},
+          {TRANS("Diagnostics"), "guide/general-settings.html#diagnostics"}},
+      "guide/general-settings.html");
+  addAndMakeVisible(*help_);
   if (lastSettingsTab().isNotEmpty()) showTab(lastSettingsTab());
   // Wide enough for every tab's name in full; the tabs scroll when taller.
   setSize(960, 560);
@@ -6970,6 +7005,9 @@ void SettingsWindow::showTab(const juce::String& name) {
 }
 
 void SettingsWindow::paint(juce::Graphics& g) { g.fillAll(juce::Colour(0xff15171c)); }
-void SettingsWindow::resized() { tabs_.setBounds(getLocalBounds()); }
+void SettingsWindow::resized() {
+  tabs_.setBounds(getLocalBounds());
+  if (help_ != nullptr) help_->place();
+}
 
 } // namespace mp::ui

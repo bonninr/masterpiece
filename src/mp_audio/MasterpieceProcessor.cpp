@@ -2212,6 +2212,9 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
       continue;
     }
 
+    // Which console plays this channel, for the status line (#1285).
+    if (msg.isNoteOn() && deviceId != 0 && msg.getChannel() >= 1 && msg.getChannel() <= 16)
+      channelDevice_[static_cast<size_t>(msg.getChannel())].store(deviceId, std::memory_order_relaxed);
     // Learning a manual consumes the key press: the note being used to teach
     // the range must not also sound.
     if (msg.isNoteOn() && capture == MidiCapture::KeyboardLearn) {
@@ -3798,6 +3801,12 @@ bool MasterpieceProcessor::writeGlobalFile() const {
     }
   }
   if (favouriteSort_ != FavouriteSort::Slot) text << "favouritesort " << static_cast<int>(favouriteSort_) << "\n";
+  for (const auto& path : favouriteOffered_) text << "favouriteoffered " << juce::String::fromUTF8(path.c_str()) << "\n";
+  // "lasttab <tab> | <organ path>": the path last, it can hold spaces.
+  for (const auto& [path, tab] : lastTabs_)
+    if (!tab.empty())
+      text << "lasttab " << juce::String::fromUTF8(tab.c_str()).replaceCharacter('|', '/') << " | "
+           << juce::String::fromUTF8(path.c_str()) << "\n";
   return mp::writeTextFile(f, text);
 }
 
@@ -4142,6 +4151,12 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
         fav.lastUsed = parts[3].getLargeIntValue();
         if (!fav.empty()) bank.set(slot, std::move(fav));
       }
+    } else if (key == "favouriteoffered") {
+      if (val.isNotEmpty()) favouriteOffered_.insert(val.toStdString());
+    } else if (key == "lasttab") {
+      const auto tab = val.upToFirstOccurrenceOf(" | ", false, false).trim();
+      const auto path = val.fromFirstOccurrenceOf(" | ", false, false).trim();
+      if (tab.isNotEmpty() && path.isNotEmpty()) lastTabs_[path.toStdString()] = tab.toStdString();
     } else if (key == "favouritesort") {
       favouriteSort_ = static_cast<FavouriteSort>(juce::jlimit(0, 2, val.getIntValue()));
     } else if (isMixerKey(key)) {
@@ -4251,6 +4266,18 @@ int MasterpieceProcessor::addCurrentOrganToFavourites(int slot) {
   favourites_.organs.set(use, std::move(fav));
   writeGlobalFile();
   return use;
+}
+
+bool MasterpieceProcessor::shouldOfferFavourite() const {
+  if (loadedOdf_.getFullPathName().isEmpty()) return false;
+  const std::string target = loadedOdf_.getFullPathName().toStdString();
+  return favourites_.organs.slotOf(target) == 0 && favourites_.organs.firstFree() != 0 &&
+         favouriteOffered_.count(target) == 0;
+}
+
+void MasterpieceProcessor::markFavouriteOffered() {
+  if (loadedOdf_.getFullPathName().isEmpty()) return;
+  if (favouriteOffered_.insert(loadedOdf_.getFullPathName().toStdString()).second) writeGlobalFile();
 }
 
 void MasterpieceProcessor::rememberDialogFolder(const juce::String& kind, const juce::File& picked) {
@@ -5468,6 +5495,28 @@ Id MasterpieceProcessor::keyboardForChannel(int channel, int deviceId) const {
   for (Id kb : couplers_.inputKeyboards())
     if (couplers_.assignmentCodeFor(kb) > 0) return 0;
   return fallbackKeyboard_;
+}
+
+juce::String MasterpieceProcessor::keyboardSourceText(Id keyboardId) const {
+  // A drawn manual stands for the keyboard a player plays: that one's name,
+  // channel and device.
+  const Id input = couplers_.inputKeyboardFor(keyboardId);
+  const Id played = input != 0 ? input : keyboardId;
+  const auto it = model_.keyboards.find(played);
+  if (it == model_.keyboards.end()) return {};
+  const int channel = channelForKeyboard(played);
+  int device = 0;
+  for (const auto& b : midiMap_.keyboardBindings())
+    if (b.keyboardId == played && b.deviceId != MidiDeviceMap::kAnyDevice) device = b.deviceId;
+  if (device == 0) device = lastDeviceOnChannel(channel);
+  const auto name = juce::String::fromUTF8(it->second.name.c_str());
+  if (device != 0)
+    if (const auto dev = midiMap_.devices().displayName(device); !dev.empty())
+      return TRANS("%1: %2, channel %3")
+          .replace("%1", name)
+          .replace("%2", juce::String::fromUTF8(dev.c_str()))
+          .replace("%3", juce::String(channel));
+  return TRANS("%1: channel %2").replace("%1", name).replace("%2", juce::String(channel));
 }
 
 int MasterpieceProcessor::channelForKeyboard(Id keyboardId) const {

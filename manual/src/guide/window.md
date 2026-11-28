@@ -130,7 +130,7 @@ window; the whole text appears as a tooltip. The window has no CPU readout.
 
 A console that ships more than one page shows one tab per page. A page is named
 as the organ names it, or **Page 1**, **Page 2** and so on. Panels shown as
-tabs follow the console pages. A click on a tab shows that page.
+tabs follow the console pages. A click on a tab shows that page. The tab last chosen is kept for each organ, and the next load of that organ opens on it.
 
 In the standalone application each console page tab carries a small button,
 a square with an arrow. A click on it opens the page in its own window; the button is
@@ -194,7 +194,7 @@ drawn in the main layout, whole.
 |---|---|
 | Drawstop, rocker, coupler, tremulant | A click toggles the switch. |
 | Piston, setter, or any button the organ marks as momentary | The button is pressed while the mouse button is down and released with it. A piston fires on the press. |
-| Drawn key of a drawn manual | A click plays the key, on the channel of the keyboard that the manual belongs to, through the same path as a MIDI key. The key sounds while the button is held. Sliding along the manual plays the keys under the pointer in turn; sliding from one manual onto another moves the note to the other manual. |
+| Drawn key of a drawn manual | A click plays the key, on the channel of the keyboard that the manual belongs to, through the same path as a MIDI key. The key sounds while the button is held. Sliding along the manual plays the keys under the pointer in turn; sliding from one manual onto another moves the note to the other manual. With the pointer at rest on a manual, a tooltip names the keyboard, the MIDI device that plays it and its channel: `Great: Fatar, channel 2`; the device is the one bound to the keyboard, or the one that last played that channel, and is left out until one has. |
 | Swell shoe, crescendo pedal, dial or slider | A press takes hold of the control and moves nothing. A drag then moves the value from where it was. |
 | Stop with no pipes in the set | A click on it is refused while it is pushed in. See [Stops that make no sound](#stops-that-make-no-sound). |
 
@@ -242,7 +242,7 @@ themselves are described on [MIDI and consoles](midi.md).
 |---|---|
 | Drawstop, coupler, piston | The object's name, then its current MIDI mappings (`Note 36 ch 1 (toggle)`, `CC 20 (while held)`), **MIDI window...**, **Learn** (**Learn (while held)** for a momentary button), a submenu **Learn as** with **Toggle**, **While held**, **Draw only** and **Cancel only**, and **Clear mapping**. |
 | Swell shoe, crescendo, dial, slider; swell fader | The control's name, its mappings, **MIDI window...**, **Learn: move a pedal, knob or fader**, **Closed position: where the pedal is now**, **Open position: where the pedal is now**, **Use the pedal's whole travel** and **Clear mapping**. |
-| Key of a drawn manual | The MIDI window of that manual: which keyboard plays it and the pistons that bring it to a keyboard. |
+| Key of a drawn manual | The MIDI window of that manual: which keyboard plays it and the controls that bring it to a keyboard. |
 | Element of a panel | The MIDI window of the stop, coupler, piston or control. |
 | Page tab, panel tab | See [Page tabs](#page-tabs). |
 | Empty part of the console | Cancels a learn that is armed. |

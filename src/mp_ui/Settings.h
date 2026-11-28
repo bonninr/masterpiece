@@ -13,6 +13,7 @@
 #include <array>
 #include <functional>
 #include <initializer_list>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -885,6 +886,22 @@ public:
   static int longestWordWidth(juce::TabBarButton& button, int tabDepth);
 };
 
+// A "?" at the right end of a window's tab bar (#1287): the manual, at the
+// section of the tab in front. Pages are paths under the documentation site,
+// "guide/organ-settings.html#loading", by the tab's name as shown.
+class TabHelpButton : public juce::TextButton {
+public:
+  TabHelpButton(juce::TabbedComponent& tabs, std::map<juce::String, juce::String> pages, juce::String fallback);
+  // Call after the tabs are laid out: the bar is shortened by the button's
+  // width and the button put in its place.
+  void place();
+
+private:
+  juce::TabbedComponent& tabs_;
+  std::map<juce::String, juce::String> pages_;
+  juce::String fallback_;
+};
+
 // The General tab: the program's own settings, then its language, text size
 // and font, which were a tab of their own (Preferences) with three controls.
 // Every setting of both is here, as it was.
@@ -945,6 +962,7 @@ private:
   DisplayPanel display_;
   LogPanel log_;
   std::unique_ptr<RemotePanel> remote_;
+  std::unique_ptr<TabHelpButton> help_;  // last: it points at tabs_
 };
 
 } // namespace mp::ui
