@@ -4,7 +4,7 @@ The split keyboard plays a whole organ from one keyboard. It divides the keyboar
 
 <div class="video"><iframe src="https://www.youtube-nocookie.com/embed/0n6MeA5wAy0?list=PLEi774VY3MkM&rel=0" title="Video tutorial 07 Couplers and keyboards" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
 
-Open the window with **View > Split keyboard**. The window can stay open or be closed; closing it hides it and the split carries on.
+Open the window with **Window > Split keyboard**. The window can stay open or be closed; closing it hides it and the split carries on.
 
 ![The Split keyboard window](../images/split-keyboard.png)
 
@@ -48,7 +48,7 @@ The first time the split is on for an organ, each role that has no mapping recei
 | Solo | The third manual; the last manual when the organ has fewer than three |
 | Pedal | The organ's pedal keyboard, found by its assignment code or a name that contains "pedal"; no mapping when the organ has none |
 
-Manuals are taken in the organ's own order, from the keyboards its key flow plays: the same manuals the **Keyboards** rows of **Organ > Organ settings...**, tab **MIDI**, list. An organ whose definition gives no key count for its manuals (the Nancy demo, for one) lists them too. The proposal is saved with the organ and can be changed in the **Manuals on this organ** rows.
+Manuals are taken in the organ's own order, from the keyboards its key flow plays: the same manuals the **Keyboards** rows of **Organ > MIDI...** list. An organ whose definition gives no key count for its manuals (the Nancy demo, for one) lists them too. The proposal is saved with the organ and can be changed in the **Manuals on this organ** rows.
 
 ## Window fields
 

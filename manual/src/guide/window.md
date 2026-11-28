@@ -369,7 +369,7 @@ cause when the pointer rests on the drawstop for 700 ms.
 
 | Cause | On the console | Tooltip |
 |---|---|---|
-| The stop was left out of the load in **Organ > Organ settings...**, tab **Stops, ranks and perspectives** | The drawstop is veiled: the picture is darkened by 55 % black, in the shape of the picture. The stop still draws and is stored in pistons; it makes no sound. Copies of the drawstop on other pages are veiled too. Every other picture is drawn at full strength. | **\<stop\> is not loaded: chosen in Organ settings, Stops** |
+| The stop was left out of the load in **Organ > Stops, ranks and perspectives...** | The drawstop is veiled: the picture is darkened by 55 % black, in the shape of the picture. The stop still draws and is stored in pistons; it makes no sound. Copies of the drawstop on other pages are veiled too. Every other picture is drawn at full strength. | **\<stop\> is not loaded: chosen in Organ settings, Stops** |
 | The stop's ranks ship no pipes in this sample set (a demo set's locked stops) | The drawstop is drawn as the set draws it, with no veil. A click on it is refused. | **\<stop\> is not available** |
 
 A stop with no pipes is also held in. A general, the crescendo, a tutti, a MIDI

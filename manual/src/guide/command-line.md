@@ -189,7 +189,7 @@ A load in which some samples failed to read writes no cache, so a damaged instal
 
 ### `--program-couplers <on|off>`
 
-Switches the program's own couplers between the manuals at 16', 8' and 4' on or off for the run: the **Extra couplers** box on **Organ settings > Loading**, and **Organ > Extra couplers**. Accepts the same words as `--load-mono`. The option is not in the `--help` list.
+Switches the program's own couplers between the manuals at 16', 8' and 4' on or off for the run: the **Extra couplers** box on **Organ settings > Loading**, and **Window > Couplers**. Accepts the same words as `--load-mono`. The option is not in the `--help` list.
 
 ## Examples
 

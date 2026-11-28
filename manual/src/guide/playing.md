@@ -666,7 +666,7 @@ left out.
 
 | Control | What it does |
 |---|---|
-| **Record audio...** | Asks for a `.wav` file (**Record the organ to**) and starts recording to it, replacing a file of that name. |
+| **Record audio** | Asks for a `.wav` file (**Record the organ to**) and starts recording to it, replacing a file of that name. |
 | **Stop** | Ends the recording and completes the file. |
 
 The recording is a 24-bit WAV at the audio device's sample rate with one or two
