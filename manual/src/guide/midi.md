@@ -235,7 +235,7 @@ The program's own buttons have no object on the console to right-click. Their le
 | | **Learn console size** | The next console layout |
 | | **Learn panel**, **Learn keyboard**, **Learn combinations** | The stop-list panel, the on-screen keyboard and the Combinations window, on and off |
 | **Console MIDI** tab, **Power** | **Learn quit**, **Learn power off** | Quits Masterpiece, or shuts the computer down; see [A console with no screen](#a-console-with-no-screen) |
-| **Console MIDI** tab, **Score app** | **Learn score page -**, **Learn score page +** | A page back or forward in a score app, sent on the MIDI outputs as the message chosen under **Sends** (see below) |
+| **Console MIDI** tab, **Score app** | **Learn score page -**, **Learn score page +** | A page back or forward in a score app, sent on the MIDI outputs as the message chosen under **Sends** (see below), and in the program's own score panel |
 | The tuning panel's **MIDI** button | **Temperament: \<name\>**, **Temperament -**, **Temperament +**, **Transpose -**, **Transpose +** | The temperament chosen in the panel, directly; the previous and next temperament; the transposer, one semitone down or up. See [Temperament](playing.md#temperament). |
 | The Recorder's **MIDI...** | **Record**, **Play** | A press starts, the next press stops (see [Record and Play on the console](playing.md#record-and-play-on-the-console)) |
 

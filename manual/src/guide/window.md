@@ -525,24 +525,18 @@ score is open the tab reads **Open a MusicXML score (.musicxml, .xml or
 
 The page is engraved to the size of the tab, so the staves fill its width. A
 larger zoom makes the notation larger and breaks the lines again, which gives
-more pages. While the score plays, the pages turn by themselves.
+more pages. While the score plays, the pages turn by themselves, or the line
+scrolls in the one-line view. A box at the top left reads the current bar.
 
-| Control | What it does |
-|---|---|
-| **Open score...** | Opens a score file. |
-| **<** and **>**, page number | Turn the page; the number reads page / pages. |
-| **-**, **+** and the zoom | Zoom in steps of 10 %, from 50 % to 250 %. The button shows the zoom the page is engraved at and returns it to 100 %. |
-| **Two pages** | Shows two pages side by side. |
-| **Play** / **Stop** | Plays from the cursor: where playing stopped, the note last clicked, or the first note of the page turned to. |
-| **Manuals...** | One row per staff with the manual it plays, or **None**. |
-| **Invert** | Inverts the page's colours. |
-| **Detach** / **Attach** | Moves the score into a window of its own, 1100 x 760 pixels centred, and back. Absent on phones and tablets. |
+The bar along the top holds **Open score...**, the page buttons, the zoom,
+**Play**, the tempo in BPM, **Manuals...**, **Mark...** with the registration
+buttons, **View...**, **Buttons...** and **Detach**. **Detach** moves the score
+into a window of its own, 1100 x 760 pixels centred, and **Attach** brings it
+back; with the window detached, **View...** offers **Keep this window on top**.
+Phones and tablets have no **Detach**.
 
-A click on a note moves the cursor there. Each staff plays on the channel a
-click on its manual's drawn keys would use, so the couplers act and the drawn
-keys move with the playing. By default the last of three or more staves plays
-the pedal and the other staves play the organ's preferred manual. A manual
-changed during playing takes effect at once.
+[Score](playing.md#score) describes each control, the marks, the keys and the
+console buttons, and what is kept with the score.
 
 The score fonts are written once to a **Score fonts** folder in the data
 folder. When that fails, the tab reads **The score fonts could not be

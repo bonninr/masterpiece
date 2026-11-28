@@ -685,29 +685,101 @@ For scripted recordings with `--play-midi` and `--record-audio`, see
 **View > Score** opens the score panel: a MusicXML score engraved to the size of
 the panel and played through the organ, with a cursor that follows the playing.
 The panel is a **Score** tab after the console pages and the panels; the tab
-appears the first time **View > Score** is chosen.
+appears the first time **View > Score** is chosen. **File > Open score...**
+opens a score straight away.
 
 <div class="video"><iframe src="https://www.youtube-nocookie.com/embed/WQZDVPGoUp4?list=PLEi774VY3MkM&rel=0" title="Video tutorial 11 Playing from a score" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
 
 | Control | What it does |
 |---|---|
 | **Open score...** | Opens a `.musicxml`, `.xml` or `.mxl` file. |
-| **<**, page readout, **>** | Turn the pages. The readout reads the first page shown and the number of pages. |
+| **<**, page readout, **>** | Turn the pages, or scroll the line in the one-line view. The readout reads the first page shown and the number of pages. |
 | **-**, zoom, **+** | Make the notation smaller or larger, from 50 % to 250 % in steps of 10 %. The staves fill the panel's width at every zoom, so a larger zoom breaks the lines again and gives more pages. A click on the figure returns to 100 %. |
-| **Two pages** | Shows two pages side by side. |
 | **Play**, **Stop** | Plays the score through the organ from the start chosen, and stops it. |
-| **Manuals...** | One row per staff (**Staff 1**, with the part's name when the score gives one): the manual that staff plays, or **None**. |
-| **Invert** | Draws the page light on dark. |
+| Tempo box | The tempo in **BPM**: the score's own to start with, from its first tempo mark. Type or step another, from a quarter of the score's tempo to four times it; a double-click returns to the score's. The tempo marks that follow keep their proportion. |
+| **Manuals...** | One row per staff (**Staff 1**, with the part's name when the score gives one): the manual that staff plays, or **None**, and **Mute**. |
+| **Mark...** | Adds a mark on the note the cursor marks; see [Marks](#marks). |
+| **<**, registration name, **>** | The registration or combination mark before and the next one, set at once. |
+| **View...** | **Pages** or **One line, scrolling with the playing**; **Two pages** side by side; **Invert**, the page light on dark. With the panel detached, also **Keep this window on top**. |
+| **Buttons...** | Console buttons for the score; see [Keys and console buttons](#keys-and-console-buttons). |
 | **Detach**, **Attach** | Moves the panel into a window of its own and back. Absent on phones and tablets. |
 
 - A click on a note sets the start there. While the score plays, the click
   starts it again from that note.
-- The pages turn as the playing reaches them.
+- The pages turn as the playing reaches them. In the one-line view the line
+  scrolls with the playing.
+- A box at the top left of the page reads **Bar 12**: the bar the playing is
+  in, or the start while stopped, numbered as the score numbers it.
 - Each staff plays on the channel a click on its manual's drawn keys uses, so
   couplers and the drawn keys follow the playing.
-- By default, with three staves or more, the last staff plays the Pedal and the
-  others the organ's preferred manual. With fewer staves, every staff plays the
-  preferred manual.
+- By default a part named Pedal (Pedal, Ped., Pedale, Pédale) plays the Pedal,
+  and so does the last staff of a score with three staves or more. The other
+  staves play the organ's preferred manual.
+- **Mute** leaves a staff silent, to play it yourself; its notes stay on the
+  page and the cursor goes on.
+
+### What the playing follows
+
+- **Repeats and endings.** Repeat signs, first and second endings, D.C., D.S.,
+  Fine and To Coda. The page shows the score as written; the cursor goes back
+  with the playing.
+- **Ornaments.** Trills (from the note above, ending on the main note),
+  mordents and inverted mordents, turns and inverted turns. The neighbouring
+  notes come from the key, or from an accidental over the sign. The ornament's
+  notes are thirty-seconds of the score's beat, between 50 and 125 ms.
+- **A note already sounding** where the playing starts is struck at once.
+
+### Marks
+
+A right-click on a note, or **Mark...** for the note the cursor marks, adds a
+mark. Each mark shows as an icon over its note; a click opens it, and a drag
+moves it to another note. **Undo the last change to the marks**, in the same
+menu, or Ctrl+Z takes a change back.
+
+| Mark | Icon | What it does |
+|---|---|---|
+| **Add a note here** | A yellow sticky note | Text of your own. An empty note is removed. |
+| **Add a registration here (the organ as it is now)** | A stop knob: orange when set now, blue when it holds this organ, grey when it holds only other organs | Holds the drawn stops and switches, the volume, the Organ EQ and the swell and crescendo pedals, one line per organ. The box offers **Set now**, **Store** (this organ's state now), **Forget organ** and **Delete**, and lists the other organs it is set for. |
+| **Add a combination here (a general or a sequencer step, for every organ)** | A square piston, **G** or **S**: orange when set now | Presses a general, or goes to a sequencer step, by number: the same on every organ. The box offers **General** or **Sequencer step**, the number, **Set now** and **Delete**. |
+| **Add a jump mark here** | A green flag | A named place, **Jump 1** and on. The up and down keys go from one to the next. The box offers **Go there** and **Delete**. |
+| **Add a manual change here (each staff on the manual set now)** | A keyboard on a teal square | From that note on, each staff plays the manual chosen in its box (**From this note on**), on each pass of a repeat. The manual is kept by its place on the console, so the change works on another organ too. |
+
+Registrations and combinations are set as the playing reaches their note, and
+when a page is turned forward (the first one on the new page). Turning back
+leaves the organ as it is.
+
+### Keys and console buttons
+
+With the score panel in front:
+
+| Key | What it does |
+|---|---|
+| Space | Play and stop |
+| Left, Right | A measure back, a measure on |
+| Up, Down | The jump mark before, the next jump mark |
+| Page Up, Page Down | A page back, a page on |
+| Home, End | The first measure, the last measure |
+| Ctrl+Z | Undoes the last change to the marks |
+
+**Buttons...** learns a console button for **Play / Stop**, **A measure back**,
+**A measure on**, **The jump mark before**, **The next jump mark**, **Page back**
+and **Page forward**, each with **Learn** and **Clear**. The two page buttons are
+the score-page buttons of the **Console MIDI** tab, so the same button turns the
+panel's page and a score app's page.
+
+### Kept with the score
+
+The panel writes the marks and the score's settings into the score's own file,
+a second after each change and when the panel closes: the tempo when changed,
+each staff's manual (by its place on the console) and mute, the one-line view,
+two pages, the zoom and **Invert**. A `.mxl` file keeps them inside the same
+zip. Other score programs show nothing extra. The file as it was before the
+first change is kept once beside it as `<file>.bak`. The file can also hold a
+cream paper (`paper cream`) and blue staff lines (`lines blue`); the panel has
+no control for them yet.
+
+**Keep this window on top** is the program's own setting, kept in
+`score-window.txt` in the data folder.
 
 The panel reads **Open a MusicXML score (.musicxml, .xml or .mxl).** while empty,
 and **No score was found in this file.** or **The file could not be read.** when a

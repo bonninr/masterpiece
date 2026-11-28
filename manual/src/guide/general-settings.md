@@ -188,7 +188,7 @@ The console's own buttons, which the organ file never mentions, and the messages
 | **On organ unload** | Hex messages, **Send now** | Sent when an organ unloads: before the next organ loads, and when the program quits. For a relay that turns the speakers off. | Both |
 | **Console** | **Learn page -**, **Learn page +**, **Learn console size** | Previous console page, next console page, next console layout. | Advanced |
 | | **Learn panel**, **Learn keyboard**, **Learn combinations** | Show the stop-list panel, the on-screen keyboard and the combinations window. | Advanced |
-| **Score app** | **Learn score page -**, **Learn score page +**, then **Sends**: message, channel and two numbers | A piston learned here turns the page in a score app on a tablet or another program: it sends the message chosen (**Note**, **Controller** or **Program change**) on the MIDI outputs, the first number for the next page and the second for the page before. Default: notes 127 and 126 on channel 16. Teach the same message to the score app. | Both |
+| **Score app** | **Learn score page -**, **Learn score page +**, then **Sends**: message, channel and two numbers | A piston learned here turns the page in a score app on a tablet or another program: it sends the message chosen (**Note**, **Controller** or **Program change**) on the MIDI outputs, the first number for the next page and the second for the page before. Default: notes 127 and 126 on channel 16. Teach the same message to the score app. The same buttons turn the page of the program's own score panel. | Both |
 
 A message field that does not read is outlined in red and keeps its last good value.
 
