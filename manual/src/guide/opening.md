@@ -17,7 +17,7 @@ Settings that decide how much memory an organ takes, and whether release tails s
 | GrandOrgue organ definition | `.organ` | Converted in memory as it loads, console included. The converted definition is never written to disk. |
 | GrandOrgue package | `.orgue` | Read in place. Packages that depend on other packages need those beside them. |
 | jOrgan disposition | `.disposition` | Converted in memory as it loads, as GrandOrgue organs are; its SoundFont samples written as WAV files. See [jOrgan organs](#jorgan-organs). |
-| Hauptwerk-format package | `.rar`, for example `Name.CompPkg.Hauptwerk.rar` | Read in place. See [Playing from packages](#playing-from-packages). |
+| Hauptwerk-format package | `.rar`, for example `Name.CompPkg.Hauptwerk.rar`, or a name ending in `_Hauptwerk_rar`, for example `Name.CompPkg_Hauptwerk_rar` | Read in place. See [Playing from packages](#playing-from-packages). |
 
 GrandOrgue files may be encoded in UTF-8 or in the Western code page of their author; Masterpiece detects which. A GrandOrgue organ has no organ id, so Masterpiece derives one from a hash of the file: the same file is always the same organ and keeps its own settings.
 
@@ -97,11 +97,11 @@ For a layout that cannot be worked out from the path, the **Organ folder** row o
 
 ## Installing an organ package
 
-**File > Install organ package...** puts an organ's packages into the organs folder, as an installed organ. It asks for the package first, reads it (**Reading the package...**), and lists its components: organ definitions, sample packages and other files. Each row has the **Action**, the **Type**, the version **In the package**, the version **Installed**, and the **Size**. The action is **Install**, **Upgrade**, **Reinstall**, **Install the older version**, **Keep** or **Leave as it is**, as the versions say.
+**File > Install organ package...** puts an organ's packages into the organs folder, as an installed organ. It asks for the package first, reads it (**Reading the package...**), and lists its components: organ definitions, sample packages and other files. Each row has the **Action**, the **Type**, the version **In the package**, the version **Installed**, and the **Size**. The action is **Install**, **Upgrade**, **Reinstall**, **Install the older version**, **Skip** or **Leave as it is**, as the versions say. The file dialog offers `.rar`, `.orgue`, `.CompPkg_Hauptwerk_rar`, `.HauptwerkOrgan` and `.zip` files.
 
 - The organs folder: `Documents/Masterpiece/Organs` by default, on any drive. The first install asks where organs go before anything is written: **Organs folder: \<folder\> (\<free\> free)**, with **Install here** and **Choose a folder...**.
 - A line under the list gives the size of the install and the room on the drive: **Installs N component(s), \<size\>**.
-- At the end: **Installed: \<organ\>. It is listed in Open, under Installed.**, with a button that opens it.
+- At the end: **Installed: \<organ\>. It is listed in Open, under Installed.**, with a button that opens it. **Install another package...** closes the window and asks for the next package, for several organs or packages in a row.
 - A package that is not an organ's: **This package cannot be installed: \<reason\>**, or **This package holds no organ to install.**
 
 **File > Uninstall organ...** lists what the organs folder holds (**Organs installed in the organs folder**), with the organs that need each package (**Needed by**), and removes what is ticked. The organ on the console is marked **On the console now**. The question **Remove N component(s), \<size\>, from \<folder\>? Removed files cannot be recovered.** comes first. Both items are absent on phones and tablets.
@@ -311,7 +311,7 @@ Started with no organ to open, the program shows this window at once, its search
 
 | Element | What it does |
 |---|---|
-| List box | What the window lists: the favourites in **Slot order**, by **Last used** or by **Most used**; or **Installed**, the organs in the organs folder. The order of the favourites is kept. |
+| List box | What the window lists: the favourites in **Slot order**, by **Last used** or by **Most used**; or **Installed**: the organs in the organs folder and in the sample libraries Masterpiece knows, and the organs played from their RAR packages while the package is still there. The folders Masterpiece unpacks packages into are never counted as a library. The order of the favourites is kept. |
 | Search field | Placeholder **Search the favourites**, or **Search the installed organs**. Filters the list by a case-insensitive part of the name or of the file name. **Return** opens the first organ shown. **Escape** closes the window. On computers the field has the keyboard focus when the window opens. |
 | A row | Shows the slot number, the name, and the file name below it. A click anywhere on the row opens the organ. When two favourites have the same name, the file name is prefixed with the format of the file. |
 | Up and down arrows | Swap the favourite with its neighbour in the list. The two slots swap numbers, so gaps left on purpose stay. The arrows are active only while the search field is empty. The status line reports `<name> is on slot N`. |

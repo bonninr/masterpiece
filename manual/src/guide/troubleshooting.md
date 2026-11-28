@@ -146,7 +146,10 @@ Masterpiece opens `.rar` and `.orgue` packages in place. A failure shows a dialo
 | `is damaged from <N> MB on (<P>% of the file)` | That volume is cut short or corrupted. Download that volume again. |
 | `is password-protected` | Masterpiece cannot open password-protected archives. Extract the archive with the password and open the organ definition inside. |
 | `is a solid RAR 4 archive split into volumes` | Masterpiece cannot read this kind directly. Extract it with 7-Zip or WinRAR and open the definition (`OrganDefinitions/*.Organ_Hauptwerk_xml`). |
-| `is not a RAR ... archive that Masterpiece can read` | The file is not a RAR archive, or is cut off at the start. |
+| `is an organ definition, not a package` | The file is a Hauptwerk-format or GrandOrgue definition saved with a package's name. Open it with **File > Open organ...**. |
+| `is text saved under the package's name, not the package` | The download link led to a web page or a message, such as a sign-in, a redirect or an error. Download it again from the sample set's site. |
+| `holds only zeros: its download did not finish` | The download stopped after the space was reserved. Download it again. |
+| `is not a RAR or ZIP archive that Masterpiece can read` | The file is none of the above: another format, or cut off at the start. |
 | `the package needs another package, id N, which is not beside it` | A GrandOrgue `.orgue` names a second package. Put it in the same folder. |
 | `no archive found at <path>` | The path is wrong. |
 | `there is no organ definition file (.Organ_Hauptwerk_xml) in <file> or the packages beside it` | The archive holds samples only. Open it together with the package that holds the definition, in the same folder. |
