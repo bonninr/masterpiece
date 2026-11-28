@@ -108,7 +108,6 @@ What the main window shows.
 | **Expression pedals** | Shows or hides the strip of expression pedal faders. Present when the organ has at least one swell shoe. |
 | **Keyboard** | Shows or hides the on-screen keyboard. |
 | **Highlight played keys** | Lights the keys of the drawn manuals as they are played. Ticked by default. |
-| **MIDI keyboards in the status line** | Adds to the status line which channel, and which MIDI device, plays each keyboard. Off by default. |
 | **Stop list size** | A submenu: **Normal**, **Large**, **Larger**. The height of the stops in the plain stop list, for a touch screen or for reading from the bench. |
 | **Piston size** | A submenu: **Normal**, **Large**, **Larger**. The size of the pistons in the Combinations window. |
 | **Large frame number** | Shows the sequencer's number alone, in large figures, in the bar; the whole readout is in its tooltip. |
@@ -122,7 +121,7 @@ The expression pedals, the keyboard and the page windows are described in the
 sections below. **Highlight played keys** is described under
 [Highlight played keys](#highlight-played-keys). The sizes are kept in
 `settings.mpglobal` as `stoplistsize`, `pistonsize`, `bigframenumber`,
-`statusmidi`, `smallpagesfill` and `rememberwindows`.
+`smallpagesfill` and `rememberwindows`.
 
 ### Settings
 
@@ -168,6 +167,8 @@ ticked item closes the window.
 | **Split keyboard** | The Split keyboard window. See [Split keyboard](split-keyboard.md). |
 
 ### Help
+
+![The Help menu](../images/menu-help.png)
 
 | Item | What it does |
 |---|---|
@@ -238,15 +239,11 @@ The strip along the bottom edge shows, from left to right and separated by
    `INCOMPLETE (memory low)` or `INCOMPLETE (load cancelled)`. A load with no
    audio reads `graphics only - no audio loaded`.
 2. `voices N`: the number of voices sounding now.
-3. With **View > MIDI keyboards in the status line**, each keyboard the player
-   can play, the pedal first, with its channel and the device bound to it or
-   that last played that channel: `Pedal: Fatar ch 1, Great: ch 2`. A channel no
-   device has played yet shows the channel alone.
-4. While the sample cache is being written in silence, `creating the sample
+3. While the sample cache is being written in silence, `creating the sample
    cache`, with a percentage and, after a few seconds, the time left. A cache
    that could not be written reads `sample cache not saved` or `sample cache
    not saved: the disk is full` until the next load.
-5. When non-zero, each after a comma: `dropped N` (note starts that found no
+4. When non-zero, each after a comma: `dropped N` (note starts that found no
    free voice), `no audio N` (starts whose samples were not in memory),
    `late blocks N` (audio blocks that took longer than the audio they produced)
    and, with streamed release tails, `streamed releases fell behind Nx: turn
@@ -340,7 +337,7 @@ drawn in the main layout, whole.
 |---|---|
 | Drawstop, rocker, coupler, tremulant | A click toggles the switch. A drag that starts on one and crosses others sets each one it enters to the state the first took, so one stroke along a row draws or retires the whole row. |
 | Piston, setter, or any button the organ marks as momentary | The button is pressed while the mouse button is down and released with it. A piston fires on the press. |
-| Drawn key of a drawn manual | A click plays the key, on the channel of the keyboard that the manual belongs to, through the same path as a MIDI key. The key sounds while the button is held. Sliding along the manual plays the keys under the pointer in turn; sliding from one manual onto another moves the note to the other manual. |
+| Drawn key of a drawn manual | A click plays the key, on the channel of the keyboard that the manual belongs to, through the same path as a MIDI key. The key sounds while the button is held. Sliding along the manual plays the keys under the pointer in turn; sliding from one manual onto another moves the note to the other manual. With the pointer at rest on a manual, a tooltip names the keyboard, the MIDI device that plays it and its channel: `Great: Fatar, channel 2`; the device is the one bound to the keyboard, or the one that last played that channel, and is left out until one has. |
 | Swell shoe, crescendo pedal, dial or slider | A press takes hold of the control and moves nothing. A drag then moves the value from where it was. |
 | Stop with no pipes in the set | A click on it is refused while it is pushed in. See [Stops that make no sound](#stops-that-make-no-sound). |
 
@@ -394,7 +391,7 @@ themselves are described on [MIDI and consoles](midi.md).
 |---|---|
 | Drawstop, coupler, piston | The object's name, then its current MIDI mappings (`Note 36 ch 1  (toggle)`, `CC 20  (while held)`, `(draw only)`, `(cancel only)`), what it sends and its computer key, or **Not mapped**; **Learn** (**Learn (while held)** for a piston or another held button); **Learn on and off (two messages)...**; a submenu **Learn one message as** with **Toggle**, **While held**, **Draw only** and **Cancel only**; **MIDI window...**; and **Clear mapping**. |
 | Swell shoe, crescendo, dial, slider; expression pedal fader | The control's name, its mappings (`CC 7 ch 1  (closed at 0, open at 127)`) or **Not mapped**, **MIDI window...**, **Learn: move a pedal, knob or fader**, **Closed position: where the pedal is now**, **Open position: where the pedal is now**, **Use the pedal's whole travel** and **Clear mapping**. |
-| Key of a drawn manual | The MIDI window of that manual: which keyboard plays it and the pistons that bring it to a keyboard. |
+| Key of a drawn manual | The MIDI window of that manual: which keyboard plays it and the controls that bring it to a keyboard. |
 | Stop, coupler, tremulant, piston, shoe or slider on a panel; stop in the plain stop list | The same menu as the object on the console. A stop reaches the drawstop the console draws for it. |
 | Page tab, panel tab | See [Page tabs](#page-tabs). |
 | Empty part of the console | Cancels a learn that is armed. |
@@ -656,6 +653,7 @@ A tooltip appears after the pointer rests on a control for 700 ms.
 | Where | Tooltip |
 |---|---|
 | Console drawstop with no sound | **\<stop\> is not available** or **\<stop\> is not loaded: chosen in Organ settings, Stops** |
+| Drawn manual | The keyboard that plays it, its MIDI device and its channel: **\<keyboard\>: \<device\>, channel \<n\>**, or **\<keyboard\>: channel \<n\>** before a device has played it |
 | Plain stop list tile | **This stop's ranks ship no pipes in this sample set** or **Not loaded: chosen in Organ settings, Stops** |
 | Tab icon | **Open this page in its own window, to move to another screen** or **Close this page's window and bring it back here** |
 | **Set** | Names the target: **Set: store what is drawn into \<name\>**, or **Set: choose a piston or a step, draw the stops, then press Set to store them there**. While Set is held from the console or the Combinations window: **Set is on from the console or the combinations window: pistons store. Press to let it go.** |

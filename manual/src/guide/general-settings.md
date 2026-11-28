@@ -341,7 +341,6 @@ The global file is `settings.mpglobal` in the data folder. It holds what belongs
 | `pistonsstaylit` | `1`. Written only while on. | **Pistons stay lit until another is pressed** in the combinations window |
 | `stepperlevels`, `levelsize`, `levelsfromzero` | The sequencer as levels of generals, the generals in a level, and levels numbered from 0. Written only when not the default. | The sequencer's box in the combinations window |
 | `showkeys` | `0`. Written only while off. | **View > Highlight played keys** |
-| `statusmidi` | `1`. Written only while on. | **View > MIDI keyboards in the status line** |
 | `smallpagesfill` | `1`. Written only while on. | **View > Scale small pages to fit** |
 | `rememberwindows` | `0`. Written only while off. | **View > Remember window positions** |
 | `stoplistsize`, `pistonsize`, `bigframenumber` | The sizes of the stop list and the pistons, `1` Large or `2` Larger, and the large frame number. Written only when not the default. | **View > Stop list size**, **Piston size**, **Large frame number** |
