@@ -64,8 +64,8 @@ A `press` acts like a thumb piston: it does what the object does, once.
 | 5 | Temperament | index into `temperament` | yes |
 | 6 | Sequencer frame | the frame as the sequencer shows it, from 0 (shown 000) to 998 | yes |
 | 7 | Setter | 0 off, 1 on | yes |
-| 8 | Voicing EQ on | 0, 1 | yes |
-| 9 | Voicing EQ preset | index into `eqpreset`, or -1 when none matches | yes |
+| 8 | Organ EQ on | 0, 1 | yes |
+| 9 | Organ EQ preset | index into `eqpreset`, or -1 when none matches | yes |
 | 10 | Polyphony limit | voices, 64 to 65 536; the program holds it to 16 384 | yes |
 | 11 | Sounding voices | voices | no |
 | 12 | Late blocks since the program started | count | no |
