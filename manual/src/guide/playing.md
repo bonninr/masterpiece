@@ -25,6 +25,10 @@ wired to its stop through plain follow linkages; the engine's own nodes,
 registration aids that reach several stops, reversible pistons and switches no
 player can reach keep the setting the definition gives them.
 
+Some organs group switches so that one of them is on at a time, such as a
+matrix of three swell settings. Drawing one releases the others of its group;
+pushing one in draws none of the others.
+
 A press dragged across the stops of the console, of a panel or of the stop
 list moves each stop the pointer passes over the way the first one moved: a
 drag that started by drawing a stop draws the others, and one that started by
@@ -34,7 +38,7 @@ enters it.
 A key that is down answers to the registration as it changes. Drawing a stop
 while a key is held makes that rank speak, and pushing it in silences it. A
 coupler drawn or pushed in while keys are held reaches, or stops reaching, the
-divisions it couples at once. A tremulant switch that swaps a stop's rank for
+divisions it couples at once. A coupler reaches every division the coupled keyboard's keys play through the wiring: a tirasse to a manual whose keys also open a division of reeds, behind an appel d'anches, plays those reeds too while the appel is drawn. A tremulant switch that swaps a stop's rank for
 its alternate recording sounds the held notes again on the other rank. With
 **Stop changes leave the notes already held alone** ticked in
 **Settings > MIDI...**, held notes keep what they started with and only the
@@ -42,10 +46,10 @@ keys pressed afterwards play the new registration. Off by default.
 
 **Sustain pedal: controller 64 holds the notes let go**, on the same tab, keeps
 released keys sounding while a sustain pedal is down, for directing a choir from
-the bench. Off by default. See [MIDI and consoles](midi.md#feedback-playing-and-learn-options).
+the bench. Off by default. See [MIDI and consoles](midi.md#echo-playing-and-learn-options).
 
 A tremulant shakes the pipes only when the engine runs its detailed path. The
-**Tremulants** box in **Organ > Organ settings...**, tab **Loading**, is on by
+**Tremulants** box on the **Loading** tab of Organ settings, is on by
 default, and the **Bypass all effects** box on the same tab bypasses tremulants together with
 the wind model, enclosure shading and voicing. Both boxes are shown in the
 **Advanced** display mode.
@@ -55,17 +59,33 @@ described under [Stops that make no sound](window.md#stops-that-make-no-sound).
 
 ### Extra couplers
 
-**Organ > Extra couplers** adds couplers of the program's own between the
-divisions a player can play, at 16', 8' and 4', on any organ: a key on the
-destination's keyboard sounds the source division at the key's note an octave
-down, at the same note, or an octave up. They do not chain, as a console's
-couplers do not. The item is ticked while they are on; choosing it saves the
-setting for the organ and loads the organ again with it. It is the same setting
-as the **Extra couplers** box of **Organ > Organ settings...**, tab **Loading**.
-Off by default; while it is off, nothing is added. The extra couplers are drawn
-from a generated panel and the stop list, each once, in a section of its own.
-The player's generals store them and the general cancel pushes them in; the
-organ's own generals and cancels hold them too.
+![The Couplers window](../images/window-couplers.png)
+
+**Window > Couplers** opens the Couplers window: the organ's own couplers, by
+division, and two boxes for couplers of the program's own.
+
+**Extra couplers** adds couplers between the divisions a player can play, at
+16', 8' and 4', on any organ: a key on the destination's keyboard sounds the
+source division at the key's note an octave down, at the same note, or an
+octave up. They do not chain, as a console's couplers do not. Turning them on
+or off saves the setting for the organ and loads the organ again with it. It is
+the same setting as the **Extra couplers** box on the **Loading** tab of
+Organ settings. Off by default; while it is off, nothing is added.
+
+**Bass and melody couplers** adds those alone: the lowest key held on a manual
+plays the pedal, and the highest key held plays another manual. They are part
+of the extra couplers, so the box is ticked and greyed while those are on.
+**Bass up to** limits the bass coupler to the keys up to the one chosen, from
+C2 to C5, so a melody played above it has no pedal; **Whole keyboard** is the
+default. Turning them on or off loads the organ again.
+
+The program's couplers are drawn in a section of their own, **Extra couplers**
+or **Bass and melody couplers**, in a generated panel, the stop list and the
+Couplers window. The player's generals store them and the general cancel pushes
+them in; the organ's own generals and cancels hold them too. An organ that draws
+no couplers of its own shows **This organ draws no couplers of its own. The
+extra couplers add them.** The keys are `programcouplers`, `basscouplers` and
+`bassrange` in the organ's settings file.
 
 ### Drawing every stop
 
@@ -156,11 +176,13 @@ that hides it. The first time an organ opens, the window is closed; after that
 it opens as the player left it, at the position and size saved with the organ.
 On the first showing it sits at the bottom right of the main window.
 
-The three boxes along the top are read from the program each time the window is
+The boxes along the top are read from the program each time the window is
 shown, so they match the settings in force.
 
 | Control | What it does |
 |---|---|
+| View box | **Combinations and sequencer**, **Combinations only** or **Sequencer only**: which parts the window shows. Kept for every organ (`combinationsview`). |
+| **Pistons stay lit until another is pressed** | A piston stays lit until another piston or a cancel is pressed, whatever stops and couplers are moved by hand meanwhile. Off, any hand-drawn change unlights every piston. Off by default; kept for every organ (`pistonsstaylit`). |
 | **Always on top** | Keeps the window above every other program's windows. Off, the window stays above the console while Masterpiece is in front. Off by default; kept for every organ. On Linux the stacking is fixed when the window opens. |
 | **Set turns off after storing** | After a piston has stored a combination, **Set** turns off, so the next press recalls it: the pistons of this window, the organ's own pistons on the console and in panels, and pistons pressed over MIDI. A sequencer step that stores a frame lets **Set** go as well. Off by default; kept for every organ. |
 | **Pistons leave the bass coupler** | The generals, divisionals and sequencer steps neither store nor recall the organ's bass and melody couplers, which stay as the player set them, as on consoles where they belong to the hands. The cancels still push them in. Off by default; kept for every organ. |
@@ -169,9 +191,12 @@ shown, so they match the settings in force.
 | **\|<**, **-10**, **<**, readout, **>**, **+10**, **>\|** | The sequencer: first frame, ten frames back, previous, the frame readout, next, ten frames on, last frame that holds anything. |
 | **Insert**, **Delete** | **Insert** copies the current frame into a new one after it, and the frames after it move up one. **Delete** takes the current frame out, and the frames after it move down one. |
 | Digits **0** to **9** | Go to the frame, among the ten the current frame belongs to, whose number ends in that digit: from frame 012, **5** goes to frame 015. |
-| **Generals** with **-** and **+** | One button per general, 10 to a row. **-** and **+** show one fewer or one more up to 10 generals, then ten fewer or ten more. |
+| Sequencer box | **Sequencer**: frames 000 to 998. **Levels, numbered from 1** or **Levels, numbered from 0**: the stepper walks levels of generals. See [Levels of generals](#levels-of-generals). Hidden in the **Simple** display mode, which always shows levels. |
+| **Generals** with **-** and **+** | One button per general, 10 to a row. **-** and **+** show one fewer or one more up to 10 generals, then ten fewer or ten more. Hidden in the **Simple** display mode. |
+| **Ready-made...** | Fills the generals not yet set with PP, P, MF, F, Plein jeu and Tutti, built from the organ's stop names, each named. After the question **Ready-made registrations**, **Fill** stores them; generals already set stay as they are. |
 | **Divisionals** with **-** and **+** | One row per division, with one button per divisional and a **0** at the end of the row that cancels the division. **-** and **+** show one fewer or one more on every division. |
 | **Pedal with** *manual* | The Pedal combinations coupler, the French *combinaison* coupler. While it is lit, each divisional of the manual it names also recalls the Pedal divisional of the same number, **Set** stores both, and the manual's **0** cancels the Pedal too. The manual is the division named as the Great (Great, Grand Orgue, Hauptwerk, Hoofdwerk, Huvudverk, Hovedværk, Grand'Organo, Gran Órgano, G.O.), wherever it sits among the manuals, and the first manual on an organ with none of these. Shown when the organ has a Pedal and such a manual with divisionals. Off by default; kept for every organ in the global settings file (`pedalcombinationscoupled 1`). A right-click maps it to a console button, held or toggling, like **Set**; the control API sets it too. |
+| **Crescendo** with **<**, the step, **>**, **Clear step**, **Ready-made...** | The player's crescendo, on an organ with no crescendo of its own. See [The player's crescendo](#the-players-crescendo). |
 | **Set in use**, **Save as...**, **Delete** | The combination sets. See [Combination sets](#combination-sets). |
 
 | Quantity | Default | Range |
@@ -182,8 +207,9 @@ shown, so they match the settings in force.
 
 The counts are saved with the combination set. A piston button is dim when it
 was never set, lighter when it holds a registration, and amber when it is the one
-whose registration is drawn now. Any hand-drawn change unlights every piston.
-Recalling a general replaces every lit piston; recalling a divisional lights it
+whose registration is drawn now. Any hand-drawn change unlights every piston,
+unless **Pistons stay lit until another is pressed** is ticked. A named piston
+shows its name in place of its number. Recalling a general replaces every lit piston; recalling a divisional lights it
 and unlights only the general.
 
 ### Capture
@@ -258,6 +284,22 @@ for the pistons of a piece: one press, no looking.
   sequencer; **<** is disabled at frame 000 and with no frame current, and **>**
   is disabled at the last frame unless **Set** is on.
 
+### Levels of generals
+
+The stepper can walk levels of generals in place of frames, as on consoles with
+a memory level per bank of pistons. The sequencer box in the Combinations window
+chooses **Levels, numbered from 1** or **Levels, numbered from 0**; the
+**Simple** display mode always uses levels, numbered from 1.
+
+- A level holds a number of generals, set with **-** and **+** beside the box
+  (**10 a level** by default, 1 to 10).
+- **<** and **>** step through the generals (**The general before**, **The next
+  general**); the level buttons move a level (**The level before**, **The next
+  level**); the numbered buttons pick a general of the level.
+- The readouts read **Level 2, general 3**.
+- Kept for every organ: `stepperlevels`, `levelsize` and `levelsfromzero` in
+  `settings.mpglobal`.
+
 ### Combination sets
 
 A combination set is a whole registration book: a recital's, a service's. An
@@ -265,9 +307,9 @@ organ has the default set and any number of named sets.
 
 | Control | What it does |
 |---|---|
-| **Set in use** (**Settings > Combination sets...**, **In use**) | Chooses the set. The set being left is saved first. The default set is listed as **(default)**. The choice is kept for the organ. |
-| **Save as...** (**Save as new set...** on the Combination sets tab) | Asks for a name (**A name for this registration set:**), writes a copy of the live registrations under it and switches to it. |
-| **Delete** (**Delete set**) | Deletes the set in use and returns to the default set. The default set cannot be deleted. |
+| **Set in use** | Chooses the set. The set being left is saved first. The default set is listed as **(default)**. The choice is kept for the organ. |
+| **Save as...** | Asks for a name (**A name for this registration set:**), writes a copy of the live registrations under it and switches to it. |
+| **Delete** | Deletes the set in use and returns to the default set. The default set cannot be deleted. |
 
 A set holds the organ's own pistons that were captured, the player's generals,
 divisionals and frames, and the counts of generals and divisionals. A set that
@@ -289,13 +331,25 @@ program closes. Switching a set writes the set being left.
 ### Mapping the pistons to a console
 
 A right-click on **Set**, **GC**, a general, a divisional, a **0**, or any
-sequencer button opens a menu: the current mappings, **Learn** (for **Set**,
-**Learn: held while pressed** and **Learn: toggles**), **MIDI window...** and
-**Clear mapping**. Press the control on the console after **Learn**; a second
-right-click cancels. **Settings > MIDI...** has the buttons
-**Learn sequencer +** and **Learn sequencer -**. The mappings of the sequencer,
+sequencer button opens a menu: the current mappings or **Not mapped**,
+**Learn** (for **Set**, **Learn: while held** and **Learn: toggle**),
+**MIDI window...** and **Clear mapping**. Press the control on the console after
+**Learn**; a second right-click cancels. The mappings of the sequencer,
 generals, setter and the page and tuning buttons are kept for every organ in
 `midi/console.mpmidi`. See [MIDI and consoles](midi.md).
+
+### Names for generals and divisionals
+
+The right-click menu of a general or a divisional also has **Name...** and
+**Empty**.
+
+- **Name...**: a name shown on the piston in place of its number, such as
+  Tutti, Plenum, Cornet or Plein jeu. The number stays in the tooltip,
+  **General 3: Tutti**. An empty name shows the number again.
+- **Empty**: the piston unused again, its registration and its name gone.
+- Names are kept in the combination set with its registrations, so a set made
+  for a piece keeps its own names. The control API gives a named general as
+  `3 Tutti`.
 
 ## Crescendo and swell boxes
 
@@ -313,7 +367,7 @@ A swell box is an enclosure. Its shoe is a continuous control with values from
 
 Every shoe starts open, at 127, when an organ loads, and is forgotten at the next load. The
 effect of the box on the sound is the **Enclosures (swell shades)** box in
-**Organ > Organ settings...**, tab **Loading**, shown in Advanced mode; it is on
+the **Loading** tab of Organ settings, shown in Advanced mode; it is on
 by default, and the **Bypass all effects** box bypasses it.
 
 When a pedal does not send the whole of 0 to 127, put the pedal in the closed
@@ -345,6 +399,30 @@ than one thing.
   feeds and moves that one.
 
 The player's generals and the sequencer do not hold the crescendo.
+
+### The player's crescendo
+
+An organ with no crescendo of its own, as every GrandOrgue set, gets the
+player's: a **Crescendo** fader in a panel's **Expression** section, mapped to a
+pedal like a shoe, with 32 steps.
+
+![The Combinations window with its Crescendo row](../images/combinations.png)
+
+- **What a step does:** it adds its stops to what the hands drew. Going back
+  retires only what the crescendo added; a stop drawn by hand stays.
+- **A step not set** adds what the nearest set step below it adds, so steps 1,
+  8, 16, 24 and 32 are enough to start.
+- **Setting a step:** move the pedal to the step, or use **<** and **>** on the
+  **Crescendo** row of the Combinations window, draw the stops, and press
+  **Set**. The row reads **Closed, N set** with the pedal closed, and the step
+  otherwise, with **, empty** for a step not set. **Clear step** empties the
+  step the pedal is on.
+- **Ready-made...** on that row fills all 32 steps from the organ's stop names,
+  from PP to Tutti, a few stops a step, when no step is set yet.
+- **Kept** with the combination set in use. A GrandOrgue settings file brings
+  its crescendo's bank A; banks B to D are left out.
+- **The console display** shows the step, as for an organ's own crescendo.
+- The row is shown in the **Advanced** display mode.
 
 ## Transposer, temperament and pitch
 
@@ -401,10 +479,11 @@ missing. The dialog opens in the folder last used for Scala files.
 
 A temperament piston on a console steps through **The organ's own** and the
 eight temperaments in this order and wraps round. A loaded Scala file is not a
-step of the cycle. Learn the pistons with **Learn temperament -** and **Learn
-temperament +** in **Settings > MIDI...**. Next to them, a list holds **The
-organ's own** and the temperament library; **Learn this temperament** maps a
-console button that brings in the temperament chosen in the list.
+step of the cycle. The **MIDI** button of the tuning panel learns the console buttons: a submenu each
+for **Temperament -**, **Temperament +**, **Transpose -**, **Transpose +** and
+**Temperament: \<name\>**, the temperament now chosen, which a button then brings
+in. Each submenu has the mapping or **Not mapped**, **Learn**, **Clear** and
+**MIDI window...**.
 
 ### Pitch (A)
 
@@ -423,7 +502,7 @@ from the organ's own`).
 
 **Transpose** has **-** and **+** buttons, a readout and **0**. The range is -12
 to +12 semitones; the buttons are disabled at the ends. Transposing moves the keys: +2 plays the pipes two keys up, and the samples keep their pitch. Learn console pistons
-with **Learn transpose -** and **Learn transpose +**.
+with **Transpose -** and **Transpose +** under the panel's **MIDI** button.
 
 The temperament, pitch and transposition are saved per organ and apply again
 when the organ is next opened.
@@ -443,28 +522,39 @@ The control API sets them as the program properties `pipeDetune` and
 
 ## Metronome
 
-The metronome is a click generated inside the audio callback, so it keeps time
-with what is heard. It is in **Settings > Metronome...**.
+![The Metronome window](../images/window-metronome.png)
 
-| Control | What it does | Default | Range |
+The metronome is a click generated inside the audio callback, so it keeps time
+with what is heard. **Window > Metronome** opens it in a window of its own.
+
+| Control | What it does | Default | Range or options |
 |---|---|---|---|
-| **Metronome** | Switches the click on. | Off | |
+| **Metronome** | Switches the click on. | Off | On, off |
 | **Tempo** | Beats per minute. | 90 bpm | 20 to 300 |
 | **Beats per bar** | The first beat of each bar is accented. 0 gives no accent. | 4 | 0 to 12 |
 | **Level** | Loudness of the click. | 0.5 | 0 to 1 |
+| **Sound** | The click. | **Electronic beep** | **Electronic beep**, **Wood block**, **Pendulum, with a bell on the first beat** |
 
-The click is a short decaying sine, 1000 Hz on an ordinary beat and 1500 Hz and
-louder on the accented beat. The tab shows the beat as **Beat 2**. The click
-comes after the master fader, so the fader leaves it at its level, and it is
-absent from an audio recording. The settings apply at once. The tempo, the
-beats per bar and the level are written to the global settings file as
-`metronome <bpm> <beats> <level>` when the Metronome tab closes, and return at
-the next start. The click itself starts silent at each start; the **Metronome**
-box shows whether it is running each time the tab opens.
+The window shows the beat as **Beat 2**. The click comes after the master
+fader, so the fader leaves it at its level, and it is absent from an audio
+recording. The settings apply at once. The tempo, the beats per bar, the level
+and the sound are written to the global settings file as
+`metronome <bpm> <beats> <level> <sound>`, and return at the next start. The
+click itself starts silent at each start.
+
+## Tuner
+
+![The Tuner window](../images/window-tuner.png)
+
+**Window > Tuner** opens the tuner: hold a key, and it shows the note that
+sounds, its distance in cents from the temperament in force, on a scale from
+-50 to +50, and the levels of its first eight **Harmonics**. It reads the
+organ's own output, and only while the window shows. With no key held it reads
+**Hold a key to measure its pitch.**
 
 ## Recorder
 
-**View > Recorder** shows the Recorder window, a small window of its own that
+**Window > Recorder** shows the Recorder window, a small window of its own that
 opens at the top right of the main window and leaves the console playable while
 it records. Its close button hides it.
 
@@ -545,9 +635,8 @@ cannot answer a question, so it is saved as
 `Documents/Masterpiece/Recordings/<organ> <yyyy-mm-dd hh-mm-ss>.mid`, the status
 line names the file and the Recorder window shows it while the new take records.
 A button learned for **Play** plays the take, and stops it. Both are learned in
-the Recorder window under **MIDI...**, or with **Learn record or stop** and
-**Learn play or stop** under **Recorder** in **Settings > MIDI...**, and they are
-the console's, the same on every organ.
+the Recorder window under **MIDI...**, and they are the console's, the same on
+every organ.
 
 Each can light a lamp: a MIDI send for **recorder-record** or **recorder-play**,
 lit while the recorder records or plays. The buttons' own messages are not
@@ -581,7 +670,7 @@ left out.
 
 | Control | What it does |
 |---|---|
-| **Record audio...** | Asks for a `.wav` file (**Record the organ to**) and starts recording to it, replacing a file of that name. |
+| **Record audio** | Asks for a `.wav` file (**Record the organ to**) and starts recording to it, replacing a file of that name. |
 | **Stop** | Ends the recording and completes the file. |
 
 The recording is a 24-bit WAV at the audio device's sample rate with one or two
@@ -600,29 +689,101 @@ For scripted recordings with `--play-midi` and `--record-audio`, see
 **View > Score** opens the score panel: a MusicXML score engraved to the size of
 the panel and played through the organ, with a cursor that follows the playing.
 The panel is a **Score** tab after the console pages and the panels; the tab
-appears the first time **View > Score** is chosen.
+appears the first time **View > Score** is chosen. **File > Open score...**
+opens a score straight away.
 
 <div class="video"><iframe src="https://www.youtube-nocookie.com/embed/WQZDVPGoUp4?list=PLEi774VY3MkM&rel=0" title="Video tutorial 11 Playing from a score" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
 
 | Control | What it does |
 |---|---|
 | **Open score...** | Opens a `.musicxml`, `.xml` or `.mxl` file. |
-| **<**, page readout, **>** | Turn the pages. The readout reads the first page shown and the number of pages. |
+| **<**, page readout, **>** | Turn the pages, or scroll the line in the one-line view. The readout reads the first page shown and the number of pages. |
 | **-**, zoom, **+** | Make the notation smaller or larger, from 50 % to 250 % in steps of 10 %. The staves fill the panel's width at every zoom, so a larger zoom breaks the lines again and gives more pages. A click on the figure returns to 100 %. |
-| **Two pages** | Shows two pages side by side. |
 | **Play**, **Stop** | Plays the score through the organ from the start chosen, and stops it. |
-| **Manuals...** | One row per staff (**Staff 1**, with the part's name when the score gives one): the manual that staff plays, or **None**. |
-| **Invert** | Draws the page light on dark. |
+| Tempo box | The tempo in **BPM**: the score's own to start with, from its first tempo mark. Type or step another, from a quarter of the score's tempo to four times it; a double-click returns to the score's. The tempo marks that follow keep their proportion. |
+| **Manuals...** | One row per staff (**Staff 1**, with the part's name when the score gives one): the manual that staff plays, or **None**, and **Mute**. |
+| **Mark...** | Adds a mark on the note the cursor marks; see [Marks](#marks). |
+| **<**, registration name, **>** | The registration or combination mark before and the next one, set at once. |
+| **View...** | **Pages** or **One line, scrolling with the playing**; **Two pages** side by side; **Invert**, the page light on dark. With the panel detached, also **Keep this window on top**. |
+| **Buttons...** | Console buttons for the score; see [Keys and console buttons](#keys-and-console-buttons). |
 | **Detach**, **Attach** | Moves the panel into a window of its own and back. Absent on phones and tablets. |
 
 - A click on a note sets the start there. While the score plays, the click
   starts it again from that note.
-- The pages turn as the playing reaches them.
+- The pages turn as the playing reaches them. In the one-line view the line
+  scrolls with the playing.
+- A box at the top left of the page reads **Bar 12**: the bar the playing is
+  in, or the start while stopped, numbered as the score numbers it.
 - Each staff plays on the channel a click on its manual's drawn keys uses, so
   couplers and the drawn keys follow the playing.
-- By default, with three staves or more, the last staff plays the Pedal and the
-  others the organ's preferred manual. With fewer staves, every staff plays the
-  preferred manual.
+- By default a part named Pedal (Pedal, Ped., Pedale, Pédale) plays the Pedal,
+  and so does the last staff of a score with three staves or more. The other
+  staves play the organ's preferred manual.
+- **Mute** leaves a staff silent, to play it yourself; its notes stay on the
+  page and the cursor goes on.
+
+### What the playing follows
+
+- **Repeats and endings.** Repeat signs, first and second endings, D.C., D.S.,
+  Fine and To Coda. The page shows the score as written; the cursor goes back
+  with the playing.
+- **Ornaments.** Trills (from the note above, ending on the main note),
+  mordents and inverted mordents, turns and inverted turns. The neighbouring
+  notes come from the key, or from an accidental over the sign. The ornament's
+  notes are thirty-seconds of the score's beat, between 50 and 125 ms.
+- **A note already sounding** where the playing starts is struck at once.
+
+### Marks
+
+A right-click on a note, or **Mark...** for the note the cursor marks, adds a
+mark. Each mark shows as an icon over its note; a click opens it, and a drag
+moves it to another note. **Undo the last change to the marks**, in the same
+menu, or Ctrl+Z takes a change back.
+
+| Mark | Icon | What it does |
+|---|---|---|
+| **Add a note here** | A yellow sticky note | Text of your own. An empty note is removed. |
+| **Add a registration here (the organ as it is now)** | A stop knob: orange when set now, blue when it holds this organ, grey when it holds only other organs | Holds the drawn stops and switches, the volume, the Organ EQ and the swell and crescendo pedals, one line per organ. The box offers **Set now**, **Store** (this organ's state now), **Forget organ** and **Delete**, and lists the other organs it is set for. |
+| **Add a combination here (a general or a sequencer step, for every organ)** | A square piston, **G** or **S**: orange when set now | Presses a general, or goes to a sequencer step, by number: the same on every organ. The box offers **General** or **Sequencer step**, the number, **Set now** and **Delete**. |
+| **Add a jump mark here** | A green flag | A named place, **Jump 1** and on. The up and down keys go from one to the next. The box offers **Go there** and **Delete**. |
+| **Add a manual change here (each staff on the manual set now)** | A keyboard on a teal square | From that note on, each staff plays the manual chosen in its box (**From this note on**), on each pass of a repeat. The manual is kept by its place on the console, so the change works on another organ too. |
+
+Registrations and combinations are set as the playing reaches their note, and
+when a page is turned forward (the first one on the new page). Turning back
+leaves the organ as it is.
+
+### Keys and console buttons
+
+With the score panel in front:
+
+| Key | What it does |
+|---|---|
+| Space | Play and stop |
+| Left, Right | A measure back, a measure on |
+| Up, Down | The jump mark before, the next jump mark |
+| Page Up, Page Down | A page back, a page on |
+| Home, End | The first measure, the last measure |
+| Ctrl+Z | Undoes the last change to the marks |
+
+**Buttons...** learns a console button for **Play / Stop**, **A measure back**,
+**A measure on**, **The jump mark before**, **The next jump mark**, **Page back**
+and **Page forward**, each with **Learn** and **Clear**. The two page buttons are
+the score-page buttons of the **Console MIDI** tab, so the same button turns the
+panel's page and a score app's page.
+
+### Kept with the score
+
+The panel writes the marks and the score's settings into the score's own file,
+a second after each change and when the panel closes: the tempo when changed,
+each staff's manual (by its place on the console) and mute, the one-line view,
+two pages, the zoom and **Invert**. A `.mxl` file keeps them inside the same
+zip. Other score programs show nothing extra. The file as it was before the
+first change is kept once beside it as `<file>.bak`. The file can also hold a
+cream paper (`paper cream`) and blue staff lines (`lines blue`); the panel has
+no control for them yet.
+
+**Keep this window on top** is the program's own setting, kept in
+`score-window.txt` in the data folder.
 
 The panel reads **Open a MusicXML score (.musicxml, .xml or .mxl).** while empty,
 and **No score was found in this file.** or **The file could not be read.** when a

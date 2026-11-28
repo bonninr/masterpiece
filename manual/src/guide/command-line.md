@@ -72,6 +72,9 @@ Prints the short list of options and quits.
 
 Prints `Masterpiece <version>` and quits.
 
+### `--train-profile`
+
+Plays a built-in exercise offline, with no window and no audio device, and quits. It is the training run of a profile-guided build, and of no use to a player.
 ## Logging and reporting problems
 
 Every session writes a log without any option. The files are in the settings folder:
@@ -189,7 +192,7 @@ A load in which some samples failed to read writes no cache, so a damaged instal
 
 ### `--program-couplers <on|off>`
 
-Switches the program's own couplers between the manuals at 16', 8' and 4' on or off for the run: the **Extra couplers** box on **Organ settings > Loading**, and **Organ > Extra couplers**. Accepts the same words as `--load-mono`. The option is not in the `--help` list.
+Switches the program's own couplers between the manuals at 16', 8' and 4' on or off for the run: the **Extra couplers** box on **Organ settings > Loading**, and **Window > Couplers**. Accepts the same words as `--load-mono`. The option is not in the `--help` list.
 
 ## Examples
 

@@ -86,7 +86,7 @@ Masterpiece counts blocks that took longer to render than the audio they make. T
 | A sample rate below 44.1 kHz | The program moves such a device to 48 kHz, or 44.1 kHz, at startup and logs it. |
 | Too many voices for the processor | Choose a lower **Performance** preset, or lower **Polyphony limit**, in **Settings > Performance...**. A new pipe takes the place of a dying one past the limit. |
 | The engine setting | **Faster audio engine** is on by default and renders several samples at a time on AVX2 or NEON processors. Switch it off to test whether it is the cause. |
-| Convolution reverb | **Impulse-response reverb** (**Settings > Reverb...**) is the most expensive stage of the audio callback. Switch it off, or tick **Bypass all effects** in **Organ settings > Loading**. |
+| Convolution reverb | **Impulse-response reverb** (**Organ > Reverb...**) is the most expensive stage of the audio callback. Switch it off, or tick **Bypass all effects** in **Organ settings > Loading**. |
 | Release tails read from a slow disk | The status line shows **streamed releases fell behind Nx: turn off "Stream release tails" in Organ settings**. The box is **Stream releases from disk** on the **Loading** tab of Organ settings. Switch it off, choose a longer **Release buffer**, choose **Hold 50% of each release** or **Hold 75% of each release**, or move the samples to an SSD. Streaming needs SSD-class storage. |
 | The cache is written while playing | With **Save the sample cache** set to **In silence, while it plays**, the write waits for silence. **Before the organ plays** moves it before playing. |
 | Memory exhausted and the system swaps | Use a smaller **Quality** preset: 16-bit, compressed, streamed releases. See [Memory, loading and streaming](memory.md). |
@@ -146,7 +146,10 @@ Masterpiece opens `.rar` and `.orgue` packages in place. A failure shows a dialo
 | `is damaged from <N> MB on (<P>% of the file)` | That volume is cut short or corrupted. Download that volume again. |
 | `is password-protected` | Masterpiece cannot open password-protected archives. Extract the archive with the password and open the organ definition inside. |
 | `is a solid RAR 4 archive split into volumes` | Masterpiece cannot read this kind directly. Extract it with 7-Zip or WinRAR and open the definition (`OrganDefinitions/*.Organ_Hauptwerk_xml`). |
-| `is not a RAR ... archive that Masterpiece can read` | The file is not a RAR archive, or is cut off at the start. |
+| `is an organ definition, not a package` | The file is a Hauptwerk-format or GrandOrgue definition saved with a package's name. Open it with **File > Open organ...**. |
+| `is text saved under the package's name, not the package` | The download link led to a web page or a message, such as a sign-in, a redirect or an error. Download it again from the sample set's site. |
+| `holds only zeros: its download did not finish` | The download stopped after the space was reserved. Download it again. |
+| `is not a RAR or ZIP archive that Masterpiece can read` | The file is none of the above: another format, or cut off at the start. |
 | `the package needs another package, id N, which is not beside it` | A GrandOrgue `.orgue` names a second package. Put it in the same folder. |
 | `no archive found at <path>` | The path is wrong. |
 | `there is no organ definition file (.Organ_Hauptwerk_xml) in <file> or the packages beside it` | The archive holds samples only. Open it together with the package that holds the definition, in the same folder. |
@@ -156,6 +159,8 @@ A RAR 4 archive in a single file opens directly, solid or not. WavPack samples l
 Parts of one set that carry numbered names (`01_`, `02_`, `03_`) or share a package join automatically when they sit in one folder.
 
 A package that opens but loads with the dialog **Some samples could not be read** has damaged files. The text says that the pipes of those files are silent and that the organ plays without them. Test the archive in 7-Zip or WinRAR and download it again. A damaged unpack is not marked as finished, so the next open unpacks again.
+
+The dialog **Some samples are missing** names the files that the organ definition lists and the disk does not hold, the first three of them, with the count. Their pipes are silent, and a stop with none of its samples does not respond to a click. The organ was installed in part, or a package it needs was left out: install it again with every package it needs. The log lists the first 50 missing files and the count of the others.
 
 Phones and tablets open `.rar` and `.orgue` packages only. On iPhone and iPad, a package picked on its own is lent without its folder; the dialog **The rest of &lt;file&gt;** asks for the folder that holds the other volumes.
 
@@ -184,7 +189,7 @@ On iPhone and iPad a load holds while Masterpiece is in the background and goes 
 
 Masterpiece stops a load at the memory limit (default: 80% of the computer's memory, at least 512 MB; the voice pool counts against it), and before the system runs short of free memory, keeping the larger of 256 MB and a twentieth of the memory free. Two dialogs follow.
 
-- **Not enough memory for this organ**: nothing loaded. The console shows silent so that **Organ > Organ settings...** can be opened.
+- **Not enough memory for this organ**: nothing loaded. The console shows silent so that Organ settings can be opened from the **Organ** menu.
 - **Only part of this organ fits**: the samples read so far play, other stops or notes are silent, and the status line shows **INCOMPLETE (memory limit)** or **INCOMPLETE (memory low)**. At the limit the message ends by pointing to **Memory limit for samples**; for low memory it starts with closing other programs.
 
 After a load, the voice pool is built in the memory left. When fewer voices fit than the polyphony asks for, the pool is smaller and the log says `voices: N of the M asked for: the memory free allows no more`.
@@ -264,7 +269,7 @@ Platforms:
 Plugins:
 
 - A host project stores the path of the organ the instance played and reopens it when the project opens. The stops drawn come from the files in the settings folder.
-- In a plugin, the settings window opens without the **Audio**, **MIDI** and **Remote control** tabs and **Organ > Organ settings...** without its **MIDI** tab, because the host owns the audio device and the MIDI ports.
+- In a plugin, the settings window opens without the **Audio**, **MIDI**, **Console MIDI** and **Remote control** tabs and Organ settings without its **MIDI** tab, because the host owns the audio device and the MIDI ports.
 - The plugin has no MIDI output, no log and no crash guard.
 - Each instance holds its own copy of the samples.
 

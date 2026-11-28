@@ -4,7 +4,7 @@ This page gives recommended loading settings for three sizes of organ on compute
 
 ## How the sizes are defined
 
-An organ's size for this page is the memory it takes at 24-bit with every sample resident, which for a set of WAV files is about the size of the files on disk. Use the **Stops, ranks and perspectives** tab of **Organ > Organ settings...** to read the figure for a particular organ: it shows **About %1 for this choice** at the settings on the Loading tab, before the organ is loaded.
+An organ's size for this page is the memory it takes at 24-bit with every sample resident, which for a set of WAV files is about the size of the files on disk. Use **Organ > Stops, ranks and perspectives...** to read the figure for a particular organ: it shows **About %1 for this choice** at the settings on the Loading tab, before the organ is loaded.
 
 | Size | Organ | Taken as |
 |---|---|---|
@@ -108,11 +108,11 @@ A Raspberry Pi with 16 GB of RAM follows the 16 GB row for memory; its processor
 
 **Phones and tablets.** The memory limit follows the device's RAM. Advice: choose the 50% entry of **Memory limit for samples**, because the device keeps its system and other apps in the rest. Load a small or medium organ, or load a part of a large one. The sample files are read where they are, and an iPhone or iPad lends the Files app's folder to Masterpiece. See [Phones and tablets](mobile.md).
 
-**Plugins.** Each plugin instance holds its own organ, so two instances take twice the memory. Choose the loading settings in the standalone program and save them for the organ; the plugin loads the organ with the saved settings from the same folder. In the plugin editor, **Organ > Organ settings...** opens the Organ settings window without its **MIDI** tab.
+**Plugins.** Each plugin instance holds its own organ, so two instances take twice the memory. Choose the loading settings in the standalone program and save them for the organ; the plugin loads the organ with the saved settings from the same folder. In the plugin editor, the **Organ** menu opens the Organ settings window without its **MIDI** tab.
 
 ## Checking a choice
 
-1. Open **Organ > Organ settings...** and its **Stops, ranks and perspectives** tab. The footer shows **About %1 for this choice** and **(the limit is %1)**. It turns red when the total passes the limit. Keep the total under the room figure in the table above, because the load itself is checked against the limit minus the voice pool.
+1. Open **Organ > Stops, ranks and perspectives...**. The footer shows **About %1 for this choice** and **(the limit is %1)**. It turns red when the total passes the limit. Keep the total under the room figure in the table above, because the load itself is checked against the limit minus the voice pool.
 2. Click **Load the organ** on that tab, or **Load the organ to apply** on the Loading tab.
 3. When the organ is loaded, the readout line of the Loading tab shows the resident samples, the streamed count and the megabytes left on disk, and the voice pool. Compare it with the estimate.
 4. Play a full-organ chord and a fast passage. Watch the status line for **late blocks**, **dropped** and **streamed releases fell behind**.

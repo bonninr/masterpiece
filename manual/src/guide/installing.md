@@ -6,7 +6,7 @@ This page lists every file a Masterpiece release offers, the systems each file r
 
 ## Release files
 
-Each release on [github.com/bonninr/masterpiece/releases](https://github.com/bonninr/masterpiece/releases) carries the files below. `<version>` is the release number, for example `0.9.0`. Every file name starts with `masterpiece-<version>-`.
+Each release on [github.com/bonninr/masterpiece/releases](https://github.com/bonninr/masterpiece/releases) carries the files below. `<version>` is the release number, for example `0.10.0`. Every file name starts with `masterpiece-<version>-`.
 
 | File | System | What it holds |
 |---|---|---|
@@ -58,7 +58,7 @@ The two ARM `.tar.gz` archives have no short address. They are on the release pa
 | macOS, Apple silicon | Apple silicon | macOS 11.0 or later |
 | macOS, Intel | x86-64 | macOS 10.15 or later; the build also runs under Rosetta on Apple silicon |
 | Linux, `.deb` and `.tar.gz` | x86-64 | A distribution whose C library is at least as new as Ubuntu 22.04's, the build host; the packages are installed and checked in Debian 12 and Ubuntu 24.04 containers |
-| Linux, Flatpak | x86-64 | Any distribution with Flatpak; the bundle uses the freedesktop 24.08 runtime, which Flatpak installs when it is missing |
+| Linux, Flatpak | x86-64 | Any distribution with Flatpak; the bundle uses the freedesktop 25.08 runtime, which Flatpak installs when it is missing |
 | Raspberry Pi, 64-bit | ARMv8-A (Pi 3 to Pi 5) | Raspberry Pi OS, 64-bit |
 | Raspberry Pi, 32-bit | ARMv7-A with NEON and VFPv4, hard-float | Raspberry Pi OS, 32-bit |
 | Android | 64-bit ARM (`arm64-v8a`); x86-64 (`x86_64`) for the emulator | Android 8.0 (API level 26) or later |
@@ -103,7 +103,7 @@ A silent installation, as used in the project's own tests:
 masterpiece-<version>-windows-setup.exe /S /D=C:\Path\To\Masterpiece
 ```
 
-`/D=` has to be the last argument and takes no quotes. The silent uninstaller is `Uninstall.exe /S` in the install folder.
+`/D=` has to be the last argument and takes no quotes. The silent uninstaller is `Uninstall.exe /S` in the install folder; add `/REMOVEDATA` to remove the settings and caches too.
 
 ### Zip
 
@@ -132,7 +132,7 @@ flatpak install --user ./masterpiece-<version>-linux-x86_64.flatpak
 flatpak run io.github.bonninr.Masterpiece
 ```
 
-The bundle runs on the freedesktop 24.08 runtime. Its permissions:
+The bundle runs on the freedesktop 25.08 runtime. Its permissions:
 
 | Permission | Purpose |
 |---|---|
@@ -298,7 +298,7 @@ On a first start the window opens with a dialog titled **Welcome to Masterpiece*
 | 1 | **Display mode** | **Simple**, the main settings with presets, or **Advanced**, every setting. **Simple** is chosen at first. The same choice is on **Settings > General...**. | At once |
 | 2 | **Audio device** | The output device and the buffer size, in the system's device selector (device type, output device, active output channels, sample rate, audio buffer size). The text suggests 256 or 512 samples for most computers. The same choices are on **Settings > Audio...**. | At once; stored in `audio.xml` when the program quits |
 | 3 | **MIDI configuration** | **Default channels**: a box for the **Pedal** and for **Manual 1** to **Manual 5**, each **-** or a channel from 1 to 16, all **-** at first. They give the channel of each keyboard for every organ with no channels of its own. Below them, **MIDI inputs**: a tick box per input, ticked as the input is now. An input unticked here stays closed at later starts. When the system reports no input, the step reads **No MIDI inputs found. You can still play with the mouse on the on-screen keyboard, and plug a console in later.** The same choices are on **Settings > MIDI...**. | At once |
-| 4 | **Organ** | The text reads **Definition file or package. The first load of a large set takes longer.** The button **Choose an organ...** closes the wizard and opens the file dialog, with the console in view while the organ loads. The line under it reads **No organ loaded yet** or **Loaded: &lt;name&gt;**. | The organ loads when chosen |
+| 4 | **Organ** | The text reads **Definition file or package. The first load of a large set takes longer.** The button **Choose an organ...** closes the wizard and opens the file dialog, with the console in view while the organ loads. The line under it reads **No organ loaded yet** or **Loaded: &lt;name&gt;**. The box **Create the Test Sound organ** makes a small generated organ on **Finish**, so the program sounds before a sample set is installed; see [The Test Sound organ](opening.md#the-test-sound-organ). | The organ loads when chosen |
 
 ![The wizard, step 2: Audio device](../images/wizard-audio.png)
 
@@ -333,14 +333,14 @@ Install a newer release the same way as the first one; settings, favourites and 
 
 ## Uninstalling
 
-The settings folder holds the saved organ settings, favourites, MIDI maps and the sample cache. The program creates it at run time; the installers and packages place no files in it, and the routes below leave it in place. Delete the folder by hand to remove that data. The sample cache is as large as the decoded samples of an organ and can fill several gigabytes; **Cache folder** on **Settings > General...**, shown in the Advanced display mode, shows where it is, and **Delete the cache** there empties it.
+The settings folder holds the saved organ settings, favourites, MIDI maps and the sample cache. The program creates it at run time; the installers and packages place no files in it, and the routes below leave it in place, except where the table says otherwise. Elsewhere, delete the folder by hand to remove that data. The sample cache is as large as the decoded samples of an organ and can fill several gigabytes; **Cache folder** on **Settings > General...**, shown in the Advanced display mode, shows where it is, and **Delete the cache** there empties it.
 
 | System | Procedure |
 |---|---|
-| Windows installer | **Apps & features**, or `Uninstall.exe` in the install folder. Both remove the program, the Start menu entry, the registry entries and the file-type registrations. |
+| Windows installer | **Apps & features**, or `Uninstall.exe` in the install folder. Both remove the program, the Start menu entry, the registry entries and the file-type registrations, then ask **Also remove Masterpiece's settings, logs, sample caches and unpacked organs?** The answer defaults to **No**. Yes removes the settings folder, and the caches and unpacked organs in a **Cache folder** chosen elsewhere. Installed organs and the organs folder stay. `Uninstall.exe /S` keeps the data; `Uninstall.exe /S /REMOVEDATA` removes it. |
 | Windows zip | Delete the folder. |
 | macOS | Delete `Masterpiece.app`, and any plugin bundles copied to the plug-in folders. |
 | Debian, Ubuntu, Raspberry Pi OS | `sudo apt remove masterpiece` |
-| Flatpak | `flatpak uninstall io.github.bonninr.Masterpiece` |
+| Flatpak | `flatpak uninstall io.github.bonninr.Masterpiece`; with `--delete-data`, the settings folder goes too. |
 | tar.gz | Delete the extracted folder. |
 | Android, iPhone, iPad | Remove the app in the system. Its private storage goes with it. |

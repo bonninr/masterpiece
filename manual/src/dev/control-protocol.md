@@ -26,7 +26,7 @@ The window, the MIDI mapping and these transports all act through the same comma
 | 0 | `program` | properties below | per property | some | One per running program |
 | 1 | `switch` | 0 to switches - 1 | 0 off, 1 on | yes | Every switch of the organ file: drawstops, couplers, tremulants, pistons and the rest. Its role is a property |
 | 2 | `control` | 0 to controls - 1 | 0 to 127 | yes | Shoes, crescendo and other continuous controls |
-| 3 | `division` | 0 to divisions - 1 | its live level, 0 to 127 | yes | For names and grouping; the level is a fader over every rank in it, heard at once, full again at each load |
+| 3 | `division` | 0 to divisions - 1 | its live level, 0 to 203: 127 as voiced, 0 silent, 203 at +24 dB, in steps of about 0.32 dB | yes | For names and grouping; the level is a fader over every rank in it, heard at once, back at 127 at each load |
 | 4 | `keyboard` | 0 to keyboards - 1 | none | no | Manuals and pedal; notes stay on MIDI |
 | 5 | `general` | 0 to generals - 1 | 1 while it is the last recalled | press | The player's general pistons |
 | 6 | `divisional` | 0 to divisionals - 1 | 1 while it is the last recalled in its division | press | The player's divisional pistons |
@@ -39,13 +39,16 @@ The window, the MIDI mapping and these transports all act through the same comma
 | 13 | `enclosure` | 0 to enclosures - 1 | how open its shades are, 0 to 127 | no | Moved by its control |
 | 14 | `tremulant` | 0 to tremulants - 1 | 1 while it runs | yes | Moves the switch the player would |
 | 15 | `windchest` | 0 to compartments - 1 | pressure now, in tenths of a percent of nominal | no | Reservoirs and chests of the wind model |
-| 16 | `route` | 0 to ranks - 1, one per rank | the output pair, from 1 | yes | Which pair the rank plays through, as on the Outputs tab of Organ settings; heard from the next note |
-| 17 | `pair` | 0 to pairs - 1 | its live level, 0 to 127 | yes | The mixer's output pairs; the level is heard at once, full again at each load |
-| 18 | `ranklevel` | 0 to ranks - 1 | the rank's live level, 0 to 127 | yes | A fader on top of the rank's voicing, heard at once, full again at each load |
+| 16 | `route` | 0 to ranks - 1, one per rank | an output as the mixer lists them, from 1; after the last output, a speaker group in the order of the groups | yes | Where the rank plays, as **Rank routing...** on the Outputs tab of Organ settings; heard from the next note. A rank with no route of its own reads where the default destination sends it. Property `to`: the output's or group's name |
+| 17 | `pair` | 0 to outputs - 1 | its live level, 0 to 203, as `division` | yes | The mixer's outputs, in the order of the Outputs tab, each by its name; heard at once, back at 127 at each load |
+| 18 | `ranklevel` | 0 to ranks - 1 | the rank's live level, 0 to 203, as `division` | yes | A fader on top of the rank's voicing, heard at once, back at 127 at each load |
 | 19 | `brightness` | 0 to ranks + divisions - 1 | tenths of a dB, -120 to +120 | yes | The treble shelf of the voicing EQ, above 3 kHz: one per rank, then one per division; a rank hears its division's added to its own. Heard at once |
 | 20 | `bass` | 0 to ranks + divisions - 1 | tenths of a dB, -120 to +120 | yes | The bass shelf of the voicing EQ, below 200 Hz: one per rank, then one per division, as the brightnesses. Heard at once |
 | 21 | `pan` | 0 to ranks + divisions - 1 | -100 full left, 0 the middle, +100 full right | yes | Where a rank or a division stands: one per rank, then one per division, as the brightnesses; a rank's and its division's add. Heard at once |
 | 22 | `width` | 0 to ranks + divisions - 1 | percent, 0 mono, 100 as recorded, 200 twice as wide | yes | The stereo width of a rank or a division: one per rank, then one per division, as the brightnesses; a rank's and its division's multiply. Heard at once |
+| 23 | `mute` | ranks, then divisions, then perspectives or windchest groups, then outputs | 1 muted | yes | The mixer's mute buttons; the strip's fader stays where it is. Heard at once, back to 0 at each load |
+| 24 | `solo` | in the order of `mute` | 1 soloed | yes | The mixer's solo buttons. While any rank, division or group is soloed, only the ranks under a soloed strip sound; the outputs solo among themselves. A mute wins over a solo |
+| 25 | `organ` | favourite slot - 1, 64 slots; a list gives the slots that hold an organ | 1 while it is the organ loaded | press | The favourite organs of the Open window, by name only, no file paths. A press loads it; `busy` while an organ loads. Listed with no organ loaded |
 
 A `press` acts like a thumb piston: it does what the object does, once.
 
@@ -61,21 +64,21 @@ A `press` acts like a thumb piston: it does what the object does, once.
 | 5 | Temperament | index into `temperament` | yes |
 | 6 | Sequencer frame | the frame as the sequencer shows it, from 0 (shown 000) to 998 | yes |
 | 7 | Setter | 0 off, 1 on | yes |
-| 8 | Voicing EQ on | 0, 1 | yes |
-| 9 | Voicing EQ preset | index into `eqpreset`, or -1 when none matches | yes |
+| 8 | Organ EQ on | 0, 1 | yes |
+| 9 | Organ EQ preset | index into `eqpreset`, or -1 when none matches | yes |
 | 10 | Polyphony limit | voices, 64 to 65 536; the program holds it to 16 384 | yes |
 | 11 | Sounding voices | voices | no |
 | 12 | Late blocks since the program started | count | no |
 | 13 | Real-time render threads | 0, 1 | yes |
-| 14 | MIDI recorder | 0 stopped, 1 recording | no |
-| 15 | Audio recorder | 0 stopped, 1 recording | no |
+| 14 | MIDI recorder | 0 stopped, 1 recording; set 1 to record, 0 to stop (a take not yet saved is first saved to a dated file in the recordings folder) | yes |
+| 15 | Audio recorder | 0 stopped, 1 recording; set 1 to record to a dated file in the recordings folder, 0 to stop | yes |
 | 16 | Metronome | 0 off, 1 on | yes |
 | 17 | Metronome tempo | beats a minute, 20 to 300 | yes |
 | 18 | Room | 0, 1 | yes |
 | 19 | Room wet share | percent, 0 to 100 | yes |
 | 20 | Pipe detune | tenths of a cent, 0 (off) to 100 | yes |
 | 21 | Wind sway | tenths of a cent, 0 (off) to 100 | yes |
-| 22 | Sparse loading | 1 every note, 2 every second, 3 every third | yes |
+| 22 | Sparse loading | 1 every note, 2 every second, 3 every third, 4 half by the sides of the organ | yes |
 | 23 | Pedal combinations coupled: the first manual's divisionals also recall the Pedal's of the same number | 0, 1 | yes |
 | 24 | Attack emphasis | tenths of a dB, -120 to +120, 0 off | yes |
 | 25 | Attack length | milliseconds, 5 to 300 | yes |

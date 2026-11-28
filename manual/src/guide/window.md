@@ -1,6 +1,6 @@
 # A tour of the window
 
-This page describes the main window from top to bottom: the five menus and
+This page describes the main window from top to bottom: the six menus and
 every control in the top bar, the console pages and how the mouse works on
 them, pages in windows of their own, panels, the score, the plain stop list,
 the expression pedals, the on-screen keyboard and the context menus.
@@ -26,21 +26,21 @@ window can be resized freely. From top to bottom it holds:
 | Status line | 20 px | Always |
 
 The title bar reads `Masterpiece <version> - <organ name>`, for example
-`Masterpiece 0.9.0 - Nancy`. A build other than a tagged release shows the
+`Masterpiece 0.10.0 - Nancy`. A build other than a tagged release shows the
 first five characters of its commit in place of the version: `main 3fa91` for
 a build of the main branch, `dev 3fa91` for any other build. **Help > About
 Masterpiece**, the diagnostics report and the log name the build the same way.
 
 ## The top bar
 
-From left to right the bar holds the **File**, **Organ**, **View**, **Settings**
-and **Help** menus; the volume slider with its dB readout; the level meter;
-**Set**; the stepper (**<**, the frame readout and **>**); the tuning button,
-which shows the temperament and the pitch of A; the save button; and the Panic
-button, drawn as an octagon with a cross. The bar holds what a player looks at
-or presses while playing; choices made once are in the menus.
+From left to right the bar holds the **File**, **Organ**, **View**, **Settings**,
+**Window** and **Help** menus; the volume slider with its dB readout; the level
+meter; **Set**; the stepper (**<**, the frame readout and **>**); the tuning
+button, which shows the temperament and the pitch of A; the save button; and the
+Panic button, drawn as an octagon with a cross. The bar holds what a player
+looks at or presses while playing; choices made once are in the menus.
 
-![The File menu](../images/menu-file.jpg)
+![The File menu](../images/menu-file.png)
 
 ### File
 
@@ -48,40 +48,52 @@ The organs and the settings files: what is opened and saved.
 
 | Item | What it does |
 |---|---|
-| **Open organ...** | Opens the favourites window, which has a button for the file dialog. Until an organ has been added to the favourites, **Open organ...** goes straight to the file dialog. See [Opening an organ](opening.md). |
-| **Open another version** | A submenu, shown when the loaded organ's package or folder holds more than one definition (a perspective each, or full and light). Each definition is listed by its file name without the extension. The loaded one is ticked and disabled; choosing another loads it. |
+| **Open organ...** | Opens the **Open** window: the favourites, the organs installed, and a button for the file dialog. See [Opening an organ](opening.md). |
+| **Other versions of this organ** | A submenu, shown when the loaded organ's package or folder holds more than one definition (a perspective each, or full and light). Each definition is listed by its file name without the extension. The loaded one is ticked and disabled; choosing another loads it. |
+| **Open score...** | Shows the score and opens its file dialog. See [The score](#the-score). |
+| **Install organ package...** | Installs an organ's packages into the organs folder. See [Installing an organ package](opening.md#installing-an-organ-package). |
+| **Uninstall organ...** | Removes an installed organ's packages from the organs folder. |
 | **Import settings...** | Reads a settings archive (a `.zip` written by **Export settings...** or **Export organ settings...**). A question names what the file holds and what it replaces; **Import** puts it in place, after the settings there now are saved in the backups folder. |
 | **Export settings...** | Writes every setting, the program's own and those of each organ, to one `.zip` archive. |
 | **Export organ settings...** | Writes the loaded organ's settings to one `.zip` archive. Disabled until an organ is loaded. |
 | **Exit** (Windows), **Quit** (Linux) | Closes the program, as the window's close button does. |
 
-**Import settings...**, **Export settings...** and **Export organ settings...**
-are absent on phones and tablets. **Exit** and **Quit** are absent in the plugins,
-where the host closes the plugin, and on macOS, where **Quit Masterpiece** is in
-the application menu. The archives are described on
-[Files and folders](files.md).
+**Install organ package...**, **Uninstall organ...**, **Import settings...**,
+**Export settings...** and **Export organ settings...** are absent on phones and
+tablets. **Exit** and **Quit** are absent in the plugins, where the host closes
+the plugin, and on macOS, where **Quit Masterpiece** is in the application menu.
+The archives are described on [Files and folders](files.md).
 
 ### Organ
 
+![The Organ menu](../images/menu-organ.png)
+
 The organ that is loaded: its settings, its tuning, its combinations. Every
-item but **All notes off** is disabled until an organ is loaded.
+item but **Console profile...** and **All notes off** is disabled until an organ
+is loaded.
 
 | Item | What it does |
 |---|---|
-| **Organ settings...** | Opens the settings of the loaded organ. See [Organ settings](organ-settings.md). |
+| **Loading...**, **Stops, ranks and perspectives...**, **Outputs...**, **Voicing...**, **Organ EQ...**, **Reverb...**, **MIDI...** | One item per tab of Organ settings, each opening the window on that tab. See [Organ settings](organ-settings.md). |
 | **Temperament and tuning...** | Opens the tuning panel, as the tuning button in the bar does. See [Transposer, temperament and pitch](playing.md#transposer-temperament-and-pitch). |
 | **Combinations** | Shows or hides the Combinations window. Ticked while shown. See [The player's own combinations](playing.md#the-players-own-combinations). |
-| **Extra couplers** | The program's own couplers between the manuals, at 16', 8' and 4', for an organ that has too few of its own. Ticked while on. The couplers are built with the organ, so choosing the item saves the choice for this organ and loads it again. |
 | **Reload organ** | Loads the organ again from its files, with its current settings. |
 | **Copy settings from another organ...** | Copies the **MIDI map**, the **Combinations** or the **Mixer and voicing** of another organ that has settings saved, chosen under **From**, to this one. They replace this organ's own. Absent on phones and tablets. |
+| **Learn MIDI in turn...** | Opens a window that asks for each tab of the console in the order of the stop list. See [Learning the tabs in turn](midi.md#learning-the-tabs-in-turn). |
+| **Console profile...** | Opens the console profile: the player's console written down once, for every organ. See [Console profiles](midi.md#console-profiles). |
+| **Map from console profile...** | Lists the matches between the profile in use and this organ, to tick and map. Disabled while no profile is in use. |
 | **Licence accepted** | Present when the organ's samples need the publisher's licence. Ticked once the licence is confirmed. Choosing it while ticked withdraws the confirmation and loads the organ again without the licensed samples; choosing it while unticked asks the licence question. See [Licences](opening.md#licences). |
 | **All notes off** | Releases every key on every channel. |
 
+The program's own couplers between the manuals are on the **Loading** tab of
+Organ settings and in **Window > Couplers**. See
+[Extra couplers](playing.md#extra-couplers).
+
 ### View
 
-![The View menu](../images/menu-view.jpg)
+![The View menu](../images/menu-view.png)
 
-What the window shows, and the windows beside it, in four groups.
+What the main window shows.
 
 | Item | What it does |
 |---|---|
@@ -90,63 +102,84 @@ What the window shows, and the windows beside it, in four groups.
 | **Stop list** | Shows the plain list of stops over the console, for a player who cannot see the console. Present when the organ ships console artwork; ticked while the list is shown. See [The plain stop list](#the-plain-stop-list). |
 | One item per panel | The panel's name. Shows the panel's tab, or brings the panel's window to the front. Ticked while that panel is shown. |
 | **Panel of the whole organ** | Shown while the organ has no panel. Makes the first panel. |
-| **New panel** | Shown once the organ has a panel. Makes a panel; disabled when the organ already has two. |
+| **New panel** | Shown once the organ has a panel. Makes a panel; disabled when the organ already has ten. |
 | **Rename or delete a panel** | A submenu, shown when the organ has a panel, with **Rename \<name\>...** and **Delete \<name\>** for each. |
 | **Score** | Shows the score tab, or brings the score's window to the front. Ticked while the score is shown. See [The score](#the-score). |
 | **Expression pedals** | Shows or hides the strip of expression pedal faders. Present when the organ has at least one swell shoe. |
 | **Keyboard** | Shows or hides the on-screen keyboard. |
 | **Highlight played keys** | Lights the keys of the drawn manuals as they are played. Ticked by default. |
+| **Stop list size** | A submenu: **Normal**, **Large**, **Larger**. The height of the stops in the plain stop list, for a touch screen or for reading from the bench. |
+| **Piston size** | A submenu: **Normal**, **Large**, **Larger**. The size of the pistons in the Combinations window. |
+| **Large frame number** | Shows the sequencer's number alone, in large figures, in the bar; the whole readout is in its tooltip. |
 | **Scale small pages to fit** | Magnifies a page much smaller than the organ's first page until it fills the window. Off by default. See [Scaling](#scaling). |
-| **Fit window to page** | Sizes the window to the page shown, at 100 % or at the largest size that fits the screen, and centres it on its screen. |
+| **Fit window to page** | Sizes the window to the page shown, at 100 % or at the largest size that fits the screen, and centres it on its screen. Disabled in full screen. |
+| **Remember window positions** | Opens each window where it was last closed. Ticked by default. |
+| **Full screen** | Fills the screen with the window (F11). Esc or F11 leaves it. Present where the system allows it. |
 | **Console layout** | A submenu with the console's layouts, the one in use ticked. Present when the console is shown and the organ offers more than one layout. See [Layouts](#layouts). |
-| **Split keyboard** | Shows or hides the Split keyboard window. See [Split keyboard](split-keyboard.md). |
-| **Recorder** | Shows or hides the Recorder window. Ticked while shown. See [Recorder](playing.md#recorder). |
 
 The expression pedals, the keyboard and the page windows are described in the
 sections below. **Highlight played keys** is described under
-[Highlight played keys](#highlight-played-keys).
+[Highlight played keys](#highlight-played-keys). The sizes are kept in
+`settings.mpglobal` as `stoplistsize`, `pistonsize`, `bigframenumber`,
+`smallpagesfill` and `rememberwindows`.
 
 ### Settings
 
-![The Settings menu](../images/menu-settings.jpg)
+![The Settings menu](../images/menu-settings.png)
 
-The program's settings, the same for every organ: one item per section of the
+The program's settings, the same for every organ: one item per tab of the
 Settings window, each opening the window on that tab.
 
 | Item | Tab |
 |---|---|
-| **General...** | The display mode, the organ at start, the sample cache and its folder, the package folder |
+| **General...** | The display mode, the organ at start, the sample cache and its folder, the package folder, the language, the text size and the font |
 | **Audio...** | The audio device, the output compressor and limiter |
-| **MIDI...** | The MIDI inputs and output, the default channels, the console's buttons |
 | **Performance...** | The performance preset, the audio engine, the memory limit and the polyphony |
-| **Reverb...** | The room |
-| **Metronome...** | The metronome |
-| **Combination sets...** | The combination sets kept as favourites |
-| **Console display...** | How the console is drawn |
-| **Language...** | The language of the interface |
+| **MIDI...** | The MIDI inputs and outputs, the default channels, how stops answer and echo |
+| **Console MIDI...** | The console's own buttons, the ready lamp, the messages sent on load and unload |
+| **Console display...** | The text display on the console's jamb |
 | **Remote control...** | The control API, the web console, MIDI System Exclusive and OSC |
 
-The Settings window itself has an eleventh tab, **Diagnostics**, opened from
+The Settings window itself has an eighth tab, **Diagnostics**, opened from
 **Help > Diagnostics...**. In the VST3, LV2 and AU plugins the menu lists
-**General...**, **Performance...**, **Reverb...**, **Metronome...**,
-**Combination sets...**, **Console display...** and **Language...**: the host
-owns the audio device and the MIDI ports, and **Organ settings...** opens
-without its **MIDI** tab. See [Settings](general-settings.md).
+**General...**, **Performance...** and **Console display...**: the host owns the
+audio device and the MIDI ports, and Organ settings opens without its **MIDI**
+tab. See [Settings](general-settings.md).
 
 The display mode on the **General** tab, **Simple** or **Advanced**, decides
 how much the settings windows show. **Simple**, the default, shows the main
 settings with their presets; **Advanced** shows every setting. The first-run
 wizard asks for it first.
 
-### Help
+### Window
+
+![The Window menu](../images/menu-window.png)
+
+The tool windows beside the console, each ticked while it is open. Choosing a
+ticked item closes the window.
 
 | Item | What it does |
 |---|---|
-| **Documentation** | Opens the project's page on GitHub, with its manual, in the browser. |
+| **Couplers** | The program's own couplers between the manuals, and the bass and melody couplers. See [Extra couplers](playing.md#extra-couplers). |
+| **Recorder** | The Recorder window. See [Recorder](playing.md#recorder). |
+| **Metronome** | The Metronome window. See [Metronome](playing.md#metronome). |
+| **Tuner** | The Tuner window. See [Tuner](playing.md#tuner). |
+| **Split keyboard** | The Split keyboard window. See [Split keyboard](split-keyboard.md). |
+
+### Help
+
+![The Help menu](../images/menu-help.png)
+
+| Item | What it does |
+|---|---|
+| **Documentation** | Opens this manual in the browser. |
 | **Release notes** | Opens the releases page on GitHub in the browser. |
 | **Check for updates...** | Asks GitHub for the newest release's version number at once. The status line then reads **Masterpiece \<version\> is the latest version.**, or **No answer from the update server. Check the network and try again.**, or the update notice appears. |
 | **Diagnostics...** | Opens the Settings window on its **Diagnostics** tab: the log, the checks and the diagnostics report. Present in the standalone application. |
 | **About Masterpiece** | The version or build, and the licence. |
+
+The Settings and Organ settings windows each have a **?** button at the right
+end of their tab bar. It opens this manual at the section of the tab in front.
 
 ### The update notice
 
@@ -174,7 +207,7 @@ start with the environment variable `MASTERPIECE_UPDATE_CHECK=0`.
 | Volume slider | The master volume, with a readout in dB to its right. It widens with the window, from 160 px to 320 px. The bottom of the slider, -40 dB, is silence. Each organ keeps its own volume. | 0 dB; -40 to +24 dB in steps of 0.1 dB |
 | Level meter | Two rows of 14 lamps, left and right, showing the output level after the master fader. The scale starts at -48 dB; lamps 10 to 12 are amber and lamps 13 and 14 are red. The meter is hidden when less than 40 px remain for it. | |
 | **Set** | Stores what is drawn into the piston or step chosen last. See [Capture](playing.md#capture). | |
-| **<**, frame readout, **>** | The sequencer. The readout reads **Frame 003 / 012** (the current frame and the last one holding anything), or **No frames**. A click on the readout asks for a frame number. | Frames 000 to 998 |
+| **<**, frame readout, **>** | The sequencer. The readout reads **Frame 003 / 012** (the current frame and the last one holding anything), or **No frames**. With the sequencer set to levels of generals, and always in the **Simple** display mode, it reads **Level 2, general 3**. A click on the readout asks for a frame number. See [The sequencer](playing.md#the-sequencer-and-its-frames). | Frames 000 to 998 |
 | Tuning button | Shows the temperament, the pitch of A and the transposition, for example `Equal  A 439.8`, or `Equal  A 440.0  +2` with a transposition. A click opens the tuning panel. See [Transposer, temperament and pitch](playing.md#transposer-temperament-and-pitch). | |
 | Save button (a disk icon; its name is **Save state**) | Records the stops as they are now as the organ's starting state. See [Remembered between sessions](playing.md#remembered-between-sessions). | |
 | **Panic** (an octagon with a cross, last in the bar) | Releases every key on every channel, silences every note still sounding, and opens the MIDI inputs again. | |
@@ -214,7 +247,7 @@ The strip along the bottom edge shows, from left to right and separated by
    free voice), `no audio N` (starts whose samples were not in memory),
    `late blocks N` (audio blocks that took longer than the audio they produced)
    and, with streamed release tails, `streamed releases fell behind Nx: turn
-   off "Stream release tails" in Organ settings`.
+   off "Stream releases from disk" in Organ settings`.
 
 After a load with no audio, the line reads `65 stops, 312 ranks, graphics only
 - no audio loaded | voices 0, no audio 24`. The line is cut short in a narrow
@@ -228,7 +261,8 @@ A console that ships more than one page shows one tab per page. A page is named
 as the organ names it, or **Page 1**, **Page 2** and so on. Panels and the
 score shown as tabs follow the console pages. A click on a tab shows that page.
 A page, panel or score stays on screen when the tabs are rebuilt, for example
-when a window of its own closes or a panel is added.
+when a window of its own closes or a panel is added. The tab last chosen is kept for each organ, and the next load of that organ
+opens on it.
 
 In the standalone application each console page tab carries a small button,
 a square with an arrow. A click on it opens the page in its own window; the button is
@@ -303,7 +337,7 @@ drawn in the main layout, whole.
 |---|---|
 | Drawstop, rocker, coupler, tremulant | A click toggles the switch. A drag that starts on one and crosses others sets each one it enters to the state the first took, so one stroke along a row draws or retires the whole row. |
 | Piston, setter, or any button the organ marks as momentary | The button is pressed while the mouse button is down and released with it. A piston fires on the press. |
-| Drawn key of a drawn manual | A click plays the key, on the channel of the keyboard that the manual belongs to, through the same path as a MIDI key. The key sounds while the button is held. Sliding along the manual plays the keys under the pointer in turn; sliding from one manual onto another moves the note to the other manual. |
+| Drawn key of a drawn manual | A click plays the key, on the channel of the keyboard that the manual belongs to, through the same path as a MIDI key. The key sounds while the button is held. Sliding along the manual plays the keys under the pointer in turn; sliding from one manual onto another moves the note to the other manual. With the pointer at rest on a manual, a tooltip names the keyboard, the MIDI device that plays it and its channel: `Great: Fatar, channel 2`; the device is the one bound to the keyboard, or the one that last played that channel, and is left out until one has. |
 | Swell shoe, crescendo pedal, dial or slider | A press takes hold of the control and moves nothing. A drag then moves the value from where it was. |
 | Stop with no pipes in the set | A click on it is refused while it is pushed in. See [Stops that make no sound](#stops-that-make-no-sound). |
 
@@ -335,7 +369,7 @@ cause when the pointer rests on the drawstop for 700 ms.
 
 | Cause | On the console | Tooltip |
 |---|---|---|
-| The stop was left out of the load in **Organ > Organ settings...**, tab **Stops, ranks and perspectives** | The drawstop is veiled: the picture is darkened by 55 % black, in the shape of the picture. The stop still draws and is stored in pistons; it makes no sound. Copies of the drawstop on other pages are veiled too. Every other picture is drawn at full strength. | **\<stop\> is not loaded: chosen in Organ settings, Stops** |
+| The stop was left out of the load in **Organ > Stops, ranks and perspectives...** | The drawstop is veiled: the picture is darkened by 55 % black, in the shape of the picture. The stop still draws and is stored in pistons; it makes no sound. Copies of the drawstop on other pages are veiled too. Every other picture is drawn at full strength. | **\<stop\> is not loaded: chosen in Organ settings, Stops** |
 | The stop's ranks ship no pipes in this sample set (a demo set's locked stops) | The drawstop is drawn as the set draws it, with no veil. A click on it is refused. | **\<stop\> is not available** |
 
 A stop with no pipes is also held in. A general, the crescendo, a tutti, a MIDI
@@ -355,9 +389,9 @@ themselves are described on [MIDI and consoles](midi.md).
 
 | Object | Menu |
 |---|---|
-| Drawstop, coupler, piston | The object's name, then its current MIDI mappings (`Note 36 ch 1 (toggles)`, `CC 20 (held)`) or **Not mapped**, **MIDI window...**, **Learn** (**Learn (held while pressed)** for a momentary button), a submenu **Learn another way** with **Toggle: each press draws or cancels**, **Held while pressed**, **Draws it only** and **Cancels it only**, and **Clear mapping**. |
+| Drawstop, coupler, piston | The object's name, then its current MIDI mappings (`Note 36 ch 1  (toggle)`, `CC 20  (while held)`, `(draw only)`, `(cancel only)`), what it sends and its computer key, or **Not mapped**; **Learn** (**Learn (while held)** for a piston or another held button); **Learn on and off (two messages)...**; a submenu **Learn one message as** with **Toggle**, **While held**, **Draw only** and **Cancel only**; **MIDI window...**; and **Clear mapping**. |
 | Swell shoe, crescendo, dial, slider; expression pedal fader | The control's name, its mappings (`CC 7 ch 1  (closed at 0, open at 127)`) or **Not mapped**, **MIDI window...**, **Learn: move a pedal, knob or fader**, **Closed position: where the pedal is now**, **Open position: where the pedal is now**, **Use the pedal's whole travel** and **Clear mapping**. |
-| Key of a drawn manual | The MIDI window of that manual: which keyboard plays it and the pistons that bring it to a keyboard. |
+| Key of a drawn manual | The MIDI window of that manual: which keyboard plays it and the controls that bring it to a keyboard. |
 | Stop, coupler, tremulant, piston, shoe or slider on a panel; stop in the plain stop list | The same menu as the object on the console. A stop reaches the drawstop the console draws for it. |
 | Page tab, panel tab | See [Page tabs](#page-tabs). |
 | Empty part of the console | Cancels a learn that is armed. |
@@ -413,14 +447,14 @@ onto a display that exists.
 ![A panel](../images/panel.png)
 
 A panel shows the organ as equal rectangles with the name in the middle, for a
-touch screen or for a console that is hard to read at a distance. An organ has up to two
+touch screen or for a console that is hard to read at a distance. An organ has up to ten
 panels. Each panel is a tab beside the console pages, or a window of its own on
 any screen. Every rectangle stands for something the organ already has, so its
 MIDI mapping is the stop's, piston's or control's own.
 
 **View > Panel of the whole organ** makes the first panel; **View > New
-panel** makes the second. The panels are named **Panel 1** and **Panel 2**
-until renamed.
+panel** makes each one after it. The panels are named **Panel 1**, **Panel 2**
+and on until renamed.
 
 ### Sections
 
@@ -429,7 +463,7 @@ The panel is divided into columns, one per section, in this order:
 | Section | Holds |
 |---|---|
 | One per division | The division's stops, then the couplers that feed it, then its tremulant. A stop that ships no pipes is left out. A stop with no ranks at all, which is a coupler or a tremulant, stays. |
-| **Extra couplers** | The program's own couplers, while **Organ > Extra couplers** is on. |
+| **Extra couplers**, or **Bass and melody couplers** | The program's own couplers, while they are on in **Window > Couplers**. |
 | **Other** | Couplers and tremulants that cannot be placed in a division. |
 | **Pistons** | The organ's own pistons that it draws on its console. An organ that draws none has all of its pistons listed. |
 | **Expression** | One fader for each swell shoe, and a **Crescendo** fader when the organ has a control with at least 3 crescendo steps. |
@@ -491,24 +525,18 @@ score is open the tab reads **Open a MusicXML score (.musicxml, .xml or
 
 The page is engraved to the size of the tab, so the staves fill its width. A
 larger zoom makes the notation larger and breaks the lines again, which gives
-more pages. While the score plays, the pages turn by themselves.
+more pages. While the score plays, the pages turn by themselves, or the line
+scrolls in the one-line view. A box at the top left reads the current bar.
 
-| Control | What it does |
-|---|---|
-| **Open score...** | Opens a score file. |
-| **<** and **>**, page number | Turn the page; the number reads page / pages. |
-| **-**, **+** and the zoom | Zoom in steps of 10 %, from 50 % to 250 %. The button shows the zoom the page is engraved at and returns it to 100 %. |
-| **Two pages** | Shows two pages side by side. |
-| **Play** / **Stop** | Plays from the cursor: where playing stopped, the note last clicked, or the first note of the page turned to. |
-| **Manuals...** | One row per staff with the manual it plays, or **None**. |
-| **Invert** | Inverts the page's colours. |
-| **Detach** / **Attach** | Moves the score into a window of its own, 1100 x 760 pixels centred, and back. Absent on phones and tablets. |
+The bar along the top holds **Open score...**, the page buttons, the zoom,
+**Play**, the tempo in BPM, **Manuals...**, **Mark...** with the registration
+buttons, **View...**, **Buttons...** and **Detach**. **Detach** moves the score
+into a window of its own, 1100 x 760 pixels centred, and **Attach** brings it
+back; with the window detached, **View...** offers **Keep this window on top**.
+Phones and tablets have no **Detach**.
 
-A click on a note moves the cursor there. Each staff plays on the channel a
-click on its manual's drawn keys would use, so the couplers act and the drawn
-keys move with the playing. By default the last of three or more staves plays
-the pedal and the other staves play the organ's preferred manual. A manual
-changed during playing takes effect at once.
+[Score](playing.md#score) describes each control, the marks, the keys and the
+console buttons, and what is kept with the score.
 
 The score fonts are written once to a **Score fonts** folder in the data
 folder. When that fails, the tab reads **The score fonts could not be
@@ -588,7 +616,7 @@ When the organ has more than one playable keyboard, a selector above the
 keyboard names the manual that the keys play. It starts on the organ's
 preferred manual, which is the widest compass when declared and otherwise the
 unenclosed manual with the most pipework. The keys play on the channel assigned
-to that manual in **Settings > MIDI...**, and follow a change
+to that manual on the **MIDI** tab of Organ settings, and follow a change
 of channel made there while the organ is loaded. The keyboard is off at every
 start. The keys are played with the mouse.
 
@@ -619,6 +647,7 @@ A tooltip appears after the pointer rests on a control for 700 ms.
 | Where | Tooltip |
 |---|---|
 | Console drawstop with no sound | **\<stop\> is not available** or **\<stop\> is not loaded: chosen in Organ settings, Stops** |
+| Drawn manual | The keyboard that plays it, its MIDI device and its channel: **\<keyboard\>: \<device\>, channel \<n\>**, or **\<keyboard\>: channel \<n\>** before a device has played it |
 | Plain stop list tile | **This stop's ranks ship no pipes in this sample set** or **Not loaded: chosen in Organ settings, Stops** |
 | Tab icon | **Open this page in its own window, to move to another screen** or **Close this page's window and bring it back here** |
 | **Set** | Names the target: **Set: store what is drawn into \<name\>**, or **Set: choose a piston or a step, draw the stops, then press Set to store them there**. While Set is held from the console or the Combinations window: **Set is on from the console or the combinations window: pistons store. Press to let it go.** |
@@ -640,9 +669,10 @@ dialog it belongs to.
 | Pages in windows of their own | Absent; the pages stay tabs | Windows fill the screen; see [Phones and tablets](mobile.md) |
 | Panel and score **Detach** | Present | Absent |
 | **File > Exit** or **Quit** | Absent; the host quits | Absent |
+| **File > Install organ package...**, **Uninstall organ...** | Present | Absent |
 | **Import settings...**, **Export settings...**, **Export organ settings...** | Present | Absent |
 | **Organ > Copy settings from another organ...** | Present | Disabled |
-| **Settings** menu | General, Performance, Reverb, Metronome, Combination sets, Console display, Language | Every tab |
+| **Settings** menu | General, Performance, Console display | Every tab |
 | **Help > Diagnostics...** | Disabled | Present |
 | **File > Open organ...** file dialog | Definition files and packages | Packages: `.rar` and `.orgue` |
 | Long press for the context menu | Absent | Present |

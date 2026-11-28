@@ -1,6 +1,6 @@
 # Opening an organ
 
-This page covers every way an organ reaches the console: the file formats Masterpiece reads, organs installed in folders, organs played straight from their packages, sample sets that live in several places, demo sets, licences, the favourites window, and the load itself with its progress dialog. It tells you which file to pick, where Masterpiece looks for the rest of a set, and what the log says when something is missing.
+This page covers every way an organ reaches the console: the file formats Masterpiece reads, organs installed in folders, organs played straight from their packages, sample sets that live in several places, demo sets, licences, the Open window, installing an organ package, and the load itself with its progress dialog. It tells you which file to pick, where Masterpiece looks for the rest of a set, and what the log says when something is missing.
 
 <div class="video"><iframe src="https://www.youtube-nocookie.com/embed/ak40WAd6RgE?list=PLEi774VY3MkM&rel=0" title="Video tutorial 03 Opening an organ" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
 
@@ -16,7 +16,8 @@ Settings that decide how much memory an organ takes, and whether release tails s
 | Composite organ | A Hauptwerk-format definition whose samples come from several sample sets | See [Composite organs](#composite-organs). |
 | GrandOrgue organ definition | `.organ` | Converted in memory as it loads, console included. The converted definition is never written to disk. |
 | GrandOrgue package | `.orgue` | Read in place. Packages that depend on other packages need those beside them. |
-| Hauptwerk-format package | `.rar`, for example `Name.CompPkg.Hauptwerk.rar` | Read in place. See [Playing from packages](#playing-from-packages). |
+| jOrgan disposition | `.disposition` | Converted in memory as it loads, as GrandOrgue organs are; its SoundFont samples written as WAV files. See [jOrgan organs](#jorgan-organs). |
+| Hauptwerk-format package | `.rar`, for example `Name.CompPkg.Hauptwerk.rar`, or a name ending in `_Hauptwerk_rar`, for example `Name.CompPkg_Hauptwerk_rar` | Read in place. See [Playing from packages](#playing-from-packages). |
 
 GrandOrgue files may be encoded in UTF-8 or in the Western code page of their author; Masterpiece detects which. A GrandOrgue organ has no organ id, so Masterpiece derives one from a hash of the file: the same file is always the same organ and keeps its own settings.
 
@@ -34,26 +35,28 @@ Samples may have any sample rate. They are held at the rate they were recorded i
 
 ### File > Open organ...
 
-**File > Open organ...** opens the [favourites window](#the-favourites-window). When the favourites list is empty, it opens the file dialog directly.
+**File > Open organ...** opens the [Open window](#the-favourites-window): the favourites, the organs installed, and the file dialog. When there is no favourite to show and no organ loaded, it opens the file dialog directly.
 
-![The File menu](../images/menu-file.jpg)
+![The File menu](../images/menu-file.png)
 
 The **File** menu holds:
 
 | Item | What it does |
 |---|---|
-| **Open organ...** | The favourites window, or the file dialog when there are no favourites. |
-| **Open another version** | A submenu, present only when the loaded organ has more than one definition beside it. See [Other versions of an organ](#other-versions-of-an-organ). |
-| **Import settings...**, **Export settings...**, **Export organ settings...** | The settings archives; see [Settings](general-settings.md). Absent on phones and tablets. |
+| **Open organ...** | The Open window, or the file dialog when there is nothing to list. |
+| **Other versions of this organ** | A submenu, present only when the loaded organ has more than one definition beside it. See [Other versions of an organ](#other-versions-of-an-organ). |
+| **Open score...** | The score and its file dialog. See [The score](window.md#the-score). |
+| **Install organ package...**, **Uninstall organ...** | See [Installing an organ package](#installing-an-organ-package). Absent on phones and tablets. |
+| **Import settings...**, **Export settings...**, **Export organ settings...** | The settings archives; see [Settings](general-settings.md#back-up-and-restore). Absent on phones and tablets. |
 | **Exit** (Windows), **Quit** (Linux) | Closes the program, as the window's close button does. Absent on macOS, where quitting is in the application menu, on phones and tablets, and in the plugins. |
 
-The recorder is in the **View** menu; see [A tour of the window](window.md).
+The recorder, the metronome and the tuner are in the **Window** menu; see [A tour of the window](window.md#window).
 
 ### The file dialog
 
 The file dialog is titled **Choose an organ definition file** (**Choose an organ package** on phones and tablets). It lists these patterns:
 
-`*.Organ_Hauptwerk_xml`, `*.CustomOrgan_Hauptwerk_xml`, `*.Organ.Hauptwerk.xml`, `*.CustomOrgan.Hauptwerk.xml`, `*.organ`, `*.rar`, `*.orgue`
+`*.Organ_Hauptwerk_xml`, `*.CustomOrgan_Hauptwerk_xml`, `*.Organ.Hauptwerk.xml`, `*.CustomOrgan.Hauptwerk.xml`, `*.organ`, `*.disposition`, `*.rar`, `*.CompPkg_Hauptwerk_rar`, `*.orgue`
 
 On phones and tablets the list is `*.rar` and `*.orgue`, and any other file is ignored. The dialog starts in the folder the last organ was chosen from; that folder is stored as `openfolder` in `settings.mpglobal`. On macOS the dialog also lets you navigate into tagged folders from search results.
 
@@ -92,6 +95,19 @@ Libraries are collected automatically. Masterpiece has no setting that lists the
 
 For a layout that cannot be worked out from the path, the **Organ folder** row on the **Loading** tab of Organ settings, shown in the Advanced display mode, names the folder that holds `OrganInstallationPackages`. It is stored with the organ, takes effect at the next load, and has **Choose...** and **Default** buttons. By default it reads `From the definition (<folder>)`.
 
+## Installing an organ package
+
+**File > Install organ package...** puts an organ's packages into the organs folder, as an installed organ. It asks for the package first, reads it (**Reading the package...**), and lists its components: organ definitions, sample packages and other files. Each row has the **Action**, the **Type**, the version **In the package**, the version **Installed**, and the **Size**. The action is **Install**, **Upgrade**, **Reinstall**, **Install the older version**, **Skip** or **Leave as it is**, as the versions say. The file dialog offers `.rar`, `.orgue`, `.CompPkg_Hauptwerk_rar`, `.HauptwerkOrgan` and `.zip` files.
+
+- The organs folder: `Documents/Masterpiece/Organs` by default, on any drive. The first install asks where organs go before anything is written: **Organs folder: \<folder\> (\<free\> free)**, with **Install here** and **Choose a folder...**.
+- A line under the list gives the size of the install and the room on the drive: **Installs N component(s), \<size\>**.
+- At the end: **Installed: \<organ\>. It is listed in Open, under Installed.**, with a button that opens it. **Install another package...** closes the window and asks for the next package, for several organs or packages in a row.
+- A package that is not an organ's: **This package cannot be installed: \<reason\>**, or **This package holds no organ to install.**
+
+**File > Uninstall organ...** lists what the organs folder holds (**Organs installed in the organs folder**), with the organs that need each package (**Needed by**), and removes what is ticked. The organ on the console is marked **On the console now**. The question **Remove N component(s), \<size\>, from \<folder\>? Removed files cannot be recovered.** comes first. Both items are absent on phones and tablets.
+
+The folder is stored as `organsfolder` in `settings.mpglobal`, absent for the default.
+
 ## Playing from packages
 
 A sample set is published as one or more RAR archives that hold the tree of an installed organ: `OrganDefinitions/` and `OrganInstallationPackages/<id>/`. Masterpiece reads these archives in place. It never needs the disk space of an unpacked set.
@@ -102,7 +118,7 @@ At the first open of a set of packages, Masterpiece reads the file lists and unp
 
 Because the samples have no file of their own, a packaged organ keeps them resident in memory. Release tails of such an organ do not stream from disk. See [Memory, loading and streaming](memory.md).
 
-The unpacked files live in `Packaged/<identity>` inside the Masterpiece folder in the user's application data (see [Files and folders](files.md)). The identity is a hash of the archives' lower-case file names and sizes, so the same packages open the same folder wherever they are kept. The folder holds:
+The unpacked files live in `Packaged/<identity>`: in the **Cache folder** chosen on the **General** tab of Settings, or else in the Masterpiece folder in the user's application data (see [Files and folders](files.md)). The identity is a hash of the archives' lower-case file names and sizes, so the same packages open the same folder wherever they are kept. The folder holds:
 
 | File | Purpose |
 |---|---|
@@ -182,7 +198,7 @@ When a package is still missing after the search, a dialog titled **A package th
 |---|---|
 | **Choose an archive...** | Opens a file dialog for the package's RAR archive. The archive is joined to the organ's and its path is appended to `joined-packages.txt`. |
 | **Choose a folder...** | Opens a folder dialog. A folder that holds `OrganInstallationPackages/<id>` is recorded in `package-folders.txt`. A folder that holds archives has the matching archives joined and recorded in `joined-packages.txt`. |
-| **Play without it** | The organ loads and the pipes of that package are silent. |
+| **Play without it** | The organ loads and the pipes of that package are silent. The button counts down, **Play without it (10 s)**; with no answer in 10 seconds the organ loads without the package, so a load started from a console, a favourite or the control API reaches the console with no one at the screen. The log says `package: no answer in 10 s; the organ plays without it`. |
 
 ### package-folders.txt and joined-packages.txt
 
@@ -212,6 +228,47 @@ A GrandOrgue organ opens from its `.organ` file in a folder or from an `.orgue` 
 Every manual of a GrandOrgue organ plays, each on a channel of its own by default. In a package whose `.organ` file lies in a folder below the package's root, the samples are found in the archive.
 
 ![A GrandOrgue organ](../images/console-grandorgue.jpg)
+
+## jOrgan organs
+
+A jOrgan organ opens from its `.disposition` file.
+
+- SoundFonts (`.sf2`): at the path the disposition gives, relative to its folder; otherwise a file of the same name beside the disposition (for paths such as `C:\Sounds\Organ.sf2`)
+- sfArk SoundFonts (`.sfArk`, self-extracting `.sfArk.exe`) beside the disposition, in place of a missing `.sf2`: unpacked once into the organ's folder
+- Skins (a folder or `.zip` beside the disposition, as the console names it): a page per console, drawn by its skin; then the stock page with keys and every drawstop
+- Conversion on opening, as for GrandOrgue organs: the disposition to a definition in memory; each SoundFont sample a rank uses to a WAV file with its loop and release tail
+- Location of the converted samples: a folder per organ in the `jOrgan` folder of the data folder (see [Files and folders](files.md))
+- Conversion again only when the disposition, a SoundFont or a skin changes
+- Favourites, recent organs and settings: under the disposition
+- Formats read: jOrgan 3.0 to 3.21
+
+| In the disposition | In Masterpiece |
+|---|---|
+| Keyboard | Manual; "ped" in the name: pedal. Keys and pitch shift (`sub 12`) from its MIDI message; default 61 keys from C2, pedal 32 |
+| Rank | 128 pipes; each key the SoundFont region for it, retuned from the region's root (coarse and fine tune, pitch correction, modulation envelope). Preset from bank select and program change |
+| Stop | Stop on its keyboard: transposition, key range. Shared by several keyboards: one drawstop. Constant pitch (theatre drums): one note from every key |
+| Coupler | Coupler to the keyboard holding its stops, with transposition. Keyboard's own inverse coupler at unison: unison off |
+| Stops no keyboard names | Keyboard of the unison coupler reaching them (theatre dispositions) |
+| Continuous filter | Volume or expression, moved by an input: swell shoe, closed level from the value 0. Not moved: fixed rank level. Pitch bend: fixed rank tuning |
+| Switch filter | Program change to other samples: wave tremulant. Same samples with LFOs: tremulant at the LFO's rate, level and pitch depth. Modulation controller: vibrato at 8.2 Hz, 50 cents at full |
+| Console | Organ name. With a skin: a page per console, each element at its place in its style (images, nine-part borders, texts from the name or description, skin fonts), states as pictures; stops, couplers, tremulants and swells clickable. Stock page: drawstops, keys and shoes; stops in two jambs; knob labels from each element's `stop=` line |
+
+Left out, each named in the log: combinations, memories, activators, captors, keyers, incrementers, regulators, sequences, the recorder, sounds without a SoundFont (LinuxSampler, generic MIDI), NRPN tone filters, SoundFont filters, extra layers. On skinned consoles: combinations, pistons and other controls drawn but not clickable.
+
+Approximations and omissions go to the log, on lines starting with `load: jOrgan import:`.
+
+## The Test Sound organ
+
+The Test Sound organ is a small organ Masterpiece generates on the device, so the program sounds before a sample set is installed: to check the audio and the MIDI setup.
+
+| Part | What it is |
+|---|---|
+| Console | One manual (C2 to C7, 61 keys), one stop, one swell pedal |
+| Samples | 44.1 kHz, 16-bit stereo; one key in three generated, the others retuned from the nearest |
+| Room | An 8-second stereo impulse response, set as the organ's reverb at 0.5 wet the first time it loads |
+| Size | About 25 MB, in the `Test Sound` folder of the data folder: `TestSound.organ` and the folder `TestSound` |
+
+To create it, tick **Create the Test Sound organ** on the **Organ** step of the first-run wizard. The box is off on a computer and on on a phone or tablet. **Finish** or **Skip setup** then shows **Creating the Test Sound organ** with a progress bar and **Cancel**, and loads the organ when it is ready, in a few seconds. A cancelled creation leaves nothing behind. When it fails, a box titled **Test Sound organ not created** gives the reason. The organ opens later as any GrandOrgue organ, from `TestSound.organ`.
 
 ## Demo sets
 
@@ -257,21 +314,27 @@ Files with the extensions `.hbw` and `.hbx` are encrypted for another program. M
 
 A licence confirmation has no effect on encrypted files.
 
-## The favourites window
+## The Open window {#the-favourites-window}
 
-**File > Open organ...** shows the favourites window, titled **Open**. It is resizable and keeps up to 64 organs in numbered slots.
+**File > Open organ...** shows the window titled **Open**. It lists the favourites, up to 64 organs in numbered slots, or the organs installed in the organs folder, and is resizable.
 
-![The favourites window](../images/open-window.png)
+![The Open window, listing the organs installed](../images/open-window.png)
+
+Started with no organ to open, the program shows this window at once, its search box ready for typing, when there is a favourite or an installed organ to choose from. With no favourite yet and organs installed, the window opens on **Installed**.
 
 | Element | What it does |
 |---|---|
-| Search field | Placeholder **Search the favourites**. Filters the list by a case-insensitive part of the name or of the file name. **Return** opens the first organ shown. **Escape** closes the window. On computers the field has the keyboard focus when the window opens. |
+| List box | What the window lists: the favourites in **Slot order**, by **Last used** or by **Most used**; or **Installed**: the organs in the organs folder and in the sample libraries Masterpiece knows, and the organs played from their RAR packages while the package is still there. The folders Masterpiece unpacks packages into are never counted as a library. The order of the favourites is kept. |
+| Search field | Placeholder **Search the favourites**, or **Search the installed organs**. Filters the list by a case-insensitive part of the name or of the file name. **Return** opens the first organ shown. **Escape** closes the window. On computers the field has the keyboard focus when the window opens. |
 | A row | Shows the slot number, the name, and the file name below it. A click anywhere on the row opens the organ. When two favourites have the same name, the file name is prefixed with the format of the file. |
 | Up and down arrows | Swap the favourite with its neighbour in the list. The two slots swap numbers, so gaps left on purpose stay. The arrows are active only while the search field is empty. The status line reports `<name> is on slot N`. |
 | **Rename** | Opens a dialog titled **Rename** with the text **The name this favourite shows.** An empty name is ignored. |
 | **Remove** | Removes the favourite at once, with no confirmation. The organ's files stay where they are. |
 | **Add the organ now loaded** | Adds the loaded organ under the organ's own name to the lowest free slot. The status line reads **Added on slot N**, or **All 64 slots are taken**. The button is disabled when no organ is loaded or the organ is already listed. |
 | **Open an organ file...** | Closes the window and opens the [file dialog](#the-file-dialog). |
+| **Install organ package...**, **Uninstall organ...** | Shown with **Installed**, on computers, in place of **Add the organ now loaded**. See [Installing an organ package](#installing-an-organ-package). |
+
+Quitting with an organ that is not among the favourites asks once, for that organ, **Add to the favourites?**, with **Add and quit** and **Quit**. The question is not asked again for that organ, whatever the answer. The organs asked about are kept as `favouriteoffered` lines in `settings.mpglobal`.
 
 A favourite whose file is gone shows **not found: `<path>`** on its row. Clicking it shows **Not found: `<path>`** in the status line, and the favourite is kept, so a set on a drive that is not plugged in is still listed. When the organ has a kept copy (**Keep a portable copy of this organ** on the **Loading** tab of Organ settings), a click opens the copy.
 
@@ -279,7 +342,7 @@ The list is stored in `settings.mpglobal` as `favourite organ <slot> <name> | <f
 
 ## Other versions of an organ
 
-**File > Open another version** lists the definitions beside the loaded one: the other perspectives, or the full and light versions of a set. Each entry shows a file name without extension. The loaded organ is ticked and disabled. A choice loads that definition.
+**File > Other versions of this organ** lists the definitions beside the loaded one: the other perspectives, or the full and light versions of a set. Each entry shows a file name without extension. The loaded organ is ticked and disabled. A choice loads that definition.
 
 - For an organ opened from packages, the list holds every definition in the unpacked folder, searched through its subfolders.
 - For an organ in a folder, the list holds the definitions in the folder of the loaded definition, without its subfolders. For an installed Hauptwerk-format organ that folder is `OrganDefinitions`, so it lists every organ installed there.
@@ -356,7 +419,8 @@ A load cancelled before any sample is read leaves no organ. The status line read
 | The file is not there | If a kept copy exists for it, the copy opens and the log says `load: <file> is not there; opening its kept copy <copy>`. Otherwise the load fails with `no such file: <path>`, and the organ already loaded stays loaded. |
 | The definition cannot be parsed | The status line reads **Failed to load `<file>`: `<reason>`**. The organ already loaded stays loaded. |
 | A package cannot be opened | A dialog titled **Could not open `<file>`** gives the reason and offers **Show the log**. |
-| Samples missing or unreadable | The organ plays. The status line shows **N missing (named in the log)** and **N unreadable (named in the log)**. A dialog titled **Some samples could not be read** shows the first three. |
+| Samples missing | The organ plays. The status line shows **N missing (named in the log)**. A dialog titled **Some samples are missing** gives the count and the first three files, and says the organ was installed in part or a package it needs is missing; installing it again, with every package, usually puts it right. A stop with none of its samples does not respond. |
+| Samples unreadable | The organ plays. The status line shows **N unreadable (named in the log)**. A dialog titled **Some samples could not be read** shows the first three, and says whether the archive they come from is damaged. |
 | The memory limit is reached | The dialog **Only part of this organ fits** appears, the status line shows **INCOMPLETE (memory limit)**, and the organ plays with the samples that fit. The limit is on **Settings > Performance...**. |
 | The computer's free memory runs low | Loading stops with memory kept free for the program and the system. The dialog **Only part of this organ fits** gives the count loaded, the status line shows **INCOMPLETE (memory low)**, and the organ plays with the samples that fit. |
 | An exception in the load | Logged as `load: stopped: <message>` and treated as a failed load. |

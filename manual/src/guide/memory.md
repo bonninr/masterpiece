@@ -1,6 +1,6 @@
 # Memory, loading and streaming
 
-This page explains how Masterpiece holds an organ in memory, what each loading choice costs and saves, and how loading, compression, the sample cache, release streaming, the memory limit and the voice pool fit together. Use it to decide the settings on **Organ > Organ settings... > Loading** and **Organ > Organ settings... > Stops, ranks and perspectives**, and on the **Performance** and **General** tabs of the settings window, to read the memory figures Masterpiece shows, and to understand a load that stops for memory or a stream that falls behind. [Small, medium and large organs](sizing.md) turns these mechanisms into recommended settings per computer.
+This page explains how Masterpiece holds an organ in memory, what each loading choice costs and saves, and how loading, compression, the sample cache, release streaming, the memory limit and the voice pool fit together. Use it to decide the settings on the **Loading** and **Stops, ranks and perspectives** tabs of Organ settings, and on the **Performance** and **General** tabs of the settings window, to read the memory figures Masterpiece shows, and to understand a load that stops for memory or a stream that falls behind. [Small, medium and large organs](sizing.md) turns these mechanisms into recommended settings per computer.
 
 <div class="video"><iframe src="https://www.youtube-nocookie.com/embed/2us6XxgF46A?list=PLEi774VY3MkM&rel=0" title="Video tutorial 13 Memory, loading and streaming" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
 
@@ -10,7 +10,7 @@ The settings on this page are in three places.
 
 | Place | What it holds |
 |---|---|
-| **Loading** tab of **Organ > Organ settings...** (available while an organ is loaded) | **Quality**, **Preloaded per sample**, **Resident format**, **Sample rate**, **Notes loaded**, **Releases**, **Release length**, **Release tails end below**, **Stream releases from disk** and its hold, **Release buffer**, **Load in mono (halves memory, gives up the stereo image)**, **Lossless compression in memory**, **Keep a portable copy of this organ** and **Organ folder**. Saved per organ. |
+| **Loading** tab of Organ settings (**Organ > Loading...**, available while an organ is loaded) | **Quality**, **Preloaded per sample**, **Resident format**, **Sample rate**, **Notes loaded**, **Releases**, **Release length**, **Release tails end below**, **Stream releases from disk** and its hold, **Release buffer**, **Load in mono (halves memory, gives up the stereo image)**, **Lossless compression in memory**, **Keep a portable copy of this organ** and **Organ folder**. Saved per organ. |
 | **Stops, ranks and perspectives** tab of the same window | Which stops, perspectives and ranks are loaded, with a memory estimate per entry. Saved per organ. |
 | **Performance** tab of the settings window (**Settings > Performance...**) | **Performance**, **Faster audio engine**, **Real-time render threads**, **Render on every logical processor**, **Memory limit for samples** and **Polyphony limit**. The same for every organ. |
 | **General** tab of the settings window (**Settings > General...**) | **Sample cache**, **Save the sample cache**, **Cache folder** with **Delete the cache**, and **Click at each 10% while loading**. The same for every organ. |
@@ -54,10 +54,10 @@ The **Resident format** box chooses what one held frame costs.
 
 | Option | Bytes per sample | What it holds |
 |---|---|---|
-| **As recorded - 16 or 24-bit, as each file is** | 3 for a 24-bit file, 2 for a 16-bit file | The integers of the file unchanged, at the file's own width. The audio in memory is bit-for-bit what the file holds. A 16-bit file is held at 2 bytes whenever its samples still fit 16 bits after reading; folded to mono or converted in rate, it usually takes 3. |
-| **20-bit - a sixth less than the source** | 2.5 | Each sample requantised to 20 bits against its own file's peak, packed so two samples take five bytes. |
-| **16-bit - two thirds of that, inaudible** | 2 | Each sample requantised to 16 bits against its own file's peak, so a stop recorded 20 dB down keeps all sixteen bits. The scale folds into the voice gain and costs nothing while playing. |
-| **32-bit float - larger than the source** | 4 | The decoder's floating-point result. One third larger than 24-bit. |
+| **As recorded (16 or 24-bit)** | 3 for a 24-bit file, 2 for a 16-bit file | The integers of the file unchanged, at the file's own width. The audio in memory is bit-for-bit what the file holds. A 16-bit file is held at 2 bytes whenever its samples still fit 16 bits after reading; folded to mono or converted in rate, it usually takes 3. |
+| **20-bit** | 2.5 for a 24-bit file, 2 for a 16-bit file | Each sample requantised to 20 bits against its own file's peak, packed so two samples take five bytes. A 16-bit file is held at its own sixteen bits, bit-for-bit. |
+| **16-bit** | 2 | Each sample requantised to 16 bits against its own file's peak, so a stop recorded 20 dB down keeps all sixteen bits. The scale folds into the voice gain and costs nothing while playing. |
+| **32-bit float** | 4 | The decoder's floating-point result. |
 
 **Default:** As recorded. **Takes effect:** at the next load. The settings file stores the width (`storage 16`, `storage 20`, `storage 24` or `storage 32`).
 
@@ -168,7 +168,7 @@ A release is the sound of a pipe after its key is let go. Many sets record sever
 
 **Default:** **As the organ has them**. **Takes effect:** at the next load. The settings file stores the choice as a number from 0 (all) to 3 (none) in the key `releases`.
 
-**Release length** keeps each release up to a given length after its start and fades it out over its last quarter with a raised-cosine curve.
+**Release length** keeps each release up to a given length after its start and fades it out over its whole length, a straight line in gain from the start of the release to silence at its end.
 
 | Option | Kept |
 |---|---|
@@ -440,7 +440,7 @@ A load also watches the memory the system has free, on every platform, and stops
 When the budget is exceeded, or the free memory runs low, the load stops at the sample that crosses it.
 
 - If some samples were read, the organ is kept as it stands. The status line ends with **INCOMPLETE (memory limit)**, or **INCOMPLETE (memory low)** when the system ran low, and a window titled **Only part of this organ fits** states how many of the samples (and what percentage) were loaded, with the ways to load all of it. At the limit, the window names the limit and ends with raising it on the same tab if the computer has the memory to spare; for low memory, it names the reserve kept free and starts with closing other programs. The organ plays, and some stops or notes are silent. No cache is written for it.
-- If no sample was read, the load fails. A window titled **Not enough memory for this organ** names the limit, or says the computer had too little memory free. The console is drawn without sound so that **Organ > Organ settings...** can be opened from it.
+- If no sample was read, the load fails. A window titled **Not enough memory for this organ** names the limit, or says the computer had too little memory free. The console is drawn without sound so that Organ settings can be opened from the **Organ** menu.
 
 After the samples are in, the voice pool is built under the same limit and in the memory still free. When fewer voices fit than the polyphony asks for, the pool is made smaller, never below 64 voices, and the log says `voices: N of the M asked for: the memory free allows no more`.
 
@@ -506,7 +506,7 @@ The **Stops, ranks and perspectives** tab of Organ settings chooses what is load
 | **Effects and noises** | Stops nobody draws: key-action noises, coupler and tremulant effects. They keep their own choice. |
 | **Ranks** | Leaves out one rank, whichever stop plays it. This is the finest choice, for the rear ranks of a few stops or a set's tremmed copies. |
 
-The buttons **All stops**, **No stops** and **Only the stops drawn now** set the stop ticks; the filter box and the buttons **Load shown ranks** and **Leave out shown ranks** act on the ranks that match the filter. Clicking a division heading selects or clears its stops. A Shift-click sets every row from the one clicked before to this one, and a drag over the ticks sets every row it passes, within its own list of stops or ranks.
+The buttons **All stops**, **No stops** and **Only the stops drawn now** set the stop ticks; the filter box and the buttons **Load only shown ranks**, **Load shown ranks** and **Leave out shown ranks** act on the ranks that match the filter; **Load only shown ranks** also leaves out every rank that does not. Clicking a division heading selects or clears its stops. A Shift-click sets every row from the one clicked before to this one, and a drag over the ticks sets every row it passes, within its own list of stops or ranks.
 
 A set recorded from three or four places holds the whole organ that many times over, so leaving out a perspective can decide whether the organ fits. Each entry shows its estimated memory. A left-out perspective or stop costs no memory; a stop shown dimmed was left out of the load and plays again once it is ticked and loaded.
 
@@ -558,7 +558,7 @@ Streaming leaves unread the part of each release that stays on disk, which is mo
 - **16-bit.** The quantisation step is set by the file's peak, so the signal to noise ratio of a passage falls with its level. The measured ratios (78.1 dB median, 75.2 dB lowest, over 60 files) are for whole files.
 - **Release length and the cutoff.** A shortened release and a release cutoff end a tail before the recording does, and can be heard as a decay that stops short.
 - **Cache disk space.** The cache has the size of the resident memory. A cache per organ for several large organs fills a disk; keep the cache folder on a drive with the room.
-- **Plugins.** Each plugin instance holds its own copy of the organ's samples. In the plugin editor, **Organ > Organ settings...** opens Organ settings without its **MIDI** tab, so the Loading tab is there. A plugin loads an organ with the settings files in the same folder as the standalone application, so choose the loading settings in either and save them for the organ.
+- **Plugins.** Each plugin instance holds its own copy of the organ's samples. In the plugin editor, the **Organ** menu opens Organ settings without its **MIDI** tab, so the Loading tab is there. A plugin loads an organ with the settings files in the same folder as the standalone application, so choose the loading settings in either and save them for the organ.
 - **Phones and tablets.** The memory limit follows the device's RAM, 80% by default, and the **Memory limit for samples** box offers 50%, 60%, 70% and 90% as well. The sample files are read where they are, from the Files app on iPhone and iPad. [Phones and tablets](mobile.md) covers the platform details.
 - **Process memory.** The memory figures are those of the sample library. The process takes more: the voice pool and its rings, the console artwork and the program itself. On whole Friesach with compression on, the pool of 5,800 voices takes 277 MB; with **Stream releases from disk** on, each voice carries a ring as well, and the pool takes 1,198 MB for 1,536 voices.
 - **Streaming and compression.** A compressed sample is decoded into two small windows per voice as it plays, which costs processor time on every voice.
