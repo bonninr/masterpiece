@@ -191,7 +191,7 @@ The outputs of the machine, where the ranks of this organ play, and a mixer with
 | **Narrow strips** | More strips in view: the scales keep their ticks, without numbers. | Off | On, off | At once; global file `narrowstrips 1` |
 | **Save for this organ** | Writes the organ's settings file, the routes and mixes included. | | | At once |
 | Status line | **N ranks, N routed by hand**, with **N stale** when a rank points at an output that no longer exists. | | | |
-| Outputs line | Each output's device channels, such as **Output 2: 3-4**, and **the device gives N channels: the outputs past them play on 1-2** when the device has fewer channels than the outputs name. | | | |
+| Outputs line | Each output's device channels, such as **Output 2: 3-4**; a run of stereo outputs on consecutive channels as one entry, such as **Outputs 1-24: 1-48**; a mono, named or copied output by its name, with **(mono)** for a mono one. **the device gives N channels: the outputs past them play on 1-2** follows when the device has fewer channels than the outputs name. | | | |
 
 ### Outputs...
 

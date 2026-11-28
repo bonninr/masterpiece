@@ -59,7 +59,7 @@ The **Audio device type** box lists the driver types the system offers. It appea
 | **Test** | Plays a test tone on the output | At once |
 | **Control Panel**, **Reset Device** | Shown for drivers that have their own control panel (ASIO) | |
 
-The selector offers one to 64 output channels and no input channels. The advanced options are visible. The MIDI inputs and the MIDI output are on the **MIDI** tab; see [MIDI and consoles](midi.md). A change to device, rate or buffer size stops the device and starts it again; sounding notes stop while the engine rebuilds its voice pool.
+The selector offers one to 64 output channels and no input channels. On Linux the **Output** list shows only the ALSA devices that open: each is tried once, the device in use and the `default` and `pulse` entries always stay, and the full list returns when every test fails. A device plugged in or out refreshes the list. The advanced options are visible. The MIDI inputs and the MIDI outputs are on the **MIDI** tab; see [MIDI and consoles](midi.md). A change to device, rate or buffer size stops the device and starts it again; sounding notes stop while the engine rebuilds its voice pool.
 
 ### Latency
 
