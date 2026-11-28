@@ -2238,15 +2238,15 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
   }
 
   // A console with fewer keyboards than the organ has manuals: a piston makes
-  // a keyboard play another manual (#90). Listed here as the manual's Pistons
+  // a keyboard play another manual (#90). Listed here as the manual's Controls
   // tab lists them, and learned there, the one way (#850): choose the manual,
   // play a key on the keyboard, press the piston.
   addAndMakeVisible(keyboardsHeading_);
   styleLabel(keyboardsHeading_, TRANS("Manual buttons"));
   addAndMakeVisible(noPistons_);
-  styleLabel(noPistons_, TRANS("No pistons yet."));
+  styleLabel(noPistons_, TRANS("No controls yet."));
   addAndMakeVisible(learnManuals_);
-  learnManuals_.setTooltip(TRANS("Choose the manual: its MIDI window opens at the Pistons tab"));
+  learnManuals_.setTooltip(TRANS("Choose the manual: its MIDI window opens at the Controls tab"));
   learnManuals_.onClick = [this] {
     juce::PopupMenu menu;
     for (Id kb : proc_.playableKeyboards())

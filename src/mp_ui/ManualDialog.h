@@ -49,7 +49,7 @@ public:
   //   describeManual every row of the manual, one per line, or the organ's
   //                  default channel when the player has set none
   //   describePistons every piston that brings the manual to a keyboard, one
-  //                  per line, in the Pistons tab's words
+  //                  per line, in the Controls tab's words
   static juce::String describeKeys(const MasterpieceProcessor& p, const MidiMap::KeyboardBinding& b);
   static juce::StringArray describeManual(const MasterpieceProcessor& p, Id keyboardId);
   static juce::StringArray describePistons(const MasterpieceProcessor& p, Id keyboardId);

@@ -410,7 +410,7 @@ private:
   std::vector<std::unique_ptr<juce::Label>> keyboardLabels_;
   std::vector<std::unique_ptr<juce::Label>> keyboardSummaries_;
   std::vector<std::unique_ptr<juce::TextButton>> keyboardMore_;
-  // The manual buttons (#90), each in its Pistons tab's words.
+  // The manual buttons (#90), each in its Controls tab's words.
   std::vector<std::unique_ptr<juce::Label>> pistonLines_;
   juce::Label noPistons_;
   // Fills the rows above from the mapping; true when any text changed

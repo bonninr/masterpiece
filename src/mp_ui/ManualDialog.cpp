@@ -58,7 +58,7 @@ private:
   Id keyboardId_;
 };
 
-// A piston's row, the same in the Pistons tab and in Organ settings.
+// A piston's row, the same in the Controls tab and in Organ settings.
 juce::String pistonText(const MidiBinding& b, const juce::String& manual, int channel) {
   return MidiEventDialog::describeBinding(b) + "  " +
          TRANS("brings the %1 to the keyboard on channel %2")
