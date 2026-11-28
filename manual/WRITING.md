@@ -90,18 +90,19 @@ with the Nancy demo (a Hauptwerk-format demo set) unless noted:
 | `console-grandorgue.png` | The GrandOrgue demo organ |
 | `console-composite.png` | A composite organ (Jehmlich composite) |
 | `console-portrait.png` | A narrow, tall window: a portrait jamb layout |
-| `menu-file.png` | The File menu open |
-| `menu-view.png` | The View menu open |
-| `menu-settings.png` | The Settings menu open |
-| `open-window.png` | File > Open organ...: the favourites window |
+| `menu-file.png` ... `menu-help.png` | Each menu of the bar open: `menu-file`, `menu-organ`, `menu-view`, `menu-settings`, `menu-window`, `menu-help` |
+| `open-window.png` | File > Open organ...: the Open window |
 | `loading-dialog.png` | The load progress dialog |
-| `general-general.png` ... `general-diagnostics.png` | Tabs of the Settings window: `general-general` (General), `general-audio` (Audio), `general-midi` (MIDI), `general-performance` (Performance), `general-reverb` (Reverb), `general-metronome` (Metronome), `general-combination-sets` (Combination sets), `general-display` (Console display), `general-language` (Language), `general-remote` (Remote control), `general-diagnostics` (Diagnostics) |
-| `organ-loading.png` ... `organ-midi.png` | Tabs of Organ settings: `organ-loading` (Loading), `organ-stops` (Stops, ranks and perspectives), `organ-outputs` (Outputs), `organ-voicing` (Voicing), `organ-equalizer` (Equalizer), `organ-midi` (MIDI) |
-| `manual-keys.png`, `manual-pistons.png`, `manual-send.png` | The dialog for one manual's MIDI, each tab |
-| `midi-receive.png`, `midi-send.png`, `midi-shortcut.png` | The MIDI dialog of one stop, each tab |
-| `split-keyboard.png` | View > Split keyboard |
-| `combinations.png` | Organ > Combinations |
-| `recorder.png` | View > Recorder |
+| `general-general.png` ... `general-diagnostics.png` | Tabs of the Settings window: `general-general` (General), `general-audio` (Audio), `general-performance` (Performance), `general-midi` (MIDI), `general-console-midi` (Console MIDI), `general-display` (Console display), `general-remote` (Remote control), `general-diagnostics` (Diagnostics) |
+| `settings-help-button.png`, `organ-help-button.png` | The **?** button of Settings and of Organ settings |
+| `organ-loading.png` ... `organ-midi.png` | Tabs of Organ settings: `organ-loading` (Loading), `organ-stops` (Stops, ranks and perspectives), `organ-outputs` (Outputs), `organ-voicing` (Voicing), `organ-equalizer` (Organ EQ), `organ-reverb` (Reverb), `organ-midi` (MIDI) |
+| `manual-keys.png`, `manual-controls.png`, `manual-send.png` | The dialog for one manual's MIDI, each tab |
+| `midi-receive.png`, `midi-receive-shoe.png`, `midi-send.png`, `midi-shortcut.png` | The MIDI dialog of one stop (and of a shoe), each tab |
+| `learn-in-turn.png` | Organ > Learn MIDI in turn... |
+| `split-keyboard.png` | Window > Split keyboard |
+| `combinations.png` | Organ > Combinations, with the Crescendo row |
+| `recorder.png` | Window > Recorder |
+| `window-couplers.png`, `window-metronome.png`, `window-tuner.png` | Window > Couplers, Window > Metronome, Window > Tuner |
 | `panel.png` | A panel tab (the plain stop view) |
 | `stop-list.png` | The stop list view |
 | `tuning-panel.png` | Organ > Temperament and tuning... |
