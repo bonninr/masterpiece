@@ -1,7 +1,6 @@
 "Add to the favourites?" = "Zu den Favoriten hinzufügen?"
 "%1 is not among the favourites. A favourite opens from the Open window's list, or from a piston, without looking for the organ again." = "%1 ist nicht unter den Favoriten. Ein Favorit öffnet sich aus der Liste des Fensters Öffnen oder über einen Setzerknopf, ohne die Orgel erneut zu suchen."
 "Add and quit" = "Hinzufügen und beenden"
-"MIDI keyboards in the status line" = "MIDI-Tastaturen in der Statuszeile"
 "Help: this tab in the manual" = "Hilfe: dieser Reiter im Handbuch"
 "Controls" = "Schalter"
 "Controls that bring the %1 to one of your keyboards" = "Schalter, die „%1“ auf eine Ihrer Tastaturen legen"
@@ -11,3 +10,5 @@
 "Add a control..." = "Schalter hinzufügen..."
 "Remove all controls" = "Alle Schalter entfernen"
 "A control here (a piston, a button, a drawstop or a tab) makes a keyboard play the %1, so a console with fewer keyboards than the organ has manuals can reach all of them. Pressing it lets go of any notes held on that keyboard first. Add one for each keyboard that should be able to play this manual.\n\nThe same control added on several manuals steps the keyboard through them, one press at a time. Settings, MIDI can make General Cancel put every keyboard back where it started. Saved with this organ." = "Ein Schalter hier (ein Setzerknopf, ein Taster, ein Registerzug oder eine Wippe) lässt eine Tastatur „%1“ spielen, sodass ein Spieltisch mit weniger Tastaturen, als die Orgel Manuale hat, alle erreichen kann. Beim Betätigen werden zuerst alle auf dieser Tastatur gehaltenen Noten losgelassen. Fügen Sie für jede Tastatur, die dieses Manual spielen können soll, einen hinzu.\n\nDerselbe Schalter, auf mehreren Manualen eingetragen, schaltet die Tastatur mit jedem Druck eines weiter. Unter Einstellungen, MIDI lässt sich festlegen, dass der Generalabsteller alle Tastaturen wieder auf ihr eigenes Manual zurücksetzt. Wird mit dieser Orgel gespeichert."
+"%1: %2, channel %3" = "%1: %2, Kanal %3"
+"%1: channel %2" = "%1: Kanal %2"

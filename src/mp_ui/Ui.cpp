@@ -3421,7 +3421,6 @@ void MasterpieceEditor::showViewMenu() {
   if (expression_.shoeCount() > 0) menu.addItem(11, TRANS("Expression pedals"), true, showingSwell_);
   menu.addItem(12, TRANS("Keyboard"), true, showingKeyboard_);
   menu.addItem(13, TRANS("Highlight played keys"), true, proc_.showPlayedKeys());
-  menu.addItem(40, TRANS("MIDI keyboards in the status line"), true, proc_.showMidiKeyboards());
   // Sizes for a touch screen or for reading from the bench (#1271, #1221).
   {
     const juce::String sizes[] = {TRANS("Normal"), TRANS("Large"), TRANS("Larger")};
@@ -3468,7 +3467,6 @@ void MasterpieceEditor::showViewMenu() {
                          safe->proc_.setShowPlayedKeys(!safe->proc_.showPlayedKeys());
                          safe->console_.repaint();
                        }
-                       if (c == 40) safe->proc_.setShowMidiKeyboards(!safe->proc_.showMidiKeyboards());
                        if (c == 17) {
                          safe->proc_.setSmallPagesFill(!safe->proc_.smallPagesFill());
                          safe->resized();
@@ -3807,9 +3805,6 @@ void MasterpieceEditor::timerCallback() {
   juce::String live = status_;
   if (live.isNotEmpty()) live += "  |  ";
   live += TRANS("voices %1").replace("%1", juce::String(stats.activeVoices));
-  // Which device plays which keyboard (#1285), when the View menu asks.
-  if (proc_.showMidiKeyboards() && proc_.loadedOrganFile().getFullPathName().isNotEmpty())
-    if (const auto keyboards = proc_.midiKeyboardsText(); keyboards.isNotEmpty()) live += "  |  " + keyboards;
   // The organ plays while its samples are saved for next time (#120).
   // How far along, and how long is left once a few seconds give a rate to
   // go by: on a large organ this is minutes, and a bare "saving..." for that

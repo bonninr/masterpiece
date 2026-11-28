@@ -1376,6 +1376,12 @@ void ConsoleView::openMenuAt(juce::Point<int> p, bool keys) {
 // locked stops are drawn and dimmed, and nothing else says why.
 juce::String ConsoleView::getTooltip() {
   const auto p = getMouseXYRelative();
+  // Over a drawn manual: the keyboard, the device and channel that play it
+  // (#1285). Back to front, the sharps on top.
+  // The tooltip window waits for the pointer to rest (0.7 s), so nothing pops
+  // up while the mouse crosses the keys.
+  for (auto it = keys_.rbegin(); it != keys_.rend(); ++it)
+    if (it->bounds.contains(p)) return it->keyboardId != 0 ? proc_.keyboardSourceText(it->keyboardId) : juce::String();
   for (auto it = items_.rbegin(); it != items_.rend(); ++it) {
     if (it->switchId == 0 || !it->hitBounds.contains(p)) continue;
     const auto* why = proc_.unavailableFor(it->switchId);

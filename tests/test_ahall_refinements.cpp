@@ -1,7 +1,6 @@
 // Refinements asked for before 1.0 (#1285, #1286, #1271): the favourites
 // question on Quit is asked once per organ, the last tab used is kept per
-// organ, the MIDI keyboards in the status line are a setting kept with the
-// others, and the status text names each keyboard with its channel.
+// organ, and the tooltip over a drawn manual names its keyboard and channel.
 #include "MpTest.h"
 
 #ifdef MP_TEST_HAS_AUDIO
@@ -57,13 +56,15 @@ public:
       MP_CHECK(!proc.shouldOfferFavourite(), "offered once: not again");
       MP_CHECK(proc.lastTab().isEmpty(), "no tab kept yet");
       proc.setLastTab("Panel 1");
-      MP_CHECK(!proc.showMidiKeyboards(), "the MIDI keyboards are off the status line at first");
-      proc.setShowMidiKeyboards(true);
 
-      const auto text = proc.midiKeyboardsText();
-      MP_CHECK(text.contains("Pedal: ") && text.contains("Great: "), "each keyboard named: " + text.toStdString());
-      MP_CHECK(text.indexOf("Pedal") < text.indexOf("Great"), "the pedal first: " + text.toStdString());
-      MP_CHECK(text.contains("ch "), "with its channel: " + text.toStdString());
+      mp::Id great = 0;
+      for (const auto& [id, kb] : proc.organModel().keyboards)
+        if (kb.name == "Great") great = id;
+      MP_CHECK(great != 0, "the Great is a keyboard");
+      const auto text = proc.keyboardSourceText(great);
+      MP_CHECK(text.startsWith("Great: ") && text.contains("channel "),
+               "over the manual: its name and channel: " + text.toStdString());
+      MP_CHECK(proc.keyboardSourceText(0).isEmpty(), "no keyboard, nothing said");
       MP_CHECK(proc.lastDeviceOnChannel(1) == 0 && proc.lastDeviceOnChannel(0) == 0 &&
                    proc.lastDeviceOnChannel(17) == 0,
                "no device has played yet; channels out of range are none");
@@ -77,7 +78,6 @@ public:
     {
       mp::MasterpieceProcessor proc;
       proc.loadGlobalDefaults();
-      MP_CHECK(proc.showMidiKeyboards(), "the status line setting is kept");
       MP_CHECK(proc.loadOrgan(first, 0, true).ok, "the first organ loads again");
       MP_CHECK(!proc.shouldOfferFavourite(), "the answer is kept: not offered again");
       MP_CHECK(proc.lastTab() == "Panel 1", "the last tab comes back: " + proc.lastTab().toStdString());

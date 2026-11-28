@@ -55,7 +55,6 @@ or presses while playing; choices made once are in the menus.
 | **Swell faders** | Shows or hides the strip of swell faders. The item is present when the organ has at least one swell shoe. |
 | **Keyboard** | Shows or hides the on-screen keyboard. |
 | **Show played keys** | Lights the keys of the drawn manuals as they are played. Ticked by default. |
-| **MIDI keyboards in the status line** | Adds to the status line which channel, and which MIDI device, plays each keyboard. Off by default; kept in `settings.mpglobal` (`statusmidi`). |
 | **Split keyboard** | Shows or hides the Split keyboard window. See [Split keyboard](split-keyboard.md). |
 | **A page in its own window** | A submenu with one item per console page, ticked while the page has a window. Present in the standalone application, while the console is shown. |
 
@@ -122,7 +121,6 @@ The strip along the bottom edge shows, from left to right and separated by
    N` (starts whose samples were not in memory), `late blocks N` (audio blocks
    that took longer than the audio they produced) and, with streamed release
    tails, a warning that the disk fell behind.
-5. With **View > MIDI keyboards in the status line**, each keyboard the player can play, the pedal first, with its channel and the device bound to it or that last played that channel: `Pedal: Fatar ch 1, Great: ch 2`. A channel no device has played yet shows the channel alone.
 
 After a load with no audio, the line reads `65 stops, 312 ranks, graphics only
 - no audio loaded | voices 0, no audio 24`. The line is cut short in a narrow
@@ -196,7 +194,7 @@ drawn in the main layout, whole.
 |---|---|
 | Drawstop, rocker, coupler, tremulant | A click toggles the switch. |
 | Piston, setter, or any button the organ marks as momentary | The button is pressed while the mouse button is down and released with it. A piston fires on the press. |
-| Drawn key of a drawn manual | A click plays the key, on the channel of the keyboard that the manual belongs to, through the same path as a MIDI key. The key sounds while the button is held. Sliding along the manual plays the keys under the pointer in turn; sliding from one manual onto another moves the note to the other manual. |
+| Drawn key of a drawn manual | A click plays the key, on the channel of the keyboard that the manual belongs to, through the same path as a MIDI key. The key sounds while the button is held. Sliding along the manual plays the keys under the pointer in turn; sliding from one manual onto another moves the note to the other manual. With the pointer at rest on a manual, a tooltip names the keyboard, the MIDI device that plays it and its channel: `Great: Fatar, channel 2`; the device is the one bound to the keyboard, or the one that last played that channel, and is left out until one has. |
 | Swell shoe, crescendo pedal, dial or slider | A press takes hold of the control and moves nothing. A drag then moves the value from where it was. |
 | Stop with no pipes in the set | A click on it is refused while it is pushed in. See [Stops that make no sound](#stops-that-make-no-sound). |
 
@@ -244,7 +242,7 @@ themselves are described on [MIDI and consoles](midi.md).
 |---|---|
 | Drawstop, coupler, piston | The object's name, then its current MIDI mappings (`Note 36 ch 1 (toggle)`, `CC 20 (while held)`), **MIDI window...**, **Learn** (**Learn (while held)** for a momentary button), a submenu **Learn as** with **Toggle**, **While held**, **Draw only** and **Cancel only**, and **Clear mapping**. |
 | Swell shoe, crescendo, dial, slider; swell fader | The control's name, its mappings, **MIDI window...**, **Learn: move a pedal, knob or fader**, **Closed position: where the pedal is now**, **Open position: where the pedal is now**, **Use the pedal's whole travel** and **Clear mapping**. |
-| Key of a drawn manual | The MIDI window of that manual: which keyboard plays it and the pistons that bring it to a keyboard. |
+| Key of a drawn manual | The MIDI window of that manual: which keyboard plays it and the controls that bring it to a keyboard. |
 | Element of a panel | The MIDI window of the stop, coupler, piston or control. |
 | Page tab, panel tab | See [Page tabs](#page-tabs). |
 | Empty part of the console | Cancels a learn that is armed. |

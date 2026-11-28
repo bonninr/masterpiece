@@ -3728,7 +3728,6 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (leaveBassAndMelody_) text << "pistonsleavebass 1\n";
   if (pistonsStayLit_) text << "pistonsstaylit 1\n";
   if (!showPlayedKeys_.load()) text << "showkeys 0\n";
-  if (showMidiKeyboards_.load()) text << "statusmidi 1\n";
   if (smallPagesFill_.load()) text << "smallpagesfill 1\n";
   if (narrowStrips_.load()) text << "narrowstrips 1\n";
   if (!rememberWindowPlaces_.load()) text << "rememberwindows 0\n";
@@ -3974,8 +3973,6 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       player_.setKeepLit(pistonsStayLit_);
     } else if (key == "showkeys") {
       showPlayedKeys_.store(val.getIntValue() != 0);
-    } else if (key == "statusmidi") {
-      showMidiKeyboards_.store(val.getIntValue() != 0);
     } else if (key == "narrowstrips") {
       narrowStrips_.store(val.getIntValue() != 0);
     } else if (key == "displaymode") {
@@ -5500,32 +5497,26 @@ Id MasterpieceProcessor::keyboardForChannel(int channel, int deviceId) const {
   return fallbackKeyboard_;
 }
 
-juce::String MasterpieceProcessor::midiKeyboardsText() const {
-  // Each keyboard a player can play, pedal first: its channel, and the device
-  // it is bound to, or else the one that last played that channel. A channel
-  // nothing has played yet shows the channel alone.
-  std::vector<std::pair<int, Id>> order;
-  for (Id kb : couplers_.inputKeyboards()) {
-    const int role = consoleRoleOf(kb);
-    order.emplace_back(role < 0 ? 99 : role, kb);
-  }
-  std::stable_sort(order.begin(), order.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-  juce::StringArray parts;
-  for (const auto& [role, kb] : order) {
-    const auto it = model_.keyboards.find(kb);
-    if (it == model_.keyboards.end()) continue;
-    const int channel = channelForKeyboard(kb);
-    int device = 0;
-    for (const auto& b : midiMap_.keyboardBindings())
-      if (b.keyboardId == kb && b.deviceId != MidiDeviceMap::kAnyDevice) device = b.deviceId;
-    if (device == 0) device = lastDeviceOnChannel(channel);
-    juce::String source = TRANS("ch %1").replace("%1", juce::String(channel));
-    if (device != 0)
-      if (const auto name = midiMap_.devices().displayName(device); !name.empty())
-        source = juce::String::fromUTF8(name.c_str()) + " " + source;
-    parts.add(juce::String::fromUTF8(it->second.name.c_str()) + ": " + source);
-  }
-  return parts.joinIntoString(", ");
+juce::String MasterpieceProcessor::keyboardSourceText(Id keyboardId) const {
+  // A drawn manual stands for the keyboard a player plays: that one's name,
+  // channel and device.
+  const Id input = couplers_.inputKeyboardFor(keyboardId);
+  const Id played = input != 0 ? input : keyboardId;
+  const auto it = model_.keyboards.find(played);
+  if (it == model_.keyboards.end()) return {};
+  const int channel = channelForKeyboard(played);
+  int device = 0;
+  for (const auto& b : midiMap_.keyboardBindings())
+    if (b.keyboardId == played && b.deviceId != MidiDeviceMap::kAnyDevice) device = b.deviceId;
+  if (device == 0) device = lastDeviceOnChannel(channel);
+  const auto name = juce::String::fromUTF8(it->second.name.c_str());
+  if (device != 0)
+    if (const auto dev = midiMap_.devices().displayName(device); !dev.empty())
+      return TRANS("%1: %2, channel %3")
+          .replace("%1", name)
+          .replace("%2", juce::String::fromUTF8(dev.c_str()))
+          .replace("%3", juce::String(channel));
+  return TRANS("%1: channel %2").replace("%1", name).replace("%2", juce::String(channel));
 }
 
 int MasterpieceProcessor::channelForKeyboard(Id keyboardId) const {

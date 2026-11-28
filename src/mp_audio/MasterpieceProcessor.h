@@ -1178,13 +1178,6 @@ public:
     narrowStrips_.store(on, std::memory_order_relaxed);
     writeGlobalFile();
   }
-  // Which MIDI device plays which keyboard, in the status line (#1285): off
-  // unless the player turns it on in the View menu.
-  bool showMidiKeyboards() const { return showMidiKeyboards_.load(std::memory_order_relaxed); }
-  void setShowMidiKeyboards(bool on) {
-    showMidiKeyboards_.store(on, std::memory_order_relaxed);
-    writeGlobalFile();
-  }
   // The device that last sent a note on a channel (1..16), 0 when none has
   // since the program started. The on-screen keys carry no device and leave
   // it as it was.
@@ -1192,8 +1185,10 @@ public:
     return channel >= 1 && channel <= 16 ? channelDevice_[static_cast<size_t>(channel)].load(std::memory_order_relaxed)
                                          : 0;
   }
-  // For the status line: "Pedal: Fatar 1 ch 1, Great: ch 2" (#1285).
-  juce::String midiKeyboardsText() const;
+  // What plays a keyboard, said over its drawn manual (#1285): "Great:
+  // Fatar, channel 2", the device bound to it or that last played its
+  // channel; "Great: channel 2" while no device has.
+  juce::String keyboardSourceText(Id keyboardId) const;
   bool showPlayedKeys() const { return showPlayedKeys_.load(std::memory_order_relaxed); }
   void setShowPlayedKeys(bool on) {
     showPlayedKeys_.store(on, std::memory_order_relaxed);
@@ -3724,7 +3719,6 @@ private:
   bool leaveBassAndMelody_ = false;
   bool pistonsStayLit_ = false;
   std::atomic<bool> showPlayedKeys_{true};
-  std::atomic<bool> showMidiKeyboards_{false};
   std::array<std::atomic<int>, 17> channelDevice_{};  // by channel 1..16, see lastDeviceOnChannel
   std::atomic<bool> narrowStrips_{false};
   std::atomic<bool> smallPagesFill_{false};
