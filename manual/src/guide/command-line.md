@@ -72,6 +72,9 @@ Prints the short list of options and quits.
 
 Prints `Masterpiece <version>` and quits.
 
+### `--train-profile`
+
+Plays a built-in exercise offline, with no window and no audio device, and quits. It is the training run of a profile-guided build, and of no use to a player.
 ## Logging and reporting problems
 
 Every session writes a log without any option. The files are in the settings folder:
