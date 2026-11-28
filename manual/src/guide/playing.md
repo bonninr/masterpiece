@@ -42,7 +42,7 @@ keys pressed afterwards play the new registration. Off by default.
 
 **Sustain pedal: controller 64 holds the notes let go**, on the same tab, keeps
 released keys sounding while a sustain pedal is down, for directing a choir from
-the bench. Off by default. See [MIDI and consoles](midi.md#feedback-playing-and-learn-options).
+the bench. Off by default. See [MIDI and consoles](midi.md#echo-playing-and-learn-options).
 
 A tremulant shakes the pipes only when the engine runs its detailed path. The
 **Tremulants** box on the **Loading** tab of Organ settings, is on by
