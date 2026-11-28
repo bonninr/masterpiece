@@ -198,7 +198,7 @@ When a package is still missing after the search, a dialog titled **A package th
 |---|---|
 | **Choose an archive...** | Opens a file dialog for the package's RAR archive. The archive is joined to the organ's and its path is appended to `joined-packages.txt`. |
 | **Choose a folder...** | Opens a folder dialog. A folder that holds `OrganInstallationPackages/<id>` is recorded in `package-folders.txt`. A folder that holds archives has the matching archives joined and recorded in `joined-packages.txt`. |
-| **Play without it** | The organ loads and the pipes of that package are silent. |
+| **Play without it** | The organ loads and the pipes of that package are silent. The button counts down, **Play without it (10 s)**; with no answer in 10 seconds the organ loads without the package, so a load started from a console, a favourite or the control API reaches the console with no one at the screen. The log says `package: no answer in 10 s; the organ plays without it`. |
 
 ### package-folders.txt and joined-packages.txt
 
@@ -256,6 +256,19 @@ A jOrgan organ opens from its `.disposition` file.
 Left out, each named in the log: combinations, memories, activators, captors, keyers, incrementers, regulators, sequences, the recorder, sounds without a SoundFont (LinuxSampler, generic MIDI), NRPN tone filters, SoundFont filters, extra layers. On skinned consoles: combinations, pistons and other controls drawn but not clickable.
 
 Approximations and omissions go to the log, on lines starting with `load: jOrgan import:`.
+
+## The Test Sound organ
+
+The Test Sound organ is a small organ Masterpiece generates on the device, so the program sounds before a sample set is installed: to check the audio and the MIDI setup.
+
+| Part | What it is |
+|---|---|
+| Console | One manual (C2 to C7, 61 keys), one stop, one swell pedal |
+| Samples | 44.1 kHz, 16-bit stereo; one key in three generated, the others retuned from the nearest |
+| Room | An 8-second stereo impulse response, set as the organ's reverb at 0.5 wet the first time it loads |
+| Size | About 25 MB, in the `Test Sound` folder of the data folder: `TestSound.organ` and the folder `TestSound` |
+
+To create it, tick **Create the Test Sound organ** on the **Organ** step of the first-run wizard. The box is off on a computer and on on a phone or tablet. **Finish** or **Skip setup** then shows **Creating the Test Sound organ** with a progress bar and **Cancel**, and loads the organ when it is ready, in a few seconds. A cancelled creation leaves nothing behind. When it fails, a box titled **Test Sound organ not created** gives the reason. The organ opens later as any GrandOrgue organ, from `TestSound.organ`.
 
 ## Demo sets
 

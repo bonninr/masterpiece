@@ -34,7 +34,7 @@ enters it.
 A key that is down answers to the registration as it changes. Drawing a stop
 while a key is held makes that rank speak, and pushing it in silences it. A
 coupler drawn or pushed in while keys are held reaches, or stops reaching, the
-divisions it couples at once. A tremulant switch that swaps a stop's rank for
+divisions it couples at once. A coupler reaches every division the coupled keyboard's keys play through the wiring: a tirasse to a manual whose keys also open a division of reeds, behind an appel d'anches, plays those reeds too while the appel is drawn. A tremulant switch that swaps a stop's rank for
 its alternate recording sounds the held notes again on the other rank. With
 **Stop changes leave the notes already held alone** ticked in
 **Settings > MIDI...**, held notes keep what they started with and only the
