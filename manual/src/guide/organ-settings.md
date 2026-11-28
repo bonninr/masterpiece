@@ -231,11 +231,11 @@ A stop's perspectives, tremulant ranks and mixture ranks sound together on one o
 
 ### The mixer
 
-Under the buttons, the strips, side by side by kind, each kind under its title: **Outputs** (with the **Master** strip, the same as the top bar's volume), **Divisions**, **Perspectives** (**Windchest groups** for a GrandOrgue organ) and **Mixes**. A strip has a fader, a meter, **Mute**, **Solo** and a **MIDI** button. A narrow window shows the kinds as tabs, one at a time. A tab, or a right-click on it, opens that kind in a window of its own (**Own window**), to keep beside the console; closing the window puts it back. Phones and tablets have no such windows.
+Under the buttons, the strips, side by side by kind, each kind under its title: **Outputs** (with the **Master** strip, the same as the top bar's volume), **Divisions** (a division of noises alone has no strip), **Perspectives** (**Windchest groups** for a GrandOrgue organ) and **Mixes**. A strip has a fader, a meter, **Mute**, **Solo** and a **MIDI** button. A narrow window shows the kinds as tabs, one at a time. A tab, or a right-click on it, opens that kind in a window of its own (**Own window**), to keep beside the console; closing the window puts it back. Phones and tablets have no such windows.
 
 | Control | What it does | Default | Range | Takes effect |
 |---|---|---|---|---|
-| Fader | A live level, heard at once: 0 dB is the level as voiced. A division's fader acts on every rank in it. A double-click on the readout types a level in dB. | 0 dB | **Off**, -40 dB to +24 dB | At once |
+| Fader | A live level, heard at once: 0 dB is the level as voiced. A drag moves the knob as far as the pointer moves along the fader. A division's fader acts on every rank in it. A double-click on the readout types a level in dB. | 0 dB | **Off**, -40 dB to +24 dB | At once |
 | Meter | The strip's level. On the Master strip, the loudest output after the master volume; red near full scale. | | | Live |
 | **Mute** | Silences the strip; the fader stays where it is. | Off | On, off | At once |
 | **Solo** | On an output strip, only the soloed outputs sound; on another strip, only the ranks under a soloed strip sound. | Off | On, off | At once |
