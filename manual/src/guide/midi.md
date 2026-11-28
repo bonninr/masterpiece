@@ -288,7 +288,7 @@ The profiles are files in the `consoles` folder of the data folder, one per prof
 | Controller, one value | 0 to 127, with the value for on and the value for off | The **On at** value, and no other | The **Off at** value; every other value is for another object |
 | Controller, one bit | 0 to 127, with the bit, 0 for the lowest | The switch follows its bit on every message | |
 | RPN, NRPN | A parameter number, 0 to 16383 | As a controller, on the data entry value | As a controller |
-| Program change | Shown from 1; a shoe also takes **Range of programs**, one program a step | Every time it arrives | None |
+| Program change | Shown from 1; a shoe or the crescendo also takes **Range of programs**: the first program closed, the last fully open, one program a step. A program outside the range leaves the shoe where it is. | Every time it arrives | None |
 | System exclusive | Identified by all of its bytes; shown as **Learned message** | Every time it arrives | None |
 
 The press threshold is the middle of the binding's value window (above 63 for the default window of 0 to 127). A console that sends 64 for a press registers. Each distinct system exclusive message is one button; a console that sends its pistons this way maps each piston by learning it.

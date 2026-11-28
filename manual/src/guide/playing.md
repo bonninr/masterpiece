@@ -25,6 +25,10 @@ wired to its stop through plain follow linkages; the engine's own nodes,
 registration aids that reach several stops, reversible pistons and switches no
 player can reach keep the setting the definition gives them.
 
+Some organs group switches so that one of them is on at a time, such as a
+matrix of three swell settings. Drawing one releases the others of its group;
+pushing one in draws none of the others.
+
 A press dragged across the stops of the console, of a panel or of the stop
 list moves each stop the pointer passes over the way the first one moved: a
 drag that started by drawing a stop draws the others, and one that started by
