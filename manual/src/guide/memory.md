@@ -54,10 +54,10 @@ The **Resident format** box chooses what one held frame costs.
 
 | Option | Bytes per sample | What it holds |
 |---|---|---|
-| **As recorded - 16 or 24-bit, as each file is** | 3 for a 24-bit file, 2 for a 16-bit file | The integers of the file unchanged, at the file's own width. The audio in memory is bit-for-bit what the file holds. A 16-bit file is held at 2 bytes whenever its samples still fit 16 bits after reading; folded to mono or converted in rate, it usually takes 3. |
-| **20-bit - a sixth less than the source** | 2.5 | Each sample requantised to 20 bits against its own file's peak, packed so two samples take five bytes. |
-| **16-bit - two thirds of that, inaudible** | 2 | Each sample requantised to 16 bits against its own file's peak, so a stop recorded 20 dB down keeps all sixteen bits. The scale folds into the voice gain and costs nothing while playing. |
-| **32-bit float - larger than the source** | 4 | The decoder's floating-point result. One third larger than 24-bit. |
+| **As recorded (16 or 24-bit)** | 3 for a 24-bit file, 2 for a 16-bit file | The integers of the file unchanged, at the file's own width. The audio in memory is bit-for-bit what the file holds. A 16-bit file is held at 2 bytes whenever its samples still fit 16 bits after reading; folded to mono or converted in rate, it usually takes 3. |
+| **20-bit** | 2.5 for a 24-bit file, 2 for a 16-bit file | Each sample requantised to 20 bits against its own file's peak, packed so two samples take five bytes. A 16-bit file is held at its own sixteen bits, bit-for-bit. |
+| **16-bit** | 2 | Each sample requantised to 16 bits against its own file's peak, so a stop recorded 20 dB down keeps all sixteen bits. The scale folds into the voice gain and costs nothing while playing. |
+| **32-bit float** | 4 | The decoder's floating-point result. |
 
 **Default:** As recorded. **Takes effect:** at the next load. The settings file stores the width (`storage 16`, `storage 20`, `storage 24` or `storage 32`).
 
@@ -168,7 +168,7 @@ A release is the sound of a pipe after its key is let go. Many sets record sever
 
 **Default:** **As the organ has them**. **Takes effect:** at the next load. The settings file stores the choice as a number from 0 (all) to 3 (none) in the key `releases`.
 
-**Release length** keeps each release up to a given length after its start and fades it out over its last quarter with a raised-cosine curve.
+**Release length** keeps each release up to a given length after its start and fades it out over its whole length, a straight line in gain from the start of the release to silence at its end.
 
 | Option | Kept |
 |---|---|
@@ -506,7 +506,7 @@ The **Stops, ranks and perspectives** tab of Organ settings chooses what is load
 | **Effects and noises** | Stops nobody draws: key-action noises, coupler and tremulant effects. They keep their own choice. |
 | **Ranks** | Leaves out one rank, whichever stop plays it. This is the finest choice, for the rear ranks of a few stops or a set's tremmed copies. |
 
-The buttons **All stops**, **No stops** and **Only the stops drawn now** set the stop ticks; the filter box and the buttons **Load shown ranks** and **Leave out shown ranks** act on the ranks that match the filter. Clicking a division heading selects or clears its stops. A Shift-click sets every row from the one clicked before to this one, and a drag over the ticks sets every row it passes, within its own list of stops or ranks.
+The buttons **All stops**, **No stops** and **Only the stops drawn now** set the stop ticks; the filter box and the buttons **Load only shown ranks**, **Load shown ranks** and **Leave out shown ranks** act on the ranks that match the filter; **Load only shown ranks** also leaves out every rank that does not. Clicking a division heading selects or clears its stops. A Shift-click sets every row from the one clicked before to this one, and a drag over the ticks sets every row it passes, within its own list of stops or ranks.
 
 A set recorded from three or four places holds the whole organ that many times over, so leaving out a perspective can decide whether the organ fits. Each entry shows its estimated memory. A left-out perspective or stop costs no memory; a stop shown dimmed was left out of the load and plays again once it is ticked and loaded.
 
