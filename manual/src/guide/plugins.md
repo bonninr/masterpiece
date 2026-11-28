@@ -33,6 +33,8 @@ The plugins are not built for these packages:
 - The Raspberry Pi 32-bit and 64-bit Debian packages (their build presets build no plugins).
 - Android, iPhone and iPad.
 
+A CLAP plugin can be built from the source with `-DMP_BUILD_CLAP=ON`; the releases do not carry it. See [Building from source](../dev/building.md).
+
 ### Plugin identity
 
 | Property | Value |

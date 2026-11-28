@@ -96,6 +96,7 @@ A file named `CMakeUserPresets.json` is ignored by Git and holds personal preset
 |---|---|---|
 | `MP_BUILD_STANDALONE` | `ON` | Builds the standalone app, target `MasterpieceApp`. |
 | `MP_BUILD_PLUGIN` | `ON` | Builds the plugins, target `MasterpiecePlugin`: VST3 and AU on macOS, VST3 and LV2 on Windows and Linux. |
+| `MP_BUILD_CLAP` | `OFF` | Builds the plugin as CLAP too, target `MasterpiecePlugin_CLAP`, through clap-juce-extensions (commit `MP_CLAP_JUCE_COMMIT`, default `3837f4a`, fetched, or a checkout with its submodules named by `MP_CLAP_JUCE_DIR`). CLAP id `org.masterpiece.player`, features `instrument` and `sampler`. Tried on Linux only; not in CI or the release. A host must offer timer support, which runs JUCE's message loop. |
 | `MP_BUILD_TESTS` | `ON` | Builds `mp_tests` and registers the CTest tests when `tests/` exists. |
 | `MP_ENABLE_DSP` | `ON` | Compiles `mp_dsp`: wind, tremulant, enclosure and voicing processing. It can still be switched off per organ at run time. Requires JUCE (`juce_dsp`). |
 | `MP_ENABLE_STREAMING` | `ON` | Adds `src/mp_sampler` to the build. `mp_audio` includes headers from `mp_sampler`, so leave it `ON` for every build of the app or the plugins. |
