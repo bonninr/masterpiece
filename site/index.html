@@ -75,7 +75,7 @@
     "name": "Which sample sets does it play?",
     "acceptedAnswer": {
      "@type": "Answer",
-     "text": "Hauptwerk-format sets, from full, compact and composite definitions, and GrandOrgue organs, from .organ definitions and .orgue packages. Samples are WAV or WavPack at any rate; sets with encrypted samples stay with their publisher's own player."
+     "text": "Hauptwerk-format sets, from full, compact and composite definitions, and GrandOrgue organs, from .organ definitions and .orgue packages, and jOrgan organs, from .disposition files with their SoundFonts. Samples are WAV or WavPack at any rate; sets with encrypted samples stay with their publisher's own player."
     }
    },
    {
@@ -223,12 +223,13 @@
   <div class="wrap">
    <div class="split">
     <div>
-      <h2>Both sample-set formats, <span class="tone">opened from the packages they ship in</span></h2>
+      <h2>Three sample-set formats, <span class="tone">opened from the packages they ship in</span></h2>
       <p class="lead">Download a set, point Masterpiece at the file, and play. The console comes up as its producer drew it, with every coupler wired the way the definition wires it.</p>
     </div>
       <ul class="points" style="margin-top:0">
         <li><div><h3>Hauptwerk-format definitions</h3><p>Full, compact and composite XML, with every console page, jamb and console size the set draws.</p></div></li>
         <li><div><h3>GrandOrgue organs</h3><p><code>.organ</code> definitions converted as they load, console included, and every manual playable.</p></div></li>
+        <li><div><h3>jOrgan organs</h3><p><code>.disposition</code> files with their SoundFonts, converted as they load.</p></div></li>
         <li><div><h3>Archives as shipped</h3><p>RAR 4 and 5, solid, multi-part and multi-volume, and GrandOrgue <code>.orgue</code> packages. An unpacked folder works too. WAV and WavPack samples at any rate.</p></div></li>
         <li><div><h3>Original switch network</h3><p>Couplers, sub- and super-octaves, unison off, reversibles, crescendo and alternate ranks.</p></div></li>
       </ul>
@@ -426,7 +427,7 @@
       <article class="card">
         <div class="frame"><img src="screenshots/shot-midi.jpg" alt="Organ settings, MIDI tab"></div>
         <h3>Keyboards and pedals</h3>
-        <p>A channel per manual, with key range, transposition, velocity window, short octaves and debounce. Every control can be learned from MIDI, and drawstop lamps and jamb displays answer back.</p>
+        <p>A channel per manual, with key range, transposition, velocity window, short octaves and debounce. Every control can be learned from MIDI, the tabs one after another, and drawstop lamps and jamb displays answer back. A console profile maps a new organ by its stop names.</p>
       </article>
       <article class="card">
         <div class="frame"><img src="screenshots/shot-loading.jpg" alt="Organ settings, Loading tab"></div>
@@ -486,13 +487,13 @@
         <li><div><h3>Pan and stereo width</h3><p>Per rank and per division.</p></div></li>
         <li><div><h3>Attack emphasis</h3><p>Each pipe begins louder or softer and settles to its own level.</p></div></li>
         <li><div><h3>Pipe detune and wind sway</h3><p>Per organ, off by default.</p></div></li>
-        <li><div><h3>Live levels</h3><p>Faders for ranks, divisions and output pairs, from MIDI knobs, the Outputs tab or the control API.</p></div></li>
-        <li><div><h3>Output stage</h3><p>Compressor, peak limiter and output presets, bass management to a subwoofer channel, and output pairs on device channels of their own.</p></div></li>
+        <li><div><h3>Mixer</h3><p>Faders, mute and solo for outputs, divisions, perspectives and mixes of ranks, from MIDI knobs, the Outputs tab or the control API.</p></div></li>
+        <li><div><h3>Output stage</h3><p>Up to 64 outputs on device channels of their own, with sends, a room, an EQ and a crossover each, for a subwoofer or a speaker of several ways; speaker groups; compressor, peak limiter and output presets.</p></div></li>
       </ul>
     </div>
     <div class="stack">
       <figure class="frame" style="margin:0">
-        <img src="screenshots/shot-outputs.jpg" alt="Organ settings, Outputs tab: a fader and a MIDI button for each pair, division and rank">
+        <img src="screenshots/shot-outputs.jpg" alt="Organ settings, Outputs tab: a fader and a MIDI button for each output, division and rank">
       </figure>
       <figure class="frame" style="margin:0">
         <img src="screenshots/shot-equalizer.jpg" alt="Organ settings, Equalizer tab: ten bands, gain and attack">
@@ -626,7 +627,7 @@
     </div>
     <div class="faq">
       <details class="qa"><summary><h3>Is Masterpiece free?</h3></summary><p>Yes. Masterpiece is free and open source under the GPL-3.0 licence, with every feature included and nothing to register.</p></details>
-      <details class="qa"><summary><h3>Which sample sets does it play?</h3></summary><p>Hauptwerk-format sets, from full, compact and composite definitions, and GrandOrgue organs, from .organ definitions and .orgue packages. Samples are WAV or WavPack at any rate; sets with encrypted samples stay with their publisher&#x27;s own player.</p></details>
+      <details class="qa"><summary><h3>Which sample sets does it play?</h3></summary><p>Hauptwerk-format sets, from full, compact and composite definitions, and GrandOrgue organs, from .organ definitions and .orgue packages, and jOrgan organs, from .disposition files with their SoundFonts. Samples are WAV or WavPack at any rate; sets with encrypted samples stay with their publisher&#x27;s own player.</p></details>
       <details class="qa"><summary><h3>Do the sets need unpacking first?</h3></summary><p>Masterpiece opens a set from its unpacked folder or straight from its package, solid, multi-part and multi-volume RAR sets included.</p></details>
       <details class="qa"><summary><h3>Does it run on a Raspberry Pi?</h3></summary><p>Yes, on Raspberry Pi OS in 64-bit and 32-bit, from a .deb package, with the NEON vector engine.</p></details>
       <details class="qa"><summary><h3>How much memory does a large organ need?</h3></summary><p>That depends on the loading settings. Our 44-stop reference sample set, 17 GB on disk, takes 16.2 GB at 24 bits as recorded, 5.4 GB held compressed (3&times; less), 3.6 GB compressed with its release tails streamed (4.5&times; less, bit for bit), and 2.8 GB streaming only the shortest release of each pipe (5.7&times; less). Stops and perspectives can also be left out.</p></details>
