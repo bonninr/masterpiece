@@ -86,7 +86,7 @@ All files below are in the settings folder, named `<organ>` as described above.
 
 | File | Holds | Written |
 |---|---|---|
-| `organs/<organ>.mporgan` | The organ's settings: loading choices, engine switches, master gain, reverb impulse response, voicing and the organ's own voicing EQ (the `eq` line, present once **Save for this organ** has been pressed on the **Equalizer** tab), mixer routes, stops, ranks and perspectives left out, the notes loaded, tuning, window places, the registration saved with **Save state**, and the controls and switches the organ marks to be remembered. | **Save for this organ**, **Save state**, the volume slider, and when controls move |
+| `organs/<organ>.mporgan` | The organ's settings: loading choices, engine switches, master gain, reverb impulse response, voicing and the organ's own voicing EQ (the `eq` line, present once **Save for this organ** has been pressed on the **Organ EQ** tab), mixer routes, stops, ranks and perspectives left out, the notes loaded, tuning, window places, the registration saved with **Save state**, and the controls and switches the organ marks to be remembered. | **Save for this organ**, **Save state**, the volume slider, and when controls move |
 | `organs/<organ>.mppanels` | The organ's panels (**View** menu panels). | When a panel changes |
 | `midi/<organ>.mpmidi` | The organ's MIDI mapping: manuals, stops, shoes, divisionals. | When the mapping changes |
 | `midi/console.mpmidi` | The player's console on every organ: stepper, generals, setter. | With the organ's MIDI mapping |
